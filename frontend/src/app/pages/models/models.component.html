@@ -29,11 +29,11 @@
           <div class="model-title-block">
             <input class="model-name-input" [value]="model.name"
                    (click)="$event.stopPropagation()"
-                   (input)="state.updateDataModel(model.id!, { name: ($event.target as HTMLInputElement).value })"
+                   (input)="setModelName(model.id!, $event)"
                    placeholder="NomDuModele" />
             <input class="model-desc-input" [value]="model.description"
                    (click)="$event.stopPropagation()"
-                   (input)="state.updateDataModel(model.id!, { description: ($event.target as HTMLInputElement).value })"
+                   (input)="setModelDesc(model.id!, $event)"
                    placeholder="Description courte…" />
           </div>
           <div class="model-stats">
@@ -64,34 +64,34 @@
                   <tr>
                     <td>
                       <input [value]="field.name"
-                             (change)="state.updateField(model.id!, $index, { name: ($event.target as HTMLInputElement).value })"
+                             (change)="setFieldName(model.id!, $index, $event)"
                              placeholder="nom_champ" />
                     </td>
                     <td>
                       <select [value]="field.type"
-                              (change)="state.updateField(model.id!, $index, { type: ($event.target as HTMLSelectElement).value as any })">
+                              (change)="setFieldType(model.id!, $index, $event)">
                         @for (t of fieldTypes; track t) { <option [value]="t">{{ t }}</option> }
                       </select>
                     </td>
                     <td class="center">
                       <input type="checkbox" [checked]="field.required"
-                             (change)="state.updateField(model.id!, $index, { required: ($event.target as HTMLInputElement).checked })" />
+                             (change)="setFieldRequired(model.id!, $index, $event)" />
                     </td>
                     <td class="center">
                       <input type="checkbox" [checked]="field.unique"
-                             (change)="state.updateField(model.id!, $index, { unique: ($event.target as HTMLInputElement).checked })" />
+                             (change)="setFieldUnique(model.id!, $index, $event)" />
                     </td>
                     <td>
                       @if (field.type === 'string') {
                         <input type="number" [value]="field.max_length ?? 200" style="width:60px"
-                               (change)="state.updateField(model.id!, $index, { max_length: +($event.target as HTMLInputElement).value })" />
+                               (change)="setFieldMaxLen(model.id!, $index, $event)" />
                       } @else {
                         <span class="na">—</span>
                       }
                     </td>
                     <td>
                       <input [value]="field.default ?? ''"
-                             (change)="state.updateField(model.id!, $index, { default: ($event.target as HTMLInputElement).value || undefined })"
+                             (change)="setFieldDefault(model.id!, $index, $event)"
                              placeholder="aucun" />
                     </td>
                     <td class="preview-cell">
@@ -127,18 +127,18 @@
                   <tr>
                     <td>
                       <input [value]="rel.name"
-                             (change)="state.updateRelationship(model.id!, $index, { name: ($event.target as HTMLInputElement).value })"
+                             (change)="setRelName(model.id!, $index, $event)"
                              placeholder="nom_relation" />
                     </td>
                     <td>
                       <select [value]="rel.rel_type"
-                              (change)="state.updateRelationship(model.id!, $index, { rel_type: ($event.target as HTMLSelectElement).value as any })">
+                              (change)="setRelType(model.id!, $index, $event)">
                         @for (rt of relTypes; track rt) { <option [value]="rt">{{ rt }}</option> }
                       </select>
                     </td>
                     <td>
                       <select [value]="rel.to_model"
-                              (change)="state.updateRelationship(model.id!, $index, { to_model: ($event.target as HTMLSelectElement).value })">
+                              (change)="setRelToModel(model.id!, $index, $event)">
                         <option value="">— choisir —</option>
                         @for (mn of state.getModelNames(); track mn) {
                           @if (mn !== model.name) {
@@ -149,13 +149,13 @@
                     </td>
                     <td>
                       <input [value]="rel.related_name"
-                             (change)="state.updateRelationship(model.id!, $index, { related_name: ($event.target as HTMLInputElement).value })"
+                             (change)="setRelRelatedName(model.id!, $index, $event)"
                              placeholder="items" />
                     </td>
                     <td>
                       @if (rel.rel_type !== 'M2M') {
                         <select [value]="rel.on_delete ?? 'CASCADE'"
-                                (change)="state.updateRelationship(model.id!, $index, { on_delete: ($event.target as HTMLSelectElement).value as any })">
+                                (change)="setRelOnDelete(model.id!, $index, $event)">
                           @for (od of onDeleteChoices; track od) { <option [value]="od">{{ od }}</option> }
                         </select>
                       } @else {
