@@ -172,10 +172,7 @@
                       <input class="field-sm" [value]="pipe.name"
                              (change)="setPipelineName(page.id!, pipe.id!, $event)"
                              placeholder="Nom du pipeline" />
-                      <textarea class="field-steps"
-                                [value]="stepsToText(pipe.steps)"
-                                (change)="setPipelineSteps(page.id!, pipe.id!, $event)"
-                                placeholder="Étapes (une par ligne)…"></textarea>
+                      <span class="steps-count">{{ pipe.steps.length }} étape(s)</span>
                       <button class="btn-remove-sm" (click)="state.removePipeline(page.id!, pipe.id!)">✕</button>
                     </div>
                   }

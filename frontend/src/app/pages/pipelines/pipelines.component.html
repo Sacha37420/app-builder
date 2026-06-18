@@ -54,11 +54,11 @@
             <div class="pipe-title-block">
               <input class="pipe-name-input" [value]="pipe.name"
                      (click)="$event.stopPropagation()"
-                     (input)="state.updatePipeline(selectedPage.id!, pipe.id!, { name: ($event.target as HTMLInputElement).value })"
+                     (input)="setPipelineName(selectedPage.id!, pipe.id!, $event)"
                      placeholder="Nom du pipeline" />
               <input class="pipe-desc-input" [value]="pipe.description"
                      (click)="$event.stopPropagation()"
-                     (input)="state.updatePipeline(selectedPage.id!, pipe.id!, { description: ($event.target as HTMLTextAreaElement).value })"
+                     (input)="setPipelineDesc(selectedPage.id!, pipe.id!, $event)"
                      placeholder="Description…" />
             </div>
             <span class="steps-count">{{ totalSteps(pipe) }} étape(s)</span>
@@ -76,7 +76,7 @@
                     <div class="step-type-badge">
                       <span class="step-icon">{{ stepTypeIcons[step.type] }}</span>
                       <select [value]="step.type"
-                              (change)="state.updatePipelineStep(selectedPage.id!, pipe.id!, $index, { type: ($event.target as HTMLSelectElement).value as any })">
+                              (change)="setStepType(selectedPage.id!, pipe.id!, $index, $event)">
                         @for (t of stepTypes; track t) {
                           <option [value]="t">{{ stepTypeLabels[t] }}</option>
                         }
@@ -86,20 +86,20 @@
                       <label>
                         <span>Label</span>
                         <input [value]="step.label"
-                               (input)="state.updatePipelineStep(selectedPage.id!, pipe.id!, $index, { label: ($event.target as HTMLInputElement).value })"
+                               (input)="setStepLabel(selectedPage.id!, pipe.id!, $index, $event)"
                                placeholder="Ce que fait cette étape…" />
                       </label>
                       @if (step.type === 'service_call') {
                         <label>
                           <span>Méthode</span>
                           <input [value]="step.service_method ?? ''"
-                                 (input)="state.updatePipelineStep(selectedPage.id!, pipe.id!, $index, { service_method: ($event.target as HTMLInputElement).value })"
+                                 (input)="setStepServiceMethod(selectedPage.id!, pipe.id!, $index, $event)"
                                  placeholder="ex: ProduitService.create(formData)" />
                         </label>
                         <label>
                           <span>Flux de données</span>
                           <input [value]="step.data_flow ?? ''"
-                                 (input)="state.updatePipelineStep(selectedPage.id!, pipe.id!, $index, { data_flow: ($event.target as HTMLInputElement).value })"
+                                 (input)="setStepDataFlow(selectedPage.id!, pipe.id!, $index, $event)"
                                  placeholder="ex: CreateProduitDto → Produit" />
                         </label>
                       }
@@ -107,7 +107,7 @@
                         <label>
                           <span>En cas d'erreur</span>
                           <input [value]="step.on_error ?? ''"
-                                 (input)="state.updatePipelineStep(selectedPage.id!, pipe.id!, $index, { on_error: ($event.target as HTMLInputElement).value })"
+                                 (input)="setStepOnError(selectedPage.id!, pipe.id!, $index, $event)"
                                  placeholder="ex: Afficher toast d'erreur" />
                         </label>
                       }

@@ -88,10 +88,6 @@ export class SchemaCanvasComponent {
   setPipelineName(pId: number, ppId: number, e: Event): void {
     this.state.updatePipeline(pId, ppId, { name: this.val(e) });
   }
-  setPipelineSteps(pId: number, ppId: number, e: Event): void {
-    this.state.updatePipeline(pId, ppId, { steps: this.textToSteps(this.val(e)) });
-  }
-
   setInteractionName(pId: number, iId: number, e: Event): void {
     this.state.updateInteraction(pId, iId, { name: this.val(e) });
   }
@@ -124,11 +120,4 @@ export class SchemaCanvasComponent {
     this.state.updatePage(pageId, { service_ids: ids });
   }
 
-  // ── Steps pipeline ──────────────────────────────────────────────────────────
-
-  stepsToText(steps: string[]): string { return steps.join('\n'); }
-
-  textToSteps(text: string): string[] {
-    return text.split('\n').map(s => s.trim()).filter(s => s.length > 0);
-  }
 }
