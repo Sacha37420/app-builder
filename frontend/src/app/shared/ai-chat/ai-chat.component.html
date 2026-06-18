@@ -33,7 +33,7 @@
             <div class="key-input-wrap">
               <input [type]="showClaudeKey() ? 'text' : 'password'"
                      [value]="claudeKey()"
-                     (input)="claudeKey.set(($event.target as HTMLInputElement).value)"
+                     (input)="claudeKey.set($any($event.target).value)"
                      placeholder="sk-ant-api03-…" autocomplete="off" />
               <button class="btn-eye" type="button"
                       (click)="showClaudeKey.update(v => !v)"
@@ -45,7 +45,7 @@
           <label class="field-row">
             <span class="field-label">Modèle</span>
             <select [value]="claudeModel()"
-                    (change)="claudeModel.set(($event.target as HTMLSelectElement).value)">
+                    (change)="claudeModel.set($any($event.target).value)">
               @for (m of claudeModels; track m.id) {
                 <option [value]="m.id">{{ m.label }}</option>
               }
@@ -62,7 +62,7 @@
             <div class="key-input-wrap">
               <input [type]="showMistralKey() ? 'text' : 'password'"
                      [value]="mistralKey()"
-                     (input)="mistralKey.set(($event.target as HTMLInputElement).value)"
+                     (input)="mistralKey.set($any($event.target).value)"
                      placeholder="Votre clé Mistral" autocomplete="off" />
               <button class="btn-eye" type="button"
                       (click)="showMistralKey.update(v => !v)"
@@ -74,7 +74,7 @@
           <label class="field-row">
             <span class="field-label">Modèle</span>
             <select [value]="mistralModel()"
-                    (change)="mistralModel.set(($event.target as HTMLSelectElement).value)">
+                    (change)="mistralModel.set($any($event.target).value)">
               @for (m of mistralModels; track m.id) {
                 <option [value]="m.id">{{ m.label }}</option>
               }
@@ -257,7 +257,7 @@
     <textarea
       class="chat-input"
       [value]="inputText()"
-      (input)="inputText.set(($event.target as HTMLTextAreaElement).value)"
+      (input)="inputText.set($any($event.target).value)"
       (keydown)="onKeydown($event)"
       placeholder="Décrivez votre besoin… (Entrée pour envoyer, Shift+Entrée pour sauter une ligne)"
       [disabled]="loading()"

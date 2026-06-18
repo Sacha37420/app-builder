@@ -60,4 +60,28 @@ export class PipelinesPageComponent {
   stepClass(type: PipelineStepType): string {
     return `step-${type.replace('_', '-')}`;
   }
+
+  val(e: Event): string { return (e.target as HTMLInputElement).value; }
+
+  setPipelineName(pageId: number, pipeId: number, e: Event): void {
+    this.state.updatePipeline(pageId, pipeId, { name: this.val(e) });
+  }
+  setPipelineDesc(pageId: number, pipeId: number, e: Event): void {
+    this.state.updatePipeline(pageId, pipeId, { description: this.val(e) });
+  }
+  setStepType(pageId: number, pipeId: number, idx: number, e: Event): void {
+    this.state.updatePipelineStep(pageId, pipeId, idx, { type: this.val(e) as PipelineStepType });
+  }
+  setStepLabel(pageId: number, pipeId: number, idx: number, e: Event): void {
+    this.state.updatePipelineStep(pageId, pipeId, idx, { label: this.val(e) });
+  }
+  setStepServiceMethod(pageId: number, pipeId: number, idx: number, e: Event): void {
+    this.state.updatePipelineStep(pageId, pipeId, idx, { service_method: this.val(e) });
+  }
+  setStepDataFlow(pageId: number, pipeId: number, idx: number, e: Event): void {
+    this.state.updatePipelineStep(pageId, pipeId, idx, { data_flow: this.val(e) });
+  }
+  setStepOnError(pageId: number, pipeId: number, idx: number, e: Event): void {
+    this.state.updatePipelineStep(pageId, pipeId, idx, { on_error: this.val(e) });
+  }
 }
