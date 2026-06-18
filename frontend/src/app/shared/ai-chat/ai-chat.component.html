@@ -1,0 +1,95 @@
+<div class="chat-panel">
+
+  <!-- Entête -->
+  <div class="chat-header">
+    <span class="chat-title">&#129302; Agent IA</span>
+    <div class="header-actions">
+      <button class="btn-icon" title="Paramètres API" (click)="toggleSettings()">&#9881;</button>
+      <button class="btn-icon" title="Effacer l'historique" (click)="clearHistory()">&#128465;</button>
+    </div>
+  </div>
+
+  <!-- Paramètres -->
+  @if (showSettings()) {
+    <div class="settings-panel">
+      <label class="setting-row">
+        <span>Provider</span>
+        <select [value]="provider()" (change)="provider.set($event.target as any ? ($event.target as HTMLSelectElement).value as any : 'claude')">
+          <option value="claude">Claude (Anthropic)</option>
+          <option value="mistral">Mistral AI</option>
+        </select>
+      </label>
+      <label class="setting-row">
+        <span>Clé API</span>
+        <input type="password" [value]="apiKey()"
+               (input)="apiKey.set(($event.target as HTMLInputElement).value)"
+               placeholder="sk-ant-... ou clé Mistral" />
+      </label>
+      <p class="setting-hint">
+        La clé est envoyée au backend uniquement pour l'appel API —
+        elle n'est pas persistée en base de données.
+      </p>
+    </div>
+  }
+
+  <!-- Context badge -->
+  <div class="context-badge">
+    <span class="badge-dot"></span>
+    Contexte : <strong>{{ state.spec().name }}</strong>
+    &nbsp;·&nbsp;
+    {{ state.spec().endpoint_groups.length }} groupe(s)
+    · {{ state.spec().services.length }} service(s)
+    · {{ state.spec().pages.length }} page(s)
+  </div>
+
+  <!-- Messages -->
+  <div class="messages" #messagesEl>
+    @if (messages().length === 0) {
+      <div class="intro">
+        <p>
+          Décrivez votre application et l'agent vous aidera à préciser
+          les endpoints, services, pages et interactions nécessaires.
+        </p>
+        <p class="intro-hint">
+          Ex : "Je veux une app de gestion de stock avec authentification,
+          un tableau de bord et des formulaires de saisie."
+        </p>
+      </div>
+    }
+
+    @for (msg of messages(); track $index) {
+      <div class="message" [class.user]="msg.role === 'user'" [class.assistant]="msg.role === 'assistant'">
+        <div class="msg-role">{{ msg.role === 'user' ? 'Vous' : 'Agent' }}</div>
+        <div class="msg-content" [innerHTML]="formatContent(msg.content)"></div>
+      </div>
+    }
+
+    @if (loading()) {
+      <div class="message assistant loading">
+        <div class="msg-role">Agent</div>
+        <div class="typing-dots"><span></span><span></span><span></span></div>
+      </div>
+    }
+
+    @if (error()) {
+      <div class="chat-error">{{ error() }}</div>
+    }
+  </div>
+
+  <!-- Input -->
+  <div class="chat-input-area">
+    <textarea
+      class="chat-input"
+      [value]="inputText()"
+      (input)="inputText.set(($event.target as HTMLTextAreaElement).value)"
+      (keydown)="onKeydown($event)"
+      placeholder="Décrivez votre besoin… (Entrée pour envoyer, Shift+Entrée pour sauter)"
+      [disabled]="loading()"
+      rows="3">
+    </textarea>
+    <button class="btn-send" (click)="send()" [disabled]="loading() || !inputText().trim()">
+      &#9654;
+    </button>
+  </div>
+
+</div>
