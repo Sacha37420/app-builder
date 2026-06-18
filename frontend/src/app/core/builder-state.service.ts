@@ -1,10 +1,16 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, inject } from '@angular/core';
+import { Subject, throwError } from 'rxjs';
+import { debounceTime, filter, switchMap, tap, catchError } from 'rxjs/operators';
+import { Observable } from 'rxjs';
 import {
   AppSpec, DataModel, ModelField, ModelRelationship,
   EndpointGroup, Endpoint, FrontendService, Page,
   Interaction, Pipeline, PipelineStep, PageComponent,
   OperationType, PageLayout, AgentPatch,
 } from '../models/app-spec.model';
+import { BuilderApiService } from './builder-api.service';
+
+export type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error';
 
 const EMPTY_SPEC: AppSpec = {
   name: 'Mon Application',
@@ -17,33 +23,84 @@ const EMPTY_SPEC: AppSpec = {
 
 @Injectable({ providedIn: 'root' })
 export class BuilderStateService {
-  readonly spec = signal<AppSpec>({ ...EMPTY_SPEC, data_models: [], endpoint_groups: [], services: [], pages: [] });
+  private api = inject(BuilderApiService);
+
+  readonly spec = signal<AppSpec>({ ...EMPTY_SPEC });
   readonly savedId = signal<number | null>(null);
   readonly isDirty = signal(false);
+  readonly saveStatus = signal<SaveStatus>('idle');
 
-  private nextId = -1;
-  private tid(): number { return this.nextId--; }
+  private debounceTrigger = new Subject<void>();
+
+  constructor() {
+    // Autosave : 3 s après la dernière modification, si un ID existe déjà
+    this.debounceTrigger.pipe(
+      debounceTime(3000),
+      filter(() => this.savedId() !== null),
+      switchMap(() => {
+        this.saveStatus.set('saving');
+        return this.api.updateApp(this.savedId()!, this.spec()).pipe(
+          tap(saved => {
+            this.savedId.set(saved.id!);
+            this.isDirty.set(false);
+            this.saveStatus.set('saved');
+          }),
+          catchError(() => {
+            this.saveStatus.set('error');
+            return throwError(() => new Error('autosave failed'));
+          }),
+        );
+      }),
+    ).subscribe();
+  }
 
   private mutate(fn: (s: AppSpec) => AppSpec): void {
     this.spec.update(fn);
     this.isDirty.set(true);
+    if (this.savedId() !== null) {
+      this.saveStatus.set('pending');
+      this.debounceTrigger.next();
+    }
+  }
+
+  /** Sauvegarde immédiate — crée si pas encore d'ID, met à jour sinon. */
+  saveNow(): Observable<AppSpec> {
+    const id = this.savedId();
+    this.saveStatus.set('saving');
+    const obs = id
+      ? this.api.updateApp(id, this.spec())
+      : this.api.createApp(this.spec());
+    return obs.pipe(
+      tap(saved => {
+        this.savedId.set(saved.id!);
+        this.isDirty.set(false);
+        this.saveStatus.set('saved');
+      }),
+      catchError(err => {
+        this.saveStatus.set('error');
+        return throwError(() => err);
+      }),
+    );
   }
 
   loadSpec(spec: AppSpec): void {
     this.spec.set(spec);
     this.savedId.set(spec.id ?? null);
     this.isDirty.set(false);
+    this.saveStatus.set('saved');
   }
 
   resetSpec(): void {
-    this.spec.set({ ...EMPTY_SPEC, data_models: [], endpoint_groups: [], services: [], pages: [] });
+    this.spec.set({ ...EMPTY_SPEC });
     this.savedId.set(null);
     this.isDirty.set(false);
+    this.saveStatus.set('idle');
   }
 
   markSaved(id: number): void {
     this.savedId.set(id);
     this.isDirty.set(false);
+    this.saveStatus.set('saved');
   }
 
   updateMeta(name: string, description: string): void {
@@ -422,10 +479,6 @@ export class BuilderStateService {
 
   // ── Agent IA : application de patch ──────────────────────────────────────────
 
-  /**
-   * Fusionne les propositions de l'agent dans le spec existant.
-   * Utilise les noms pour résoudre les références (endpoint_group_names, service_names).
-   */
   mergeFromAgent(patch: AgentPatch): void {
     const s = this.spec();
 
@@ -496,13 +549,8 @@ export class BuilderStateService {
     }));
   }
 
-  /**
-   * Remplace le spec complet par les propositions de l'agent.
-   * Équivalent à réinitialiser puis mergeFromAgent.
-   */
   replaceFromAgent(patch: AgentPatch): void {
     this.mutate(() => ({
-      ...(patch.set_meta ?? { name: 'Mon Application', description: '' }),
       name: patch.set_meta?.name ?? 'Mon Application',
       description: patch.set_meta?.description ?? '',
       data_models: [],
@@ -527,6 +575,9 @@ export class BuilderStateService {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
+
+  private nextId = -1;
+  private tid(): number { return this.nextId--; }
 
   toggleGroupLink(svcId: number, groupId: number): void {
     const svc = this.spec().services.find(s => s.id === svcId);

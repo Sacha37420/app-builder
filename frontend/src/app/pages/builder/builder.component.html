@@ -13,13 +13,12 @@
       <button class="btn-toolbar" (click)="toggleAppList()">
         &#128193; Mes apps ({{ savedApps().length }})
       </button>
-      <button class="btn-toolbar btn-save" (click)="save()" [disabled]="saving()">
-        @if (saving()) { Sauvegarde… } @else { &#128190; Sauvegarder }
-      </button>
+      @if (state.savedId() === null && state.isDirty()) {
+        <button class="btn-toolbar btn-save" (click)="save()">
+          &#128190; Sauvegarder
+        </button>
+      }
     </div>
-    @if (saveError()) {
-      <div class="toolbar-error">{{ saveError() }}</div>
-    }
   </div>
 
   <!-- ── Liste des apps sauvegardées ────────────────────────────────── -->

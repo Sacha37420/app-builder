@@ -2,12 +2,51 @@
   <a class="brand" routerLink="/">&#9881; App Builder</a>
 
   <div class="nav-links">
-    <a routerLink="/"          routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
-      Canvas
-    </a>
+    <a routerLink="/"          routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Canvas</a>
     <a routerLink="/models"    routerLinkActive="active">Modèles</a>
     <a routerLink="/pipelines" routerLinkActive="active">Pipelines</a>
     <a routerLink="/preview"   routerLinkActive="active">Code</a>
+  </div>
+
+  <!-- Indicateur de sauvegarde -->
+  <div class="save-zone">
+
+    @if (state.savedId() === null && state.isDirty()) {
+      <!-- Première sauvegarde : bouton explicite -->
+      <button class="btn-save-first" (click)="saveNow()" [disabled]="saving()">
+        @if (saving()) { Sauvegarde… } @else { &#128190; Sauvegarder }
+      </button>
+    }
+
+    @if (state.savedId() !== null) {
+      <!-- Autosave actif : indicateur discret -->
+      <span class="save-indicator" [attr.data-status]="state.saveStatus()">
+        @switch (state.saveStatus()) {
+          @case ('pending') {
+            <span class="dot dot-pending"></span> Modification en attente…
+          }
+          @case ('saving') {
+            <span class="dot dot-saving"></span> Sauvegarde…
+          }
+          @case ('saved') {
+            <span class="dot dot-saved"></span> Sauvegardé
+          }
+          @case ('error') {
+            <span class="dot dot-error"></span>
+            <span class="save-err">Erreur — </span>
+            <button class="btn-retry" (click)="saveNow()">Réessayer</button>
+          }
+          @default {
+            <span class="dot dot-saved"></span> Sauvegardé
+          }
+        }
+      </span>
+    }
+
+    @if (saveError()) {
+      <span class="nav-error">{{ saveError() }}</span>
+    }
+
   </div>
 
   <div class="nav-user">
