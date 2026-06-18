@@ -198,7 +198,7 @@
                          placeholder="Nom" />
                   <select class="type-select"
                           [value]="inter.type"
-                          (change)="state.updateInteraction(page.id!, inter.id!, { type: ($event.target as HTMLSelectElement).value as any })">
+                          (change)="setInteractionType(page.id!, inter.id!, $event)">
                     @for (t of interactionTypes; track t) { <option [value]="t">{{ t }}</option> }
                   </select>
                   <button class="btn-remove-sm" (click)="state.removeInteraction(page.id!, inter.id!)">✕</button>
