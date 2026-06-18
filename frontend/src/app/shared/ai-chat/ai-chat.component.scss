@@ -126,16 +126,34 @@ $c-accent:  #818cf8;
   padding: 1rem;
   border: 1px dashed rgba(255,255,255,0.12);
   border-radius: 8px;
-  color: rgba(255,255,255,0.55);
+  color: rgba(255,255,255,0.6);
   font-size: 0.85rem;
-  line-height: 1.5;
+  line-height: 1.6;
 
-  p { margin: 0 0 0.5rem; }
-  .intro-hint {
-    font-style: italic;
-    color: rgba(255,255,255,0.35);
-    font-size: 0.8rem;
-    margin: 0;
+  .intro-main { margin: 0 0 0.75rem; }
+
+  strong { color: #a5b4fc; }
+}
+
+.starters {
+  display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem;
+}
+
+.starter-btn {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.55);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.12s;
+
+  &:hover {
+    background: rgba(129,140,248,0.12);
+    border-color: rgba(129,140,248,0.3);
+    color: #c7d2fe;
   }
 }
 
@@ -177,6 +195,55 @@ $c-accent:  #818cf8;
     line-height: 1.55;
     word-break: break-word;
   }
+}
+
+// ── Panneau de propositions (spec_patch) ──────────────────────────────────────
+.patch-panel {
+  margin-top: 0.4rem;
+  background: rgba(16,185,129,0.07);
+  border: 1px solid rgba(16,185,129,0.25);
+  border-radius: 7px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.79rem;
+
+  &.applied {
+    background: rgba(16,185,129,0.04);
+    border-color: rgba(16,185,129,0.15);
+  }
+}
+
+.patch-header {
+  display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem;
+  .patch-icon { font-size: 0.9rem; }
+  .patch-summary { color: #6ee7b7; font-weight: 500; }
+}
+
+.patch-actions {
+  display: flex; gap: 0.4rem; flex-wrap: wrap;
+}
+
+.btn-merge, .btn-replace {
+  padding: 3px 10px; border-radius: 5px; cursor: pointer;
+  font-size: 0.77rem; font-weight: 600; transition: all 0.12s; border: 1px solid;
+}
+
+.btn-merge {
+  background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.4); color: #6ee7b7;
+  &:hover { background: rgba(16,185,129,0.28); }
+}
+
+.btn-replace {
+  background: rgba(251,191,36,0.1); border-color: rgba(251,191,36,0.35); color: #fcd34d;
+  &:hover { background: rgba(251,191,36,0.22); }
+}
+
+.patch-hint {
+  margin: 0.35rem 0 0; font-size: 0.72rem; color: rgba(255,255,255,0.35);
+  em { font-style: normal; color: rgba(255,255,255,0.5); }
+}
+
+.patch-applied {
+  color: #6ee7b7; font-size: 0.78rem; font-weight: 500;
 }
 
 // ── Typing dots ───────────────────────────────────────────────────────────────

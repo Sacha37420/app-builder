@@ -26,8 +26,7 @@
                placeholder="sk-ant-... ou clé Mistral" />
       </label>
       <p class="setting-hint">
-        La clé est envoyée au backend uniquement pour l'appel API —
-        elle n'est pas persistée en base de données.
+        La clé est transmise au backend pour l'appel API uniquement — elle n'est pas persistée.
       </p>
     </div>
   }
@@ -35,35 +34,79 @@
   <!-- Context badge -->
   <div class="context-badge">
     <span class="badge-dot"></span>
-    Contexte : <strong>{{ state.spec().name }}</strong>
+    <strong>{{ state.spec().name }}</strong>
     &nbsp;·&nbsp;
-    {{ state.spec().endpoint_groups.length }} groupe(s)
-    · {{ state.spec().services.length }} service(s)
+    {{ state.spec().data_models.length }} modèle(s)
+    · {{ state.spec().endpoint_groups.length }} groupe(s)
     · {{ state.spec().pages.length }} page(s)
   </div>
 
   <!-- Messages -->
   <div class="messages" #messagesEl>
+
+    <!-- État vide : intro + starters -->
     @if (messages().length === 0) {
       <div class="intro">
-        <p>
-          Décrivez votre application et l'agent vous aidera à préciser
-          les endpoints, services, pages et interactions nécessaires.
+        <p class="intro-main">
+          Décrivez votre application en quelques phrases.<br>
+          <strong>L'agent construira un premier brouillon complet</strong> que vous pourrez appliquer
+          en un clic — sans connaître Django ou Angular.
         </p>
-        <p class="intro-hint">
-          Ex : "Je veux une app de gestion de stock avec authentification,
-          un tableau de bord et des formulaires de saisie."
-        </p>
+        <div class="starters">
+          @for (s of starters; track s) {
+            <button class="starter-btn" (click)="useStarter(s)">{{ s }}</button>
+          }
+        </div>
       </div>
     }
 
+    <!-- Liste des messages -->
     @for (msg of messages(); track $index) {
       <div class="message" [class.user]="msg.role === 'user'" [class.assistant]="msg.role === 'assistant'">
         <div class="msg-role">{{ msg.role === 'user' ? 'Vous' : 'Agent' }}</div>
         <div class="msg-content" [innerHTML]="formatContent(msg.content)"></div>
+
+        <!-- Panneau de propositions (uniquement pour les messages assistant avec patch) -->
+        @if (msg.role === 'assistant' && msg.spec_patch) {
+          <div class="patch-panel" [class.applied]="msg.applied !== 'none'">
+
+            @if (msg.applied === 'none') {
+              <div class="patch-header">
+                <span class="patch-icon">&#128196;</span>
+                <span class="patch-summary">Propositions : {{ patchSummary(msg.spec_patch) }}</span>
+              </div>
+              <div class="patch-actions">
+                <button class="btn-merge" (click)="merge($index)">
+                  &#43; Fusionner dans le spec
+                </button>
+                <button class="btn-replace" (click)="replace($index)">
+                  &#8635; Remplacer le spec
+                </button>
+              </div>
+              <p class="patch-hint">
+                <em>Fusionner</em> ajoute aux éléments existants.
+                <em>Remplacer</em> repart de zéro.
+              </p>
+            }
+
+            @if (msg.applied === 'merged') {
+              <div class="patch-applied">
+                &#10003; Fusionné dans le spec
+              </div>
+            }
+
+            @if (msg.applied === 'replaced') {
+              <div class="patch-applied">
+                &#10003; Spec remplacé
+              </div>
+            }
+
+          </div>
+        }
       </div>
     }
 
+    <!-- Indicateur de chargement -->
     @if (loading()) {
       <div class="message assistant loading">
         <div class="msg-role">Agent</div>
@@ -71,19 +114,21 @@
       </div>
     }
 
+    <!-- Erreur -->
     @if (error()) {
       <div class="chat-error">{{ error() }}</div>
     }
+
   </div>
 
-  <!-- Input -->
+  <!-- Zone de saisie -->
   <div class="chat-input-area">
     <textarea
       class="chat-input"
       [value]="inputText()"
       (input)="inputText.set(($event.target as HTMLTextAreaElement).value)"
       (keydown)="onKeydown($event)"
-      placeholder="Décrivez votre besoin… (Entrée pour envoyer, Shift+Entrée pour sauter)"
+      placeholder="Décrivez votre besoin… (Entrée pour envoyer, Shift+Entrée pour sauter une ligne)"
       [disabled]="loading()"
       rows="3">
     </textarea>
