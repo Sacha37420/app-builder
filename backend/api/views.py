@@ -281,16 +281,14 @@ class AIChatView(APIView):
 
     def post(self, request):
         provider = request.data.get('provider', 'claude')
-        api_key = request.data.get('api_key') or env_config(
-            'MISTRAL_API_KEY' if provider == 'mistral' else 'ANTHROPIC_API_KEY',
-            default='',
-        )
+        api_key  = request.data.get('api_key', '').strip()
+        model    = request.data.get('model', '').strip() or None
         messages = request.data.get('messages', [])
         app_spec = request.data.get('app_spec', {})
 
         if not api_key:
             return Response(
-                {'error': f'Clé API {provider} manquante. Configurez-la dans les paramètres du chat.'},
+                {'error': f'Clé API {provider} manquante. Configurez-la dans les paramètres (⚙).'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -298,14 +296,14 @@ class AIChatView(APIView):
 
         try:
             if provider == 'mistral':
-                return self._call_mistral(api_key, system_prompt, messages)
-            return self._call_claude(api_key, system_prompt, messages)
+                return self._call_mistral(api_key, system_prompt, messages, model)
+            return self._call_claude(api_key, system_prompt, messages, model)
         except Exception as exc:
             return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
-    def _call_mistral(self, api_key, system_prompt, messages):
+    def _call_mistral(self, api_key, system_prompt, messages, model=None):
         payload = {
-            'model': 'mistral-small-latest',
+            'model': model or 'mistral-small-latest',
             'messages': [{'role': 'system', 'content': system_prompt}] + messages,
         }
         resp = http_requests.post(
@@ -319,11 +317,11 @@ class AIChatView(APIView):
         content, patch = _extract_patch(raw)
         return Response({'content': content, 'provider': 'mistral', 'spec_patch': patch})
 
-    def _call_claude(self, api_key, system_prompt, messages):
+    def _call_claude(self, api_key, system_prompt, messages, model=None):
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
-            model='claude-sonnet-4-6',
+            model=model or 'claude-sonnet-4-6',
             max_tokens=4096,
             system=system_prompt,
             messages=messages,

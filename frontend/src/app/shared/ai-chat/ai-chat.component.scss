@@ -23,15 +23,23 @@ $c-accent:  #818cf8;
   background: #1e1e2e;
   border-bottom: 1px solid $c-border;
   flex-shrink: 0;
+  gap: 0.5rem;
 
-  .chat-title {
-    flex: 1;
-    font-weight: 700;
-    font-size: 0.9rem;
-    letter-spacing: 0.04em;
-  }
+  .chat-title { font-weight: 700; font-size: 0.9rem; letter-spacing: 0.04em; flex-shrink: 0; }
+  .header-right { display: flex; align-items: center; gap: 0.4rem; margin-left: auto; }
+}
 
-  .header-actions { display: flex; gap: 0.3rem; }
+.provider-badge {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 99px;
+  border: 1px solid;
+  white-space: nowrap;
+
+  &.claude  { color: #c4b5fd; border-color: rgba(196,181,253,0.3); background: rgba(196,181,253,0.08); }
+  &.mistral { color: #fb923c; border-color: rgba(251,146,60,0.3);  background: rgba(251,146,60,0.08);  }
+
+  .model-short { opacity: 0.6; }
 }
 
 .btn-icon {
@@ -49,22 +57,49 @@ $c-accent:  #818cf8;
 
 // ── Paramètres ─────────────────────────────────────────────────────────────────
 .settings-panel {
-  padding: 0.75rem;
   background: #111827;
   border-bottom: 1px solid $c-border;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
   flex-shrink: 0;
 }
 
-.setting-row {
+.provider-tabs {
+  display: flex;
+  border-bottom: 1px solid $c-border;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 0.45rem;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.45);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.12s;
+  border-bottom: 2px solid transparent;
+
+  &.active {
+    color: $c-text;
+    border-bottom-color: $c-accent;
+    background: rgba(129,140,248,0.06);
+  }
+  &:hover:not(.active) { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.04); }
+}
+
+.settings-fields {
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.field-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-size: 0.82rem;
 
-  span { width: 70px; flex-shrink: 0; color: rgba(255,255,255,0.6); }
+  .field-label { width: 60px; flex-shrink: 0; color: rgba(255,255,255,0.55); }
 
   select, input {
     flex: 1;
@@ -79,11 +114,85 @@ $c-accent:  #818cf8;
   }
 }
 
-.setting-hint {
-  font-size: 0.72rem;
-  color: rgba(255,255,255,0.35);
-  margin: 0;
-  font-style: italic;
+.key-input-wrap {
+  flex: 1;
+  display: flex;
+  gap: 0.3rem;
+
+  input { flex: 1; min-width: 0; }
+}
+
+.btn-eye {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.6);
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  flex-shrink: 0;
+  &:hover { background: rgba(255,255,255,0.12); }
+}
+
+// ── Tutoriel ───────────────────────────────────────────────────────────────────
+.tuto-toggle {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-top: 1px solid $c-border;
+  color: rgba(255,255,255,0.4);
+  font-size: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.12s;
+  &:hover { color: rgba(255,255,255,0.7); }
+}
+
+.tutorial {
+  padding: 0.75rem;
+  border-top: 1px solid $c-border;
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.65);
+  line-height: 1.6;
+}
+
+.tuto-intro { margin: 0 0 0.6rem; }
+
+.tuto-steps {
+  margin: 0 0 0.6rem;
+  padding-left: 1.2rem;
+
+  li { margin-bottom: 0.3rem; }
+
+  a {
+    color: $c-accent;
+    text-decoration: none;
+    &:hover { text-decoration: underline; }
+  }
+
+  code {
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    padding: 0 4px;
+    font-size: 0.78rem;
+  }
+}
+
+.tuto-note {
+  background: rgba(255,255,255,0.04);
+  border-left: 2px solid rgba(255,255,255,0.15);
+  border-radius: 0 4px 4px 0;
+  padding: 0.4rem 0.6rem;
+  margin-top: 0.4rem;
+  font-size: 0.76rem;
+  color: rgba(255,255,255,0.5);
+
+  code {
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    padding: 0 3px;
+  }
 }
 
 // ── Context badge ──────────────────────────────────────────────────────────────
@@ -133,6 +242,16 @@ $c-accent:  #818cf8;
   .intro-main { margin: 0 0 0.75rem; }
 
   strong { color: #a5b4fc; }
+}
+
+.intro-warning {
+  padding: 0.45rem 0.7rem;
+  background: rgba(251,191,36,0.08);
+  border: 1px solid rgba(251,191,36,0.25);
+  border-radius: 6px;
+  color: #fcd34d;
+  font-size: 0.78rem;
+  margin-bottom: 0.65rem;
 }
 
 .starters {
