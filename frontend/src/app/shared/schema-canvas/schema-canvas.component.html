@@ -5,9 +5,9 @@
     @if (isEditing('meta')) {
       <div class="edit-inline meta-edit">
         <input class="field-name" [value]="state.spec().name"
-               (input)="state.updateMeta($any($event.target).value, state.spec().description)" />
+               (input)="setMetaName($event)" />
         <textarea class="field-desc" [value]="state.spec().description"
-                  (input)="state.updateMeta(state.spec().name, $any($event.target).value)"
+                  (input)="setMetaDesc($event)"
                   placeholder="Description de l'application..."></textarea>
         <button class="btn-close" (click)="closeEdit()">Fermer</button>
       </div>
@@ -42,11 +42,11 @@
               @for (ep of group.endpoints; track ep.id) {
                 <div class="ep-row">
                   <select class="method-select" [value]="ep.method"
-                          (change)="state.updateEndpoint(group.id!, ep.id!, { method: $any($event.target).value })">
+                          (change)="setEndpointMethod(group.id!, ep.id!, $event)">
                     @for (m of methods; track m) { <option [value]="m">{{ m }}</option> }
                   </select>
                   <input class="ep-path" [value]="ep.path"
-                         (change)="state.updateEndpoint(group.id!, ep.id!, { path: $any($event.target).value })" />
+                         (change)="setEndpointPath(group.id!, ep.id!, $event)" />
                   <button class="btn-remove-sm" (click)="state.removeEndpoint(group.id!, ep.id!)">✕</button>
                 </div>
               }
@@ -57,10 +57,10 @@
           @if (isEditing('group', group.id)) {
             <div class="edit-inline">
               <input class="field-name" [value]="group.name"
-                     (input)="state.updateEndpointGroup(group.id!, { name: $any($event.target).value })"
+                     (input)="setGroupName(group.id!, $event)"
                      placeholder="Nom du groupe" />
               <textarea class="field-desc" [value]="group.description"
-                        (input)="state.updateEndpointGroup(group.id!, { description: $any($event.target).value })"
+                        (input)="setGroupDesc(group.id!, $event)"
                         placeholder="Description…"></textarea>
               <button class="btn-close" (click)="closeEdit()">Fermer</button>
             </div>
@@ -88,7 +88,7 @@
           <div class="block-header">
             @if (isEditing('service', svc.id)) {
               <input class="field-name inline" [value]="svc.name"
-                     (input)="state.updateService(svc.id!, { name: $any($event.target).value })" />
+                     (input)="setServiceName(svc.id!, $event)" />
               <button class="btn-close" (click)="closeEdit()">✓</button>
             } @else {
               <span class="block-title" (click)="editService(svc.id!)">{{ svc.name }}</span>
@@ -139,10 +139,10 @@
               @if (isEditing('page', page.id)) {
                 <div class="edit-inline">
                   <input class="field-name" [value]="page.name"
-                         (input)="state.updatePage(page.id!, { name: $any($event.target).value })"
+                         (input)="setPageName(page.id!, $event)"
                          placeholder="Nom de la page" />
                   <input class="field-route" [value]="page.route"
-                         (input)="state.updatePage(page.id!, { route: $any($event.target).value })"
+                         (input)="setPageRoute(page.id!, $event)"
                          placeholder="/chemin" />
                   <button class="btn-close" (click)="closeEdit()">Fermer</button>
                 </div>
@@ -170,11 +170,11 @@
                   @for (pipe of page.pipelines; track pipe.id) {
                     <div class="pipeline-item">
                       <input class="field-sm" [value]="pipe.name"
-                             (change)="state.updatePipeline(page.id!, pipe.id!, { name: $any($event.target).value })"
+                             (change)="setPipelineName(page.id!, pipe.id!, $event)"
                              placeholder="Nom du pipeline" />
                       <textarea class="field-steps"
                                 [value]="stepsToText(pipe.steps)"
-                                (change)="state.updatePipeline(page.id!, pipe.id!, { steps: textToSteps($any($event.target).value) })"
+                                (change)="setPipelineSteps(page.id!, pipe.id!, $event)"
                                 placeholder="Étapes (une par ligne)…"></textarea>
                       <button class="btn-remove-sm" (click)="state.removePipeline(page.id!, pipe.id!)">✕</button>
                     </div>
@@ -194,7 +194,7 @@
                 <div class="block interaction-block">
                   <span class="inter-type" [class]="'type-' + inter.type">{{ inter.type }}</span>
                   <input class="field-sm" [value]="inter.name"
-                         (change)="state.updateInteraction(page.id!, inter.id!, { name: $any($event.target).value })"
+                         (change)="setInteractionName(page.id!, inter.id!, $event)"
                          placeholder="Nom" />
                   <select class="type-select"
                           [value]="inter.type"
