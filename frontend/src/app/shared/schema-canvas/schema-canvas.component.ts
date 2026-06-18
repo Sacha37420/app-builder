@@ -63,8 +63,40 @@ export class SchemaCanvasComponent {
   readonly methods: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
   readonly interactionTypes: InteractionType[] = ['click', 'form', 'navigation', 'display', 'other'];
 
+  // ── Helpers event → state (évite les object literals dans les templates) ────
+
+  val(e: Event): string { return (e.target as HTMLInputElement).value; }
+
+  setMetaName(e: Event): void       { this.state.updateMeta(this.val(e), this.state.spec().description); }
+  setMetaDesc(e: Event): void       { this.state.updateMeta(this.state.spec().name, this.val(e)); }
+
+  setGroupName(id: number, e: Event): void { this.state.updateEndpointGroup(id, { name: this.val(e) }); }
+  setGroupDesc(id: number, e: Event): void { this.state.updateEndpointGroup(id, { description: this.val(e) }); }
+
+  setEndpointMethod(gId: number, epId: number, e: Event): void {
+    this.state.updateEndpoint(gId, epId, { method: this.val(e) as HttpMethod });
+  }
+  setEndpointPath(gId: number, epId: number, e: Event): void {
+    this.state.updateEndpoint(gId, epId, { path: this.val(e) });
+  }
+
+  setServiceName(id: number, e: Event): void { this.state.updateService(id, { name: this.val(e) }); }
+
+  setPageName(id: number, e: Event): void  { this.state.updatePage(id, { name: this.val(e) }); }
+  setPageRoute(id: number, e: Event): void { this.state.updatePage(id, { route: this.val(e) }); }
+
+  setPipelineName(pId: number, ppId: number, e: Event): void {
+    this.state.updatePipeline(pId, ppId, { name: this.val(e) });
+  }
+  setPipelineSteps(pId: number, ppId: number, e: Event): void {
+    this.state.updatePipeline(pId, ppId, { steps: this.textToSteps(this.val(e)) });
+  }
+
+  setInteractionName(pId: number, iId: number, e: Event): void {
+    this.state.updateInteraction(pId, iId, { name: this.val(e) });
+  }
   setInteractionType(pageId: number, interId: number, event: Event): void {
-    const type = (event.target as HTMLSelectElement).value as InteractionType;
+    const type = this.val(event) as InteractionType;
     this.state.updateInteraction(pageId, interId, { type });
   }
 
