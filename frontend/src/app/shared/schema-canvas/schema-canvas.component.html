@@ -5,9 +5,9 @@
     @if (isEditing('meta')) {
       <div class="edit-inline meta-edit">
         <input class="field-name" [value]="state.spec().name"
-               (input)="state.updateMeta(($event.target as HTMLInputElement).value, state.spec().description)" />
+               (input)="state.updateMeta($any($event.target).value, state.spec().description)" />
         <textarea class="field-desc" [value]="state.spec().description"
-                  (input)="state.updateMeta(state.spec().name, ($event.target as HTMLTextAreaElement).value)"
+                  (input)="state.updateMeta(state.spec().name, $any($event.target).value)"
                   placeholder="Description de l'application..."></textarea>
         <button class="btn-close" (click)="closeEdit()">Fermer</button>
       </div>
@@ -42,11 +42,11 @@
               @for (ep of group.endpoints; track ep.id) {
                 <div class="ep-row">
                   <select class="method-select" [value]="ep.method"
-                          (change)="state.updateEndpoint(group.id!, ep.id!, { method: ($event.target as HTMLSelectElement).value as any })">
+                          (change)="state.updateEndpoint(group.id!, ep.id!, { method: $any($event.target).value })">
                     @for (m of methods; track m) { <option [value]="m">{{ m }}</option> }
                   </select>
                   <input class="ep-path" [value]="ep.path"
-                         (change)="state.updateEndpoint(group.id!, ep.id!, { path: ($event.target as HTMLInputElement).value })" />
+                         (change)="state.updateEndpoint(group.id!, ep.id!, { path: $any($event.target).value })" />
                   <button class="btn-remove-sm" (click)="state.removeEndpoint(group.id!, ep.id!)">✕</button>
                 </div>
               }
@@ -57,10 +57,10 @@
           @if (isEditing('group', group.id)) {
             <div class="edit-inline">
               <input class="field-name" [value]="group.name"
-                     (input)="state.updateEndpointGroup(group.id!, { name: ($event.target as HTMLInputElement).value })"
+                     (input)="state.updateEndpointGroup(group.id!, { name: $any($event.target).value })"
                      placeholder="Nom du groupe" />
               <textarea class="field-desc" [value]="group.description"
-                        (input)="state.updateEndpointGroup(group.id!, { description: ($event.target as HTMLTextAreaElement).value })"
+                        (input)="state.updateEndpointGroup(group.id!, { description: $any($event.target).value })"
                         placeholder="Description…"></textarea>
               <button class="btn-close" (click)="closeEdit()">Fermer</button>
             </div>
@@ -88,7 +88,7 @@
           <div class="block-header">
             @if (isEditing('service', svc.id)) {
               <input class="field-name inline" [value]="svc.name"
-                     (input)="state.updateService(svc.id!, { name: ($event.target as HTMLInputElement).value })" />
+                     (input)="state.updateService(svc.id!, { name: $any($event.target).value })" />
               <button class="btn-close" (click)="closeEdit()">✓</button>
             } @else {
               <span class="block-title" (click)="editService(svc.id!)">{{ svc.name }}</span>
@@ -139,10 +139,10 @@
               @if (isEditing('page', page.id)) {
                 <div class="edit-inline">
                   <input class="field-name" [value]="page.name"
-                         (input)="state.updatePage(page.id!, { name: ($event.target as HTMLInputElement).value })"
+                         (input)="state.updatePage(page.id!, { name: $any($event.target).value })"
                          placeholder="Nom de la page" />
                   <input class="field-route" [value]="page.route"
-                         (input)="state.updatePage(page.id!, { route: ($event.target as HTMLInputElement).value })"
+                         (input)="state.updatePage(page.id!, { route: $any($event.target).value })"
                          placeholder="/chemin" />
                   <button class="btn-close" (click)="closeEdit()">Fermer</button>
                 </div>
@@ -170,11 +170,11 @@
                   @for (pipe of page.pipelines; track pipe.id) {
                     <div class="pipeline-item">
                       <input class="field-sm" [value]="pipe.name"
-                             (change)="state.updatePipeline(page.id!, pipe.id!, { name: ($event.target as HTMLInputElement).value })"
+                             (change)="state.updatePipeline(page.id!, pipe.id!, { name: $any($event.target).value })"
                              placeholder="Nom du pipeline" />
                       <textarea class="field-steps"
                                 [value]="stepsToText(pipe.steps)"
-                                (change)="state.updatePipeline(page.id!, pipe.id!, { steps: textToSteps(($event.target as HTMLTextAreaElement).value) })"
+                                (change)="state.updatePipeline(page.id!, pipe.id!, { steps: textToSteps($any($event.target).value) })"
                                 placeholder="Étapes (une par ligne)…"></textarea>
                       <button class="btn-remove-sm" (click)="state.removePipeline(page.id!, pipe.id!)">✕</button>
                     </div>
@@ -194,7 +194,7 @@
                 <div class="block interaction-block">
                   <span class="inter-type" [class]="'type-' + inter.type">{{ inter.type }}</span>
                   <input class="field-sm" [value]="inter.name"
-                         (change)="state.updateInteraction(page.id!, inter.id!, { name: ($event.target as HTMLInputElement).value })"
+                         (change)="state.updateInteraction(page.id!, inter.id!, { name: $any($event.target).value })"
                          placeholder="Nom" />
                   <select class="type-select"
                           [value]="inter.type"
