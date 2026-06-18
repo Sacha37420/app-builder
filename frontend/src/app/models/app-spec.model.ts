@@ -144,9 +144,40 @@ export interface AppSpec {
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
 
+export interface AgentPatchService {
+  name: string;
+  order?: number;
+  endpoint_group_names: string[];
+}
+
+export interface AgentPatchPage {
+  name: string;
+  route: string;
+  layout: PageLayout;
+  order?: number;
+  service_names: string[];
+  components: PageComponent[];
+  interactions: Omit<Interaction, 'id'>[];
+  pipelines: Array<{
+    name: string;
+    description: string;
+    order?: number;
+    steps: PipelineStep[];
+  }>;
+}
+
+export interface AgentPatch {
+  set_meta?: { name?: string; description?: string };
+  data_models?: Omit<DataModel, 'id'>[];
+  endpoint_groups?: Array<Omit<EndpointGroup, 'id'> & { endpoints: Omit<Endpoint, 'id'>[] }>;
+  services?: AgentPatchService[];
+  pages?: AgentPatchPage[];
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  spec_patch?: AgentPatch | null;
 }
 
 // ── Helpers de génération de code ─────────────────────────────────────────────

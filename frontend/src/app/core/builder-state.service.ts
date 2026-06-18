@@ -3,7 +3,7 @@ import {
   AppSpec, DataModel, ModelField, ModelRelationship,
   EndpointGroup, Endpoint, FrontendService, Page,
   Interaction, Pipeline, PipelineStep, PageComponent,
-  OperationType, PageLayout,
+  OperationType, PageLayout, AgentPatch,
 } from '../models/app-spec.model';
 
 const EMPTY_SPEC: AppSpec = {
@@ -418,6 +418,112 @@ export class BuilderStateService {
           : p,
       ),
     }));
+  }
+
+  // ── Agent IA : application de patch ──────────────────────────────────────────
+
+  /**
+   * Fusionne les propositions de l'agent dans le spec existant.
+   * Utilise les noms pour résoudre les références (endpoint_group_names, service_names).
+   */
+  mergeFromAgent(patch: AgentPatch): void {
+    const s = this.spec();
+
+    const newMeta = patch.set_meta
+      ? { name: patch.set_meta.name ?? s.name, description: patch.set_meta.description ?? s.description }
+      : {};
+
+    const newModels = (patch.data_models ?? []).map((m, i) => ({
+      ...m, id: this.tid(), order: s.data_models.length + i,
+    }));
+
+    const newGroups = (patch.endpoint_groups ?? []).map((g, i) => ({
+      ...g,
+      id: this.tid(),
+      order: s.endpoint_groups.length + i,
+      endpoints: (g.endpoints ?? []).map((e, j) => ({
+        ...e, id: this.tid(), order: j,
+        operation: e.operation ?? 'custom',
+        linked_model_name: e.linked_model_name ?? '',
+        auth_required: e.auth_required ?? true,
+        required_roles: e.required_roles ?? [],
+        request_schema: e.request_schema ?? null,
+        response_schema: e.response_schema ?? null,
+        query_params: e.query_params ?? [],
+      })),
+    }));
+
+    const allGroups = [...s.endpoint_groups, ...newGroups];
+
+    const newServices = (patch.services ?? []).map((sv, i) => {
+      const groupIds = (sv.endpoint_group_names ?? [])
+        .map(n => allGroups.find(g => g.name === n)?.id)
+        .filter((id): id is number => id !== undefined);
+      return { id: this.tid(), name: sv.name, order: s.services.length + i, endpoint_group_ids: groupIds };
+    });
+
+    const allServices = [...s.services, ...newServices];
+
+    const newPages = (patch.pages ?? []).map((p, i) => {
+      const serviceIds = (p.service_names ?? [])
+        .map(n => allServices.find(sv => sv.name === n)?.id)
+        .filter((id): id is number => id !== undefined);
+      return {
+        id: this.tid(),
+        name: p.name,
+        route: p.route,
+        layout: p.layout ?? 'mixed',
+        order: s.pages.length + i,
+        service_ids: serviceIds,
+        components: p.components ?? [],
+        interactions: (p.interactions ?? []).map((inter, j) => ({
+          ...inter, id: this.tid(), order: j,
+        })),
+        pipelines: (p.pipelines ?? []).map((pl, k) => ({
+          ...pl, id: this.tid(), order: k,
+          steps: pl.steps ?? [],
+        })),
+      };
+    });
+
+    this.mutate(cur => ({
+      ...cur,
+      ...newMeta,
+      data_models: [...cur.data_models, ...newModels],
+      endpoint_groups: allGroups,
+      services: allServices,
+      pages: [...cur.pages, ...newPages],
+    }));
+  }
+
+  /**
+   * Remplace le spec complet par les propositions de l'agent.
+   * Équivalent à réinitialiser puis mergeFromAgent.
+   */
+  replaceFromAgent(patch: AgentPatch): void {
+    this.mutate(() => ({
+      ...(patch.set_meta ?? { name: 'Mon Application', description: '' }),
+      name: patch.set_meta?.name ?? 'Mon Application',
+      description: patch.set_meta?.description ?? '',
+      data_models: [],
+      endpoint_groups: [],
+      services: [],
+      pages: [],
+    }));
+    this.mergeFromAgent({ ...patch, set_meta: undefined });
+  }
+
+  patchSummary(patch: AgentPatch): string {
+    const parts: string[] = [];
+    if (patch.set_meta?.name) parts.push(`nom → "${patch.set_meta.name}"`);
+    if (patch.data_models?.length) parts.push(`${patch.data_models.length} modèle(s)`);
+    if (patch.endpoint_groups?.length) {
+      const epCount = patch.endpoint_groups.reduce((s, g) => s + g.endpoints.length, 0);
+      parts.push(`${patch.endpoint_groups.length} groupe(s) / ${epCount} endpoint(s)`);
+    }
+    if (patch.services?.length) parts.push(`${patch.services.length} service(s)`);
+    if (patch.pages?.length) parts.push(`${patch.pages.length} page(s)`);
+    return parts.join(' · ') || 'patch vide';
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
