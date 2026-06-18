@@ -1,0 +1,221 @@
+<div class="canvas">
+
+  <!-- ── EN-TÊTE APPLICATION ────────────────────────────────────────────── -->
+  <div class="app-header">
+    @if (isEditing('meta')) {
+      <div class="edit-inline meta-edit">
+        <input class="field-name" [value]="state.spec().name"
+               (input)="state.updateMeta(($event.target as HTMLInputElement).value, state.spec().description)" />
+        <textarea class="field-desc" [value]="state.spec().description"
+                  (input)="state.updateMeta(state.spec().name, ($event.target as HTMLTextAreaElement).value)"
+                  placeholder="Description de l'application..."></textarea>
+        <button class="btn-close" (click)="closeEdit()">Fermer</button>
+      </div>
+    } @else {
+      <h2 class="app-name" (click)="editMeta()">{{ state.spec().name }}</h2>
+      <p class="app-desc" (click)="editMeta()">
+        {{ state.spec().description || 'Cliquer pour ajouter une description…' }}
+      </p>
+    }
+  </div>
+
+  <!-- ── SECTION BACKEND ────────────────────────────────────────────────── -->
+  <section class="section backend-section">
+    <div class="section-header backend-header">
+      <span class="section-icon">&#9881;</span>
+      <span class="section-title">Backend</span>
+      <button class="btn-add" (click)="state.addEndpointGroup()">+ Groupe</button>
+    </div>
+
+    <div class="endpoint-groups">
+      @for (group of state.spec().endpoint_groups; track group.id) {
+        <div class="block group-block">
+          <div class="block-header" (click)="toggleGroup(group.id!)">
+            <span class="block-title">{{ group.name }}</span>
+            <span class="ep-count">{{ group.endpoints.length }} ep.</span>
+            <button class="btn-edit" (click)="$event.stopPropagation(); editGroup(group.id!)">✏</button>
+            <button class="btn-remove" (click)="$event.stopPropagation(); state.removeEndpointGroup(group.id!)">✕</button>
+          </div>
+
+          @if (expandedGroups().has(group.id!)) {
+            <div class="endpoints-list">
+              @for (ep of group.endpoints; track ep.id) {
+                <div class="ep-row">
+                  <select class="method-select" [value]="ep.method"
+                          (change)="state.updateEndpoint(group.id!, ep.id!, { method: ($event.target as HTMLSelectElement).value as any })">
+                    @for (m of methods; track m) { <option [value]="m">{{ m }}</option> }
+                  </select>
+                  <input class="ep-path" [value]="ep.path"
+                         (change)="state.updateEndpoint(group.id!, ep.id!, { path: ($event.target as HTMLInputElement).value })" />
+                  <button class="btn-remove-sm" (click)="state.removeEndpoint(group.id!, ep.id!)">✕</button>
+                </div>
+              }
+              <button class="btn-add-sm" (click)="state.addEndpoint(group.id!)">+ Endpoint</button>
+            </div>
+          }
+
+          @if (isEditing('group', group.id)) {
+            <div class="edit-inline">
+              <input class="field-name" [value]="group.name"
+                     (input)="state.updateEndpointGroup(group.id!, { name: ($event.target as HTMLInputElement).value })"
+                     placeholder="Nom du groupe" />
+              <textarea class="field-desc" [value]="group.description"
+                        (input)="state.updateEndpointGroup(group.id!, { description: ($event.target as HTMLTextAreaElement).value })"
+                        placeholder="Description…"></textarea>
+              <button class="btn-close" (click)="closeEdit()">Fermer</button>
+            </div>
+          }
+        </div>
+      }
+
+      @if (state.spec().endpoint_groups.length === 0) {
+        <div class="empty-hint">Aucun groupe — cliquez sur "+ Groupe"</div>
+      }
+    </div>
+  </section>
+
+  <!-- ── SECTION SERVICES ───────────────────────────────────────────────── -->
+  <section class="section services-section">
+    <div class="section-header services-header">
+      <span class="section-icon">&#9670;</span>
+      <span class="section-title">Services Angular</span>
+      <button class="btn-add" (click)="state.addService()">+ Service</button>
+    </div>
+
+    <div class="services-list">
+      @for (svc of state.spec().services; track svc.id) {
+        <div class="block service-block">
+          <div class="block-header">
+            @if (isEditing('service', svc.id)) {
+              <input class="field-name inline" [value]="svc.name"
+                     (input)="state.updateService(svc.id!, { name: ($event.target as HTMLInputElement).value })" />
+              <button class="btn-close" (click)="closeEdit()">✓</button>
+            } @else {
+              <span class="block-title" (click)="editService(svc.id!)">{{ svc.name }}</span>
+              <button class="btn-remove" (click)="state.removeService(svc.id!)">✕</button>
+            }
+          </div>
+          <div class="service-links">
+            <span class="link-label">Groupes liés :</span>
+            @for (group of state.spec().endpoint_groups; track group.id) {
+              <button class="link-badge"
+                      [class.active]="svc.endpoint_group_ids.includes(group.id!)"
+                      (click)="toggleGroupLink(svc.id!, group.id!)">
+                {{ group.name }}
+              </button>
+            }
+          </div>
+        </div>
+      }
+
+      @if (state.spec().services.length === 0) {
+        <div class="empty-hint">Aucun service — cliquez sur "+ Service"</div>
+      }
+    </div>
+  </section>
+
+  <!-- ── SECTION FRONTEND ───────────────────────────────────────────────── -->
+  <section class="section frontend-section">
+    <div class="section-header frontend-header">
+      <span class="section-icon">&#9635;</span>
+      <span class="section-title">Frontend</span>
+      <button class="btn-add" (click)="state.addPage()">+ Page</button>
+    </div>
+
+    <div class="frontend-body">
+      <!-- Pages + interactions -->
+      <div class="pages-column">
+        @for (page of state.spec().pages; track page.id) {
+          <div class="page-row">
+            <!-- Bloc page -->
+            <div class="block page-block">
+              <div class="block-header" (click)="togglePage(page.id!)">
+                <span class="page-name">{{ page.name }}</span>
+                <span class="page-route">{{ page.route }}</span>
+                <button class="btn-edit" (click)="$event.stopPropagation(); editPage(page.id!)">✏</button>
+                <button class="btn-remove" (click)="$event.stopPropagation(); state.removePage(page.id!)">✕</button>
+              </div>
+
+              @if (isEditing('page', page.id)) {
+                <div class="edit-inline">
+                  <input class="field-name" [value]="page.name"
+                         (input)="state.updatePage(page.id!, { name: ($event.target as HTMLInputElement).value })"
+                         placeholder="Nom de la page" />
+                  <input class="field-route" [value]="page.route"
+                         (input)="state.updatePage(page.id!, { route: ($event.target as HTMLInputElement).value })"
+                         placeholder="/chemin" />
+                  <button class="btn-close" (click)="closeEdit()">Fermer</button>
+                </div>
+              }
+
+              @if (expandedPages().has(page.id!)) {
+                <!-- Services utilisés -->
+                <div class="page-services">
+                  <span class="link-label">Services :</span>
+                  @for (svc of state.spec().services; track svc.id) {
+                    <button class="link-badge"
+                            [class.active]="page.service_ids.includes(svc.id!)"
+                            (click)="toggleServiceLink(page.id!, svc.id!)">
+                      {{ svc.name }}
+                    </button>
+                  }
+                </div>
+
+                <!-- Pipelines -->
+                <div class="pipelines">
+                  <div class="sub-header">
+                    <span>Pipelines</span>
+                    <button class="btn-add-sm" (click)="state.addPipeline(page.id!)">+</button>
+                  </div>
+                  @for (pipe of page.pipelines; track pipe.id) {
+                    <div class="pipeline-item">
+                      <input class="field-sm" [value]="pipe.name"
+                             (change)="state.updatePipeline(page.id!, pipe.id!, { name: ($event.target as HTMLInputElement).value })"
+                             placeholder="Nom du pipeline" />
+                      <textarea class="field-steps"
+                                [value]="stepsToText(pipe.steps)"
+                                (change)="state.updatePipeline(page.id!, pipe.id!, { steps: textToSteps(($event.target as HTMLTextAreaElement).value) })"
+                                placeholder="Étapes (une par ligne)…"></textarea>
+                      <button class="btn-remove-sm" (click)="state.removePipeline(page.id!, pipe.id!)">✕</button>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            <!-- Interactions (colonne droite) -->
+            <div class="interactions-col">
+              <div class="interactions-header">
+                <span class="section-icon-sm">&#9786;</span>
+                <span>Interactions</span>
+                <button class="btn-add-sm" (click)="state.addInteraction(page.id!)">+</button>
+              </div>
+              @for (inter of page.interactions; track inter.id) {
+                <div class="block interaction-block">
+                  <span class="inter-type" [class]="'type-' + inter.type">{{ inter.type }}</span>
+                  <input class="field-sm" [value]="inter.name"
+                         (change)="state.updateInteraction(page.id!, inter.id!, { name: ($event.target as HTMLInputElement).value })"
+                         placeholder="Nom" />
+                  <select class="type-select"
+                          [value]="inter.type"
+                          (change)="state.updateInteraction(page.id!, inter.id!, { type: ($event.target as HTMLSelectElement).value as any })">
+                    @for (t of interactionTypes; track t) { <option [value]="t">{{ t }}</option> }
+                  </select>
+                  <button class="btn-remove-sm" (click)="state.removeInteraction(page.id!, inter.id!)">✕</button>
+                </div>
+              }
+              @if (page.interactions.length === 0) {
+                <div class="empty-hint-sm">Aucune interaction</div>
+              }
+            </div>
+          </div>
+        }
+
+        @if (state.spec().pages.length === 0) {
+          <div class="empty-hint">Aucune page — cliquez sur "+ Page"</div>
+        }
+      </div>
+    </div>
+  </section>
+
+</div>

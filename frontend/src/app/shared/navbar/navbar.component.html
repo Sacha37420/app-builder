@@ -1,0 +1,13 @@
+<nav class="navbar">
+  <a class="brand" routerLink="/">App Builder</a>
+
+  <div class="nav-links">
+    <a routerLink="/"        routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Accueil</a>
+    <a routerLink="/profile" routerLinkActive="active">Profil</a>
+  </div>
+
+  <div class="nav-user">
+    <span class="username">{{ username }}</span>
+    <button class="btn-logout" (click)="logout()">Déconnexion</button>
+  </div>
+</nav>

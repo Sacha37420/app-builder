@@ -1,0 +1,57 @@
+<div class="builder-layout">
+
+  <!-- ── Barre d'outils ──────────────────────────────────────────────── -->
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <span class="app-label">{{ state.spec().name }}</span>
+      @if (state.isDirty()) {
+        <span class="dirty-badge">&#9679; non sauvegardé</span>
+      }
+    </div>
+    <div class="toolbar-actions">
+      <button class="btn-toolbar" (click)="newApp()">&#43; Nouveau</button>
+      <button class="btn-toolbar" (click)="toggleAppList()">
+        &#128193; Mes apps ({{ savedApps().length }})
+      </button>
+      <button class="btn-toolbar btn-save" (click)="save()" [disabled]="saving()">
+        @if (saving()) { Sauvegarde… } @else { &#128190; Sauvegarder }
+      </button>
+    </div>
+    @if (saveError()) {
+      <div class="toolbar-error">{{ saveError() }}</div>
+    }
+  </div>
+
+  <!-- ── Liste des apps sauvegardées ────────────────────────────────── -->
+  @if (showAppList()) {
+    <div class="app-list-panel">
+      <div class="app-list-header">
+        <span>Applications sauvegardées</span>
+        <button class="btn-close-panel" (click)="toggleAppList()">✕</button>
+      </div>
+      @if (savedApps().length === 0) {
+        <div class="app-list-empty">Aucune application sauvegardée.</div>
+      }
+      @for (app of savedApps(); track app.id) {
+        <div class="app-list-item" (click)="loadApp(app)">
+          <span class="app-item-name">{{ app.name }}</span>
+          <span class="app-item-meta">
+            {{ app.endpoint_groups?.length ?? 0 }} groupes ·
+            {{ app.pages?.length ?? 0 }} pages
+          </span>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ── Corps principal ─────────────────────────────────────────────── -->
+  <div class="main-body">
+    <div class="canvas-pane">
+      <app-schema-canvas />
+    </div>
+    <div class="chat-pane">
+      <app-ai-chat />
+    </div>
+  </div>
+
+</div>
