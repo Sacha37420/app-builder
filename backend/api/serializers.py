@@ -1,11 +1,24 @@
 from rest_framework import serializers
-from .models import AppSpec, EndpointGroup, Endpoint, FrontendService, Page, Interaction, Pipeline
+from .models import (
+    AppSpec, DataModel, EndpointGroup, Endpoint,
+    FrontendService, Page, Interaction, Pipeline,
+)
+
+
+class DataModelSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DataModel
+        fields = ['id', 'name', 'description', 'fields', 'relationships', 'order']
 
 
 class EndpointSerializer(serializers.ModelSerializer):
     class Meta:
         model = Endpoint
-        fields = ['id', 'method', 'path', 'description', 'order']
+        fields = [
+            'id', 'method', 'path', 'description', 'order',
+            'operation', 'linked_model_name', 'auth_required',
+            'required_roles', 'request_schema', 'response_schema', 'query_params',
+        ]
 
 
 class EndpointGroupSerializer(serializers.ModelSerializer):
@@ -82,7 +95,10 @@ class PageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Page
-        fields = ['id', 'name', 'route', 'order', 'service_ids', 'interactions', 'pipelines']
+        fields = [
+            'id', 'name', 'route', 'order', 'layout', 'components',
+            'service_ids', 'interactions', 'pipelines',
+        ]
 
     def create(self, validated_data):
         interactions_data = validated_data.pop('interactions', [])
@@ -117,37 +133,38 @@ class PageSerializer(serializers.ModelSerializer):
 
 
 class AppSpecSerializer(serializers.ModelSerializer):
+    data_models = DataModelSerializer(many=True, required=False)
     endpoint_groups = EndpointGroupSerializer(many=True, required=False)
     services = FrontendServiceSerializer(many=True, required=False)
     pages = PageSerializer(many=True, required=False)
 
     class Meta:
         model = AppSpec
-        fields = ['id', 'name', 'description', 'owner_email', 'created_at', 'updated_at',
-                  'endpoint_groups', 'services', 'pages']
+        fields = [
+            'id', 'name', 'description', 'owner_email',
+            'created_at', 'updated_at',
+            'data_models', 'endpoint_groups', 'services', 'pages',
+        ]
         read_only_fields = ['created_at', 'updated_at']
 
-    def create(self, validated_data):
-        groups_data = validated_data.pop('endpoint_groups', [])
-        services_data = validated_data.pop('services', [])
-        pages_data = validated_data.pop('pages', [])
+    def _create_nested(self, app, groups_data, services_data, pages_data, data_models_data):
+        for dm in data_models_data:
+            DataModel.objects.create(app=app, **dm)
 
-        app = AppSpec.objects.create(**validated_data)
-
-        group_map = {}
+        group_objs = {}
         for g in groups_data:
             endpoints_data = g.pop('endpoints', [])
             group = EndpointGroup.objects.create(app=app, **g)
             for ep in endpoints_data:
                 Endpoint.objects.create(group=group, **ep)
-            group_map[group.name] = group
+            group_objs[group.id] = group
 
-        svc_map = {}
+        svc_objs = {}
         for s in services_data:
             groups = s.pop('endpoint_groups', [])
             svc = FrontendService.objects.create(app=app, **s)
             svc.endpoint_groups.set(groups)
-            svc_map[svc.name] = svc
+            svc_objs[svc.id] = svc
 
         for p in pages_data:
             interactions_data = p.pop('interactions', [])
@@ -160,9 +177,17 @@ class AppSpecSerializer(serializers.ModelSerializer):
             for pipe in pipelines_data:
                 Pipeline.objects.create(page=page, **pipe)
 
+    def create(self, validated_data):
+        data_models_data = validated_data.pop('data_models', [])
+        groups_data = validated_data.pop('endpoint_groups', [])
+        services_data = validated_data.pop('services', [])
+        pages_data = validated_data.pop('pages', [])
+        app = AppSpec.objects.create(**validated_data)
+        self._create_nested(app, groups_data, services_data, pages_data, data_models_data)
         return app
 
     def update(self, instance, validated_data):
+        data_models_data = validated_data.pop('data_models', None)
         groups_data = validated_data.pop('endpoint_groups', None)
         services_data = validated_data.pop('services', None)
         pages_data = validated_data.pop('pages', None)
@@ -170,6 +195,11 @@ class AppSpecSerializer(serializers.ModelSerializer):
         for attr, val in validated_data.items():
             setattr(instance, attr, val)
         instance.save()
+
+        if data_models_data is not None:
+            instance.data_models.all().delete()
+            for dm in data_models_data:
+                DataModel.objects.create(app=instance, **dm)
 
         if groups_data is not None:
             instance.endpoint_groups.all().delete()

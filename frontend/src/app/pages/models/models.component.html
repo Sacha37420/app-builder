@@ -1,0 +1,185 @@
+<app-navbar />
+
+<div class="models-page">
+
+  <div class="page-header">
+    <div class="header-left">
+      <h1>Modèles de données</h1>
+      <span class="subtitle">Phase 1 — Entités métier · {{ state.spec().data_models.length }} modèle(s)</span>
+    </div>
+    <button class="btn-primary" (click)="state.addDataModel()">+ Nouveau modèle</button>
+  </div>
+
+  @if (state.spec().data_models.length === 0) {
+    <div class="empty-state">
+      <div class="empty-icon">&#9723;</div>
+      <p>Aucun modèle défini.</p>
+      <p class="hint">Commencez par lister vos entités métier (ex : Produit, Commande, Utilisateur…)</p>
+      <button class="btn-primary" (click)="state.addDataModel()">Créer le premier modèle</button>
+    </div>
+  }
+
+  <div class="models-grid">
+    @for (model of state.spec().data_models; track model.id) {
+      <div class="model-card" [class.expanded]="isExpanded(model.id!)">
+
+        <!-- ── Entête modèle ── -->
+        <div class="model-header" (click)="toggle(model.id!)">
+          <span class="model-icon">&#9723;</span>
+          <div class="model-title-block">
+            <input class="model-name-input" [value]="model.name"
+                   (click)="$event.stopPropagation()"
+                   (input)="state.updateDataModel(model.id!, { name: ($event.target as HTMLInputElement).value })"
+                   placeholder="NomDuModele" />
+            <input class="model-desc-input" [value]="model.description"
+                   (click)="$event.stopPropagation()"
+                   (input)="state.updateDataModel(model.id!, { description: ($event.target as HTMLInputElement).value })"
+                   placeholder="Description courte…" />
+          </div>
+          <div class="model-stats">
+            <span class="stat">{{ model.fields.length }} champ(s)</span>
+            <span class="stat">{{ model.relationships.length }} relation(s)</span>
+          </div>
+          <button class="btn-remove" (click)="$event.stopPropagation(); state.removeDataModel(model.id!)">✕</button>
+          <span class="chevron">{{ isExpanded(model.id!) ? '▲' : '▼' }}</span>
+        </div>
+
+        @if (isExpanded(model.id!)) {
+
+          <!-- ── Champs ── -->
+          <div class="section">
+            <div class="section-title">
+              <span>Champs</span>
+              <button class="btn-add-sm" (click)="state.addField(model.id!)">+ Champ</button>
+            </div>
+            <table class="fields-table">
+              <thead>
+                <tr>
+                  <th>Nom</th><th>Type</th><th>Requis</th><th>Unique</th>
+                  <th>Max len</th><th>Défaut</th><th>Aperçu Django</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (field of model.fields; track $index) {
+                  <tr>
+                    <td>
+                      <input [value]="field.name"
+                             (change)="state.updateField(model.id!, $index, { name: ($event.target as HTMLInputElement).value })"
+                             placeholder="nom_champ" />
+                    </td>
+                    <td>
+                      <select [value]="field.type"
+                              (change)="state.updateField(model.id!, $index, { type: ($event.target as HTMLSelectElement).value as any })">
+                        @for (t of fieldTypes; track t) { <option [value]="t">{{ t }}</option> }
+                      </select>
+                    </td>
+                    <td class="center">
+                      <input type="checkbox" [checked]="field.required"
+                             (change)="state.updateField(model.id!, $index, { required: ($event.target as HTMLInputElement).checked })" />
+                    </td>
+                    <td class="center">
+                      <input type="checkbox" [checked]="field.unique"
+                             (change)="state.updateField(model.id!, $index, { unique: ($event.target as HTMLInputElement).checked })" />
+                    </td>
+                    <td>
+                      @if (field.type === 'string') {
+                        <input type="number" [value]="field.max_length ?? 200" style="width:60px"
+                               (change)="state.updateField(model.id!, $index, { max_length: +($event.target as HTMLInputElement).value })" />
+                      } @else {
+                        <span class="na">—</span>
+                      }
+                    </td>
+                    <td>
+                      <input [value]="field.default ?? ''"
+                             (change)="state.updateField(model.id!, $index, { default: ($event.target as HTMLInputElement).value || undefined })"
+                             placeholder="aucun" />
+                    </td>
+                    <td class="preview-cell">
+                      <code>{{ djField(field.type, field.max_length) }}</code>
+                    </td>
+                    <td>
+                      <button class="btn-remove-sm" (click)="state.removeField(model.id!, $index)">✕</button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+            @if (model.fields.length === 0) {
+              <div class="table-empty">Aucun champ — cliquez sur "+ Champ"</div>
+            }
+          </div>
+
+          <!-- ── Relations ── -->
+          <div class="section">
+            <div class="section-title">
+              <span>Relations</span>
+              <button class="btn-add-sm" (click)="state.addRelationship(model.id!)">+ Relation</button>
+            </div>
+            <table class="fields-table">
+              <thead>
+                <tr>
+                  <th>Nom</th><th>Type</th><th>Vers modèle</th>
+                  <th>related_name</th><th>on_delete</th><th>Aperçu Django</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (rel of model.relationships; track $index) {
+                  <tr>
+                    <td>
+                      <input [value]="rel.name"
+                             (change)="state.updateRelationship(model.id!, $index, { name: ($event.target as HTMLInputElement).value })"
+                             placeholder="nom_relation" />
+                    </td>
+                    <td>
+                      <select [value]="rel.rel_type"
+                              (change)="state.updateRelationship(model.id!, $index, { rel_type: ($event.target as HTMLSelectElement).value as any })">
+                        @for (rt of relTypes; track rt) { <option [value]="rt">{{ rt }}</option> }
+                      </select>
+                    </td>
+                    <td>
+                      <select [value]="rel.to_model"
+                              (change)="state.updateRelationship(model.id!, $index, { to_model: ($event.target as HTMLSelectElement).value })">
+                        <option value="">— choisir —</option>
+                        @for (mn of state.getModelNames(); track mn) {
+                          @if (mn !== model.name) {
+                            <option [value]="mn">{{ mn }}</option>
+                          }
+                        }
+                      </select>
+                    </td>
+                    <td>
+                      <input [value]="rel.related_name"
+                             (change)="state.updateRelationship(model.id!, $index, { related_name: ($event.target as HTMLInputElement).value })"
+                             placeholder="items" />
+                    </td>
+                    <td>
+                      @if (rel.rel_type !== 'M2M') {
+                        <select [value]="rel.on_delete ?? 'CASCADE'"
+                                (change)="state.updateRelationship(model.id!, $index, { on_delete: ($event.target as HTMLSelectElement).value as any })">
+                          @for (od of onDeleteChoices; track od) { <option [value]="od">{{ od }}</option> }
+                        </select>
+                      } @else {
+                        <span class="na">—</span>
+                      }
+                    </td>
+                    <td class="preview-cell">
+                      <code>models.{{ relLabel(rel.rel_type) }}('{{ rel.to_model || '?' }}'{{ rel.rel_type !== 'M2M' ? ', on_delete=models.' + (rel.on_delete ?? 'CASCADE') : '' }})</code>
+                    </td>
+                    <td>
+                      <button class="btn-remove-sm" (click)="state.removeRelationship(model.id!, $index)">✕</button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+            @if (model.relationships.length === 0) {
+              <div class="table-empty">Aucune relation</div>
+            }
+          </div>
+
+        }
+      </div>
+    }
+  </div>
+
+</div>
