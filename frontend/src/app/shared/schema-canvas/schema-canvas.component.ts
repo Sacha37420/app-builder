@@ -63,6 +63,11 @@ export class SchemaCanvasComponent {
   readonly methods: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
   readonly interactionTypes: InteractionType[] = ['click', 'form', 'navigation', 'display', 'other'];
 
+  setInteractionType(pageId: number, interId: number, event: Event): void {
+    const type = (event.target as HTMLSelectElement).value as InteractionType;
+    this.state.updateInteraction(pageId, interId, { type });
+  }
+
   methodClass(method: HttpMethod): string {
     return `method-${method.toLowerCase()}`;
   }
