@@ -1,0 +1,136 @@
+<app-navbar />
+
+<div class="pipelines-page">
+
+  <!-- ── Sidebar pages ──────────────────────────────────────────────────── -->
+  <aside class="pages-sidebar">
+    <div class="sidebar-header">
+      <span>Pages</span>
+      <span class="count">{{ state.spec().pages.length }}</span>
+    </div>
+    @for (page of state.spec().pages; track page.id) {
+      <div class="sidebar-item"
+           [class.active]="selectedPageId() === page.id"
+           (click)="selectPage(page.id!)">
+        <span class="page-name">{{ page.name }}</span>
+        <span class="pipe-count">{{ page.pipelines.length }} pipeline(s)</span>
+      </div>
+    }
+    @if (state.spec().pages.length === 0) {
+      <div class="sidebar-empty">Aucune page définie</div>
+    }
+  </aside>
+
+  <!-- ── Contenu principal ──────────────────────────────────────────────── -->
+  <main class="pipelines-main">
+
+    @if (!selectedPage) {
+      <div class="select-hint">
+        <div class="hint-icon">&#9654;</div>
+        <p>Sélectionnez une page dans la liste à gauche pour voir ses pipelines.</p>
+      </div>
+    } @else {
+
+      <div class="page-title-bar">
+        <h2>{{ selectedPage.name }}</h2>
+        <span class="route-badge">{{ selectedPage.route }}</span>
+        <span class="layout-badge">{{ selectedPage.layout }}</span>
+        <button class="btn-add" (click)="state.addPipeline(selectedPage.id!)">+ Pipeline</button>
+      </div>
+
+      @if (selectedPage.pipelines.length === 0) {
+        <div class="empty-pipelines">
+          <p>Aucun pipeline défini pour cette page.</p>
+          <button class="btn-add" (click)="state.addPipeline(selectedPage.id!)">Ajouter un pipeline</button>
+        </div>
+      }
+
+      <!-- ── Liste des pipelines ── -->
+      @for (pipe of selectedPage.pipelines; track pipe.id) {
+        <div class="pipeline-card" [class.expanded]="expandedPipelineId() === pipe.id">
+
+          <div class="pipeline-header" (click)="togglePipeline(pipe.id!)">
+            <span class="pipe-icon">&#9654;</span>
+            <div class="pipe-title-block">
+              <input class="pipe-name-input" [value]="pipe.name"
+                     (click)="$event.stopPropagation()"
+                     (input)="state.updatePipeline(selectedPage.id!, pipe.id!, { name: ($event.target as HTMLInputElement).value })"
+                     placeholder="Nom du pipeline" />
+              <input class="pipe-desc-input" [value]="pipe.description"
+                     (click)="$event.stopPropagation()"
+                     (input)="state.updatePipeline(selectedPage.id!, pipe.id!, { description: ($event.target as HTMLTextAreaElement).value })"
+                     placeholder="Description…" />
+            </div>
+            <span class="steps-count">{{ totalSteps(pipe) }} étape(s)</span>
+            <button class="btn-remove" (click)="$event.stopPropagation(); state.removePipeline(selectedPage.id!, pipe.id!)">✕</button>
+            <span class="chevron">{{ expandedPipelineId() === pipe.id ? '▲' : '▼' }}</span>
+          </div>
+
+          @if (expandedPipelineId() === pipe.id) {
+            <div class="pipeline-flow">
+
+              <!-- ── Étapes sous forme de flux vertical ── -->
+              @for (step of pipe.steps; track $index) {
+                <div class="step-wrapper">
+                  <div class="step-block" [class]="stepClass(step.type)">
+                    <div class="step-type-badge">
+                      <span class="step-icon">{{ stepTypeIcons[step.type] }}</span>
+                      <select [value]="step.type"
+                              (change)="state.updatePipelineStep(selectedPage.id!, pipe.id!, $index, { type: ($event.target as HTMLSelectElement).value as any })">
+                        @for (t of stepTypes; track t) {
+                          <option [value]="t">{{ stepTypeLabels[t] }}</option>
+                        }
+                      </select>
+                    </div>
+                    <div class="step-fields">
+                      <label>
+                        <span>Label</span>
+                        <input [value]="step.label"
+                               (input)="state.updatePipelineStep(selectedPage.id!, pipe.id!, $index, { label: ($event.target as HTMLInputElement).value })"
+                               placeholder="Ce que fait cette étape…" />
+                      </label>
+                      @if (step.type === 'service_call') {
+                        <label>
+                          <span>Méthode</span>
+                          <input [value]="step.service_method ?? ''"
+                                 (input)="state.updatePipelineStep(selectedPage.id!, pipe.id!, $index, { service_method: ($event.target as HTMLInputElement).value })"
+                                 placeholder="ex: ProduitService.create(formData)" />
+                        </label>
+                        <label>
+                          <span>Flux de données</span>
+                          <input [value]="step.data_flow ?? ''"
+                                 (input)="state.updatePipelineStep(selectedPage.id!, pipe.id!, $index, { data_flow: ($event.target as HTMLInputElement).value })"
+                                 placeholder="ex: CreateProduitDto → Produit" />
+                        </label>
+                      }
+                      @if (step.type !== 'trigger') {
+                        <label>
+                          <span>En cas d'erreur</span>
+                          <input [value]="step.on_error ?? ''"
+                                 (input)="state.updatePipelineStep(selectedPage.id!, pipe.id!, $index, { on_error: ($event.target as HTMLInputElement).value })"
+                                 placeholder="ex: Afficher toast d'erreur" />
+                        </label>
+                      }
+                    </div>
+                    <button class="step-remove" (click)="state.removePipelineStep(selectedPage.id!, pipe.id!, $index)">✕</button>
+                  </div>
+                  @if ($index < pipe.steps.length - 1) {
+                    <div class="step-arrow">↓</div>
+                  }
+                </div>
+              }
+
+              <button class="btn-add-step" (click)="state.addPipelineStep(selectedPage.id!, pipe.id!)">
+                + Ajouter une étape
+              </button>
+
+            </div>
+          }
+
+        </div>
+      }
+    }
+
+  </main>
+
+</div>

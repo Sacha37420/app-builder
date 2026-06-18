@@ -1,0 +1,69 @@
+<app-navbar />
+
+<div class="preview-page">
+
+  <!-- ── Score de complétude ──────────────────────────────────────────── -->
+  <div class="completeness-bar">
+    @for (ph of completionScore; track ph.phase) {
+      <div class="phase-score">
+        <span class="phase-label">{{ ph.phase }}</span>
+        <div class="score-bar">
+          <div class="score-fill" [style.width.%]="(ph.score / ph.total) * 100"></div>
+        </div>
+        <span class="score-num">{{ ph.score }}/{{ ph.total }}</span>
+      </div>
+    }
+  </div>
+
+  <!-- ── Onglets fichiers ──────────────────────────────────────────────── -->
+  <div class="tab-bar">
+    @for (tab of tabs; track tab.id) {
+      <button class="tab-btn" [class.active]="activeTab() === tab.id" (click)="setTab(tab.id)">
+        {{ tab.label }}
+      </button>
+    }
+  </div>
+
+  <!-- ── Sélecteur contextuel ─────────────────────────────────────────── -->
+  @if (activeTab() === 'service_ts') {
+    <div class="context-selector">
+      <span>Service :</span>
+      @for (svc of state.spec().services; track svc.id) {
+        <button class="selector-btn" [class.active]="selectedServiceId() === svc.id"
+                (click)="selectedServiceId.set(svc.id!)">
+          {{ svc.name }}
+        </button>
+      }
+      @if (state.spec().services.length === 0) {
+        <span class="no-items">Aucun service défini</span>
+      }
+    </div>
+  }
+
+  @if (activeTab() === 'component_ts') {
+    <div class="context-selector">
+      <span>Page :</span>
+      @for (page of state.spec().pages; track page.id) {
+        <button class="selector-btn" [class.active]="selectedPageId() === page.id"
+                (click)="selectedPageId.set(page.id!)">
+          {{ page.name }}
+        </button>
+      }
+      @if (state.spec().pages.length === 0) {
+        <span class="no-items">Aucune page définie</span>
+      }
+    </div>
+  }
+
+  <!-- ── Bandeau fichier + copie ──────────────────────────────────────── -->
+  <div class="file-header">
+    <span class="file-path">{{ currentFile }}</span>
+    <button class="btn-copy" (click)="copyCode()">Copier</button>
+  </div>
+
+  <!-- ── Bloc de code ─────────────────────────────────────────────────── -->
+  <div class="code-block">
+    <pre><code>{{ code }}</code></pre>
+  </div>
+
+</div>

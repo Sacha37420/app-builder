@@ -1,0 +1,196 @@
+$c-bg: #0f172a; $c-surface: #1e293b; $c-border: rgba(255,255,255,0.08); $c-text: #f1f5f9;
+
+// Couleurs par type d'étape
+$step-colors: (
+  trigger:      #f59e0b,
+  service-call: #3b82f6,
+  transform:    #8b5cf6,
+  state-update: #10b981,
+  navigate:     #06b6d4,
+  error:        #ef4444,
+);
+
+.pipelines-page {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  height: calc(100vh - 56px);
+  background: $c-bg;
+  color: $c-text;
+  overflow: hidden;
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+.pages-sidebar {
+  background: #111827;
+  border-right: 1px solid $c-border;
+  overflow-y: auto;
+
+  .sidebar-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.75rem 1rem; font-weight: 700; font-size: 0.85rem;
+    border-bottom: 1px solid $c-border; position: sticky; top: 0;
+    background: #111827; z-index: 1;
+    .count { font-size: 0.72rem; background: rgba(255,255,255,0.08);
+      padding: 1px 7px; border-radius: 10px; }
+  }
+
+  .sidebar-item {
+    padding: 0.6rem 1rem; cursor: pointer; border-bottom: 1px solid $c-border;
+    transition: background 0.12s;
+    &:hover { background: rgba(255,255,255,0.05); }
+    &.active { background: rgba(99,102,241,0.15); border-left: 3px solid #818cf8; }
+
+    .page-name { display: block; font-weight: 600; font-size: 0.85rem; }
+    .pipe-count { display: block; font-size: 0.72rem; color: rgba(255,255,255,0.4); margin-top: 2px; }
+  }
+
+  .sidebar-empty { padding: 1rem; color: rgba(255,255,255,0.3); font-size: 0.82rem; font-style: italic; }
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+.pipelines-main {
+  padding: 1.5rem;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+}
+
+.select-hint {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; height: 60%; color: rgba(255,255,255,0.3);
+  text-align: center;
+  .hint-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+  p { font-size: 0.9rem; }
+}
+
+.page-title-bar {
+  display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem;
+  h2 { margin: 0; font-size: 1.2rem; font-weight: 700; }
+  .route-badge { font-size: 0.75rem; font-family: monospace; color: rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 4px; }
+  .layout-badge { font-size: 0.72rem; color: #818cf8;
+    background: rgba(129,140,248,0.12); padding: 2px 7px; border-radius: 4px; }
+}
+
+.empty-pipelines {
+  text-align: center; padding: 2rem; color: rgba(255,255,255,0.35); font-size: 0.88rem;
+  p { margin-bottom: 0.75rem; }
+}
+
+// ── Pipeline card ─────────────────────────────────────────────────────────────
+.pipeline-card {
+  background: $c-surface; border-radius: 10px; border: 1px solid $c-border;
+  margin-bottom: 1rem; overflow: hidden;
+  &.expanded { border-color: rgba(99,102,241,0.3); }
+}
+
+.pipeline-header {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.7rem 1rem; cursor: pointer; background: rgba(99,102,241,0.08);
+  &:hover { background: rgba(99,102,241,0.14); }
+
+  .pipe-icon { font-size: 0.9rem; flex-shrink: 0; }
+  .pipe-title-block { flex: 1; display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+  .steps-count { font-size: 0.72rem; color: rgba(255,255,255,0.4); flex-shrink: 0; }
+  .chevron { color: rgba(255,255,255,0.4); font-size: 0.72rem; flex-shrink: 0; }
+}
+
+.pipe-name-input {
+  background: transparent; border: none; border-bottom: 1px solid transparent;
+  color: $c-text; font-weight: 700; font-size: 0.95rem; outline: none; width: 100%;
+  &:focus { border-bottom-color: #818cf8; }
+}
+.pipe-desc-input {
+  background: transparent; border: none; border-bottom: 1px solid transparent;
+  color: rgba(255,255,255,0.5); font-size: 0.78rem; outline: none; width: 100%;
+  &:focus { border-bottom-color: #818cf8; color: $c-text; }
+}
+
+// ── Flux d'étapes ─────────────────────────────────────────────────────────────
+.pipeline-flow {
+  padding: 1rem 1.5rem;
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+}
+
+.step-wrapper {
+  display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 640px;
+}
+
+.step-arrow {
+  font-size: 1.2rem; color: rgba(255,255,255,0.3);
+  margin: 0.2rem 0; line-height: 1;
+}
+
+.step-block {
+  width: 100%; border-radius: 8px; padding: 0.7rem 0.9rem;
+  border: 1px solid rgba(255,255,255,0.1);
+  display: flex; align-items: flex-start; gap: 0.75rem;
+  position: relative;
+
+  // Couleur par type
+  @each $type, $color in $step-colors {
+    &.step-#{$type} {
+      border-color: rgba($color, 0.3);
+      background: rgba($color, 0.06);
+      .step-type-badge { color: $color; }
+      .step-icon { background: rgba($color, 0.2); }
+    }
+  }
+}
+
+.step-type-badge {
+  display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0;
+  font-size: 0.78rem; font-weight: 700; min-width: 140px;
+
+  select {
+    background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.12);
+    color: inherit; border-radius: 4px; padding: 2px 5px; font-size: 0.75rem;
+    font-weight: 700; outline: none;
+  }
+}
+
+.step-icon {
+  padding: 2px 5px; border-radius: 4px; font-size: 0.85rem;
+}
+
+.step-fields {
+  flex: 1; display: flex; flex-direction: column; gap: 0.35rem;
+
+  label {
+    display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem;
+    span { width: 110px; flex-shrink: 0; color: rgba(255,255,255,0.45); font-weight: 600; }
+    input {
+      flex: 1; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+      color: $c-text; border-radius: 4px; padding: 3px 6px; font-size: 0.78rem; outline: none;
+      &:focus { border-color: #818cf8; }
+    }
+  }
+}
+
+.step-remove {
+  position: absolute; top: 0.4rem; right: 0.5rem;
+  border: none; background: transparent; color: rgba(255,80,80,0.5);
+  cursor: pointer; font-size: 0.8rem; padding: 0 3px;
+  &:hover { color: #f87171; }
+}
+
+.btn-add-step {
+  margin-top: 0.75rem; padding: 6px 16px;
+  border: 1px dashed rgba(255,255,255,0.2); background: transparent;
+  color: rgba(255,255,255,0.5); border-radius: 6px; cursor: pointer;
+  font-size: 0.82rem; transition: all 0.12s;
+  &:hover { border-color: #818cf8; color: #818cf8; background: rgba(129,140,248,0.06); }
+}
+
+.btn-add {
+  padding: 5px 12px; background: rgba(99,102,241,0.2);
+  border: 1px solid rgba(99,102,241,0.4); color: #a5b4fc;
+  border-radius: 6px; cursor: pointer; font-size: 0.82rem; margin-left: auto;
+  &:hover { background: rgba(99,102,241,0.3); }
+}
+.btn-remove {
+  border: none; background: transparent; color: rgba(255,80,80,0.5);
+  cursor: pointer; font-size: 0.9rem; padding: 0 4px;
+  &:hover { color: #f87171; }
+}
