@@ -41,9 +41,9 @@ export class BuilderApiService {
     provider: AiProvider,
     apiKey: string,
     model: string,
-  ): Observable<{ content: string; provider: string; spec_patch: AgentPatch | null }> {
+  ): Observable<{ content: string; provider: string; spec_patch: AgentPatch | null; choices: { multiple: boolean; items: string[] } | null }> {
     const cleanMessages = messages.map(m => ({ role: m.role, content: m.content }));
-    return this.http.post<{ content: string; provider: string; spec_patch: AgentPatch | null }>(
+    return this.http.post<{ content: string; provider: string; spec_patch: AgentPatch | null; choices: { multiple: boolean; items: string[] } | null }>(
       `${this.base}/api/chat/`,
       { messages: cleanMessages, app_spec: appSpec, provider, api_key: apiKey, model },
     );

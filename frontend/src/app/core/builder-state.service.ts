@@ -29,6 +29,8 @@ export class BuilderStateService {
   readonly savedId = signal<number | null>(null);
   readonly isDirty = signal(false);
   readonly saveStatus = signal<SaveStatus>('idle');
+  /** Incrémenté à chaque loadSpec/resetSpec pour signaler un changement de contexte. */
+  readonly specSessionId = signal(0);
 
   private debounceTrigger = new Subject<void>();
 
@@ -88,6 +90,7 @@ export class BuilderStateService {
     this.savedId.set(spec.id ?? null);
     this.isDirty.set(false);
     this.saveStatus.set('saved');
+    this.specSessionId.update(v => v + 1);
   }
 
   resetSpec(): void {
@@ -95,6 +98,7 @@ export class BuilderStateService {
     this.savedId.set(null);
     this.isDirty.set(false);
     this.saveStatus.set('idle');
+    this.specSessionId.update(v => v + 1);
   }
 
   markSaved(id: number): void {

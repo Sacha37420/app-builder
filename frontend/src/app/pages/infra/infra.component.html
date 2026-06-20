@@ -1,0 +1,123 @@
+<app-navbar />
+
+<div class="infra-page">
+
+  <div class="page-header">
+    <h1 class="page-title">&#128451; Infrastructure — Schéma de base de données</h1>
+    <button class="btn-copy" (click)="copyDdl()" title="Copier tout le SQL DDL">
+      &#128203; Copier le DDL SQL
+    </button>
+  </div>
+
+  @if (tables().length === 0) {
+    <div class="empty-state">
+      Aucun modèle défini — allez dans <strong>Modèles</strong> pour créer vos entités.
+    </div>
+  }
+
+  <div class="tables-grid">
+    @for (table of tables(); track table.tableName) {
+
+      <!-- ── Carte table ─────────────────────────────────────── -->
+      <div class="table-card">
+
+        <div class="table-card-header">
+          <div class="table-name-block">
+            <span class="table-icon">&#9632;</span>
+            <div>
+              <span class="table-name">{{ table.tableName }}</span>
+              <span class="model-name">{{ table.modelName }}</span>
+            </div>
+          </div>
+          @if (table.description) {
+            <p class="table-desc">{{ table.description }}</p>
+          }
+        </div>
+
+        <!-- Colonnes -->
+        <table class="col-table">
+          <thead>
+            <tr>
+              <th>Colonne</th>
+              <th>Type SQL</th>
+              <th>NULL</th>
+              <th>UNIQUE</th>
+              <th>Défaut</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (col of table.columns; track col.name) {
+              <tr [class.pk-row]="col.name === 'id'" [class.fk-row]="col.comment?.startsWith('FK') || col.comment?.startsWith('O2O')">
+                <td class="col-name">
+                  {{ col.name }}
+                  @if (col.name === 'id') { <span class="badge badge-pk">PK</span> }
+                  @if (col.comment?.startsWith('FK'))  { <span class="badge badge-fk">FK</span> }
+                  @if (col.comment?.startsWith('O2O')) { <span class="badge badge-o2o">O2O</span> }
+                </td>
+                <td class="col-type">{{ col.sqlType }}</td>
+                <td class="col-bool">{{ col.nullable ? '✓' : '✗' }}</td>
+                <td class="col-bool">{{ col.unique  ? '✓' : '' }}</td>
+                <td class="col-default">{{ col.default ?? '' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+
+        <!-- Contraintes FK -->
+        @if (table.fkConstraints.length > 0) {
+          <div class="constraints">
+            <span class="constraints-label">Contraintes</span>
+            @for (fk of table.fkConstraints; track fk) {
+              <code class="constraint-line">{{ fk }}</code>
+            }
+          </div>
+        }
+
+        <!-- DDL -->
+        <details class="ddl-block">
+          <summary>Voir CREATE TABLE SQL</summary>
+          <pre class="ddl-pre">{{ ddlFor(table) }}</pre>
+        </details>
+
+        <!-- Tables de jonction M2M -->
+        @for (m2m of table.m2mTables; track m2m.name) {
+          <div class="m2m-card">
+            <span class="m2m-label">Table de jonction M2M</span>
+            <span class="m2m-name">{{ m2m.name }}</span>
+            <pre class="ddl-pre">{{ m2m.ddl }}</pre>
+          </div>
+        }
+
+      </div>
+    }
+  </div>
+
+  <!-- ── Diagramme de relations textuelles ──────────────────── -->
+  @if (tables().length > 0) {
+    <div class="relations-section">
+      <h2 class="section-title">&#128279; Relations entre tables</h2>
+      <div class="relations-list">
+        @for (table of tables(); track table.tableName) {
+          @for (col of table.columns; track col.name) {
+            @if (col.comment?.startsWith('FK') || col.comment?.startsWith('O2O')) {
+              <div class="relation-row">
+                <span class="rel-from">{{ table.tableName }}.{{ col.name }}</span>
+                <span class="rel-arrow">──{{ col.comment?.startsWith('O2O') ? '[1:1]' : '[N:1]' }}──▶</span>
+                <span class="rel-to">{{ toSnake((col.comment ?? '').split('→')[1] ?? '') }}.id</span>
+              </div>
+            }
+          }
+          @for (m2m of table.m2mTables; track m2m.name) {
+            <div class="relation-row">
+              <span class="rel-from">{{ table.tableName }}</span>
+              <span class="rel-arrow">──[M:N]──▶</span>
+              <span class="rel-to">{{ m2m.name.split('_').slice(1).join('_') }}</span>
+              <span class="rel-junction">via {{ m2m.name }}</span>
+            </div>
+          }
+        }
+      </div>
+    </div>
+  }
+
+</div>
