@@ -4,16 +4,25 @@
   <div class="toolbar">
     <div class="toolbar-left">
       <span class="app-label">{{ state.spec().name }}</span>
-      @if (state.isDirty()) {
-        <span class="dirty-badge">&#9679; non sauvegardé</span>
+      @switch (state.saveStatus()) {
+        @case ('pending')  { <span class="dirty-badge">&#9679; non sauvegardé</span> }
+        @case ('saving')   { <span class="dirty-badge saving">&#8635; Sauvegarde…</span> }
+        @case ('saved')    { }
+        @case ('error')    { <span class="dirty-badge error">&#9888; Erreur de sauvegarde</span> }
+        @default           { @if (state.isDirty()) { <span class="dirty-badge">&#9679; non sauvegardé</span> } }
       }
     </div>
     <div class="toolbar-actions">
+      <a class="btn-toolbar btn-nav" routerLink="/models">Modèles</a>
+      <a class="btn-toolbar btn-nav" routerLink="/infra">Infrastructure</a>
+      <a class="btn-toolbar btn-nav" routerLink="/pipelines">Pipelines</a>
+      <a class="btn-toolbar btn-nav" routerLink="/preview">Code</a>
+      <span class="toolbar-sep"></span>
       <button class="btn-toolbar" (click)="newApp()">&#43; Nouveau</button>
       <button class="btn-toolbar" (click)="toggleAppList()">
         &#128193; Mes apps ({{ savedApps().length }})
       </button>
-      @if (state.savedId() === null && state.isDirty()) {
+      @if (state.isDirty()) {
         <button class="btn-toolbar btn-save" (click)="save()">
           &#128190; Sauvegarder
         </button>

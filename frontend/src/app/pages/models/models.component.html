@@ -70,7 +70,7 @@
                     <td>
                       <select [value]="field.type"
                               (change)="setFieldType(model.id!, $index, $event)">
-                        @for (t of fieldTypes; track t) { <option [value]="t">{{ t }}</option> }
+                        @for (t of fieldTypes; track t) { <option [value]="t" [selected]="t === field.type">{{ t }}</option> }
                       </select>
                     </td>
                     <td class="center">
@@ -133,7 +133,7 @@
                     <td>
                       <select [value]="rel.rel_type"
                               (change)="setRelType(model.id!, $index, $event)">
-                        @for (rt of relTypes; track rt) { <option [value]="rt">{{ rt }}</option> }
+                        @for (rt of relTypes; track rt) { <option [value]="rt" [selected]="rt === rel.rel_type">{{ rt }}</option> }
                       </select>
                     </td>
                     <td>
@@ -142,7 +142,7 @@
                         <option value="">— choisir —</option>
                         @for (mn of state.getModelNames(); track mn) {
                           @if (mn !== model.name) {
-                            <option [value]="mn">{{ mn }}</option>
+                            <option [value]="mn" [selected]="mn === rel.to_model">{{ mn }}</option>
                           }
                         }
                       </select>
@@ -156,7 +156,7 @@
                       @if (rel.rel_type !== 'M2M') {
                         <select [value]="rel.on_delete ?? 'CASCADE'"
                                 (change)="setRelOnDelete(model.id!, $index, $event)">
-                          @for (od of onDeleteChoices; track od) { <option [value]="od">{{ od }}</option> }
+                          @for (od of onDeleteChoices; track od) { <option [value]="od" [selected]="od === (rel.on_delete ?? 'CASCADE')">{{ od }}</option> }
                         </select>
                       } @else {
                         <span class="na">—</span>

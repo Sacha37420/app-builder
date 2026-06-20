@@ -6,6 +6,14 @@ $c-user:    #1d4ed8;
 $c-ai:      #374151;
 $c-accent:  #818cf8;
 
+// L'élément hôte doit occuper toute la hauteur de son parent (.chat-pane)
+// pour que flex: 1 sur .messages fonctionne correctement.
+:host {
+  display: block;
+  height: 100%;
+  overflow: hidden;
+}
+
 .chat-panel {
   display: flex;
   flex-direction: column;
@@ -60,6 +68,8 @@ $c-accent:  #818cf8;
   background: #111827;
   border-bottom: 1px solid $c-border;
   flex-shrink: 0;
+  max-height: 55vh;
+  overflow-y: auto;
 }
 
 .provider-tabs {
@@ -387,6 +397,113 @@ $c-accent:  #818cf8;
 @keyframes typing {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
   30%            { transform: translateY(-4px); opacity: 1; }
+}
+
+// ── Panneau de choix ───────────────────────────────────────────────────────────
+.choices-panel {
+  margin-top: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  background: rgba($c-accent, 0.05);
+  border: 1px solid rgba($c-accent, 0.2);
+  border-radius: 8px;
+}
+
+.choices-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+
+  &.choices-multi { flex-direction: column; align-items: flex-start; }
+}
+
+.choice-btn {
+  padding: 5px 14px;
+  background: rgba($c-accent, 0.1);
+  border: 1px solid rgba($c-accent, 0.3);
+  color: #c7d2fe;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  transition: all 0.12s;
+
+  &:hover {
+    background: rgba($c-accent, 0.25);
+    border-color: rgba($c-accent, 0.55);
+    color: #e0e7ff;
+  }
+
+  &.choice-other {
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.4);
+    border-radius: 20px;
+
+    &:hover {
+      background: rgba(255,255,255,0.08);
+      border-color: rgba(255,255,255,0.25);
+      color: rgba(255,255,255,0.75);
+    }
+  }
+}
+
+.choice-check-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 5px 12px;
+  background: rgba($c-accent, 0.07);
+  border: 1px solid rgba($c-accent, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  color: #c7d2fe;
+  font-size: 0.8rem;
+  transition: all 0.12s;
+  user-select: none;
+
+  input[type="checkbox"] {
+    accent-color: $c-accent;
+    cursor: pointer;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+
+  &.checked {
+    background: rgba($c-accent, 0.2);
+    border-color: rgba($c-accent, 0.5);
+    color: #e0e7ff;
+  }
+
+  &:hover:not(.checked) {
+    background: rgba($c-accent, 0.12);
+    border-color: rgba($c-accent, 0.35);
+  }
+}
+
+.choices-validate {
+  margin-top: 0.45rem;
+  padding: 5px 16px;
+  background: $c-accent;
+  border: none;
+  color: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: background 0.12s, opacity 0.12s;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+
+  .validate-count {
+    font-weight: 400;
+    opacity: 0.8;
+    font-size: 0.75rem;
+  }
+
+  &:hover:not(:disabled) { background: #6366f1; }
+  &:disabled { opacity: 0.35; cursor: not-allowed; }
 }
 
 // ── Erreur ─────────────────────────────────────────────────────────────────────

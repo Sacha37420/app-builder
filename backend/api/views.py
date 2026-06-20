@@ -11,19 +11,74 @@ from .serializers import AppSpecSerializer
 
 # ── Extraction du patch JSON depuis la réponse IA ─────────────────────────────
 
-_PATCH_RE = re.compile(r'SPEC_PATCH_START\s*(.*?)\s*SPEC_PATCH_END', re.DOTALL)
+def _extract_choices(content: str) -> tuple[str, dict | None]:
+    """Extrait et supprime le bloc CHOICES_START...CHOICES_END du contenu."""
+    si = content.find('CHOICES_START')
+    if si == -1:
+        return content, None
+    ei = content.find('CHOICES_END', si)
+    if ei == -1:
+        return content, None
+    between = content[si + len('CHOICES_START'):ei]
+    bo = between.find('{')
+    bc = between.rfind('}')
+    if bo == -1 or bc == -1:
+        return content, None
+    json_str = between[bo:bc + 1]
+    clean = (content[:si] + content[ei + len('CHOICES_END'):]).strip()
+    try:
+        choices = json.loads(json_str)
+        print(f"[CHOICES] multiple={choices.get('multiple')} items={len(choices.get('items', []))}")
+        return clean, choices
+    except json.JSONDecodeError:
+        return content, None
 
 
 def _extract_patch(content: str) -> tuple[str, dict | None]:
-    """Sépare le texte lisible du bloc SPEC_PATCH_START...SPEC_PATCH_END."""
-    match = _PATCH_RE.search(content)
-    if not match:
+    """Sépare le texte lisible du bloc SPEC_PATCH_START...SPEC_PATCH_END.
+
+    Robuste face aux variations du modèle :
+    - JSON direct après le marqueur
+    - JSON dans un bloc ```json ... ```
+    - Marqueur utilisé comme titre Markdown (### SPEC_PATCH_START)
+    """
+    start_marker = 'SPEC_PATCH_START'
+    end_marker   = 'SPEC_PATCH_END'
+
+    start_idx = content.find(start_marker)
+    if start_idx == -1:
+        print('[PATCH] Aucun bloc SPEC_PATCH_START trouvé')
         return content, None
-    clean = content[:match.start()].rstrip()
+
+    end_idx = content.find(end_marker, start_idx)
+    if end_idx == -1:
+        print('[PATCH] SPEC_PATCH_END non trouvé')
+        return content, None
+
+    # Zone entre les deux marqueurs
+    between = content[start_idx + len(start_marker):end_idx]
+
+    # Premier '{' et dernier '}' dans cette zone → isole le JSON quelle que soit
+    # la mise en forme (backticks, texte d'intro, titre Markdown, etc.)
+    brace_open  = between.find('{')
+    brace_close = between.rfind('}')
+    if brace_open == -1 or brace_close == -1:
+        print('[PATCH] Pas de JSON trouvé entre les marqueurs')
+        return content, None
+
+    json_str = between[brace_open:brace_close + 1]
+    clean    = content[:start_idx].rstrip()
+
     try:
-        patch = json.loads(match.group(1))
+        patch = json.loads(json_str)
+        print(f"[PATCH] OK — models={len(patch.get('data_models') or [])} "
+              f"groups={len(patch.get('endpoint_groups') or [])} "
+              f"services={len(patch.get('services') or [])} "
+              f"pages={len(patch.get('pages') or [])}")
         return clean, patch
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        print(f'[PATCH] JSON invalide : {e}')
+        print(f'[PATCH] Extrait brut : {json_str[:300]}')
         return content, None
 
 
@@ -99,6 +154,26 @@ Pour chaque pipeline par page :
 3. Résume ce qui est validé avant de passer à la question suivante.
 4. Si tu détectes une incohérence, signale-la avant de continuer.
 5. Quand une phase est complète, récapitule-la et demande confirmation.
+
+---
+
+## Format de réponse avec choix proposés
+
+Quand tu poses une question à laquelle l'utilisateur peut choisir parmi des options,
+inclus un bloc **immédiatement après ta question** entre ces balises :
+
+CHOICES_START
+{
+  "multiple": false,
+  "items": ["Option A", "Option B", "Option C"]
+}
+CHOICES_END
+
+- `multiple: false` → une seule réponse attendue (ex : type de relation, layout de page, opération REST)
+- `multiple: true` → plusieurs réponses possibles (ex : liste de champs, liste de pages, rôles autorisés)
+- Propose 2 à 6 options concrètes et pertinentes pour le contexte
+- L'interface ajoute automatiquement un bouton "Autre..." — ne l'inclus pas dans tes options
+- N'inclus **pas** ce bloc pour les récapitulatifs, confirmations ou questions ouvertes sans choix naturels
 
 ---
 
@@ -286,6 +361,10 @@ class AIChatView(APIView):
         messages = request.data.get('messages', [])
         app_spec = request.data.get('app_spec', {})
 
+        print(f"[CHAT] provider={provider} model={model} messages={len(messages)}")
+        for i, m in enumerate(messages):
+            print(f"  [{i}] {m.get('role')}: {str(m.get('content',''))[:80]!r}")
+
         if not api_key:
             return Response(
                 {'error': f'Clé API {provider} manquante. Configurez-la dans les paramètres (⚙).'},
@@ -298,6 +377,11 @@ class AIChatView(APIView):
             if provider == 'mistral':
                 return self._call_mistral(api_key, system_prompt, messages, model)
             return self._call_claude(api_key, system_prompt, messages, model)
+        except http_requests.exceptions.Timeout:
+            return Response(
+                {'error': 'Impossible de joindre l\'API Mistral (timeout de connexion). Vérifiez votre clé ou réessayez dans quelques instants.'},
+                status=status.HTTP_504_GATEWAY_TIMEOUT,
+            )
         except Exception as exc:
             return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
@@ -305,27 +389,51 @@ class AIChatView(APIView):
         payload = {
             'model': model or 'mistral-small-latest',
             'messages': [{'role': 'system', 'content': system_prompt}] + messages,
+            'stream': True,
         }
-        resp = http_requests.post(
+        # Streaming : timeout connect=10s, pas de read timeout (le flux arrive en continu)
+        with http_requests.post(
             'https://api.mistral.ai/v1/chat/completions',
             headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
             json=payload,
-            timeout=60,
-        )
-        resp.raise_for_status()
-        raw = resp.json()['choices'][0]['message']['content']
-        content, patch = _extract_patch(raw)
-        return Response({'content': content, 'provider': 'mistral', 'spec_patch': patch})
+            stream=True,
+            timeout=(10, None),
+        ) as resp:
+            resp.raise_for_status()
+            full_text = ''
+            for line in resp.iter_lines():
+                if not line:
+                    continue
+                decoded = line.decode('utf-8')
+                if not decoded.startswith('data: '):
+                    continue
+                data = decoded[6:]
+                if data == '[DONE]':
+                    break
+                try:
+                    chunk = json.loads(data)
+                    delta = chunk['choices'][0]['delta'].get('content', '')
+                    if delta:
+                        full_text += delta
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    pass
+
+        content, patch   = _extract_patch(full_text)
+        content, choices = _extract_choices(content)
+        return Response({'content': content, 'provider': 'mistral', 'spec_patch': patch, 'choices': choices})
 
     def _call_claude(self, api_key, system_prompt, messages, model=None):
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
-        msg = client.messages.create(
+        full_text = ''
+        with client.messages.stream(
             model=model or 'claude-sonnet-4-6',
             max_tokens=4096,
             system=system_prompt,
             messages=messages,
-        )
-        raw = msg.content[0].text
-        content, patch = _extract_patch(raw)
-        return Response({'content': content, 'provider': 'claude', 'spec_patch': patch})
+        ) as stream:
+            for text in stream.text_stream:
+                full_text += text
+        content, patch   = _extract_patch(full_text)
+        content, choices = _extract_choices(content)
+        return Response({'content': content, 'provider': 'claude', 'spec_patch': patch, 'choices': choices})

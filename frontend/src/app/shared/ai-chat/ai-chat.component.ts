@@ -6,8 +6,11 @@ import { ChatMessage, AiProvider, AgentPatch } from '../../models/app-spec.model
 
 type AppliedState = 'none' | 'merged' | 'replaced';
 
+interface Choices { multiple: boolean; items: string[]; }
+
 interface DisplayMessage extends ChatMessage {
   applied?: AppliedState;
+  choices?: Choices | null;
 }
 
 interface ModelOption { id: string; label: string; }
@@ -48,7 +51,8 @@ const LS = {
   styleUrl: './ai-chat.component.scss',
 })
 export class AiChatComponent implements AfterViewChecked, OnInit {
-  @ViewChild('messagesEl') messagesEl?: ElementRef<HTMLDivElement>;
+  @ViewChild('messagesEl')  messagesEl?:  ElementRef<HTMLDivElement>;
+  @ViewChild('chatInputEl') chatInputEl?: ElementRef<HTMLTextAreaElement>;
 
   private api = inject(BuilderApiService);
   state = inject(BuilderStateService);
@@ -68,6 +72,9 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
   mistralKey   = signal('');
   mistralModel = signal('mistral-small-latest');
 
+  // State pour les choix du dernier message assistant
+  selectedChoices = signal<Set<string>>(new Set());
+
   readonly claudeModels  = CLAUDE_MODELS;
   readonly mistralModels = MISTRAL_MODELS;
   readonly starters      = STARTER_PROMPTS;
@@ -80,6 +87,28 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
     effect(() => localStorage.setItem(LS.claudeModel,  this.claudeModel()));
     effect(() => localStorage.setItem(LS.mistralKey,   this.mistralKey()));
     effect(() => localStorage.setItem(LS.mistralModel, this.mistralModel()));
+
+    effect(() => {
+      const id   = this.state.savedId();
+      const msgs = this.messages();
+      if (id != null) {
+        const slim = msgs.map(({ role, content, applied, choices }) => ({ role, content, applied, choices }));
+        localStorage.setItem(`ai_chat_${id}`, JSON.stringify(slim));
+      }
+    });
+
+    effect(() => {
+      const _sid = this.state.specSessionId();
+      this.messages.set(this._loadChat(this.state.savedId()));
+      this.error.set('');
+      this.selectedChoices.set(new Set());
+    });
+  }
+
+  private _loadChat(id: number | null): DisplayMessage[] {
+    if (id == null) return [];
+    try { return JSON.parse(localStorage.getItem(`ai_chat_${id}`) ?? '[]') as DisplayMessage[]; }
+    catch { return []; }
   }
 
   ngOnInit(): void {
@@ -107,6 +136,40 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
 
   useStarter(text: string): void { this.inputText.set(text); this.send(); }
 
+  // ── Gestion des choix ──────────────────────────────────────────────────────
+
+  pickSingle(choice: string): void {
+    this.inputText.set(choice);
+    this.send();
+  }
+
+  toggleMulti(choice: string): void {
+    this.selectedChoices.update(set => {
+      const next = new Set(set);
+      if (next.has(choice)) next.delete(choice);
+      else next.add(choice);
+      return next;
+    });
+  }
+
+  isSelected(choice: string): boolean {
+    return this.selectedChoices().has(choice);
+  }
+
+  sendSelection(): void {
+    const sel = Array.from(this.selectedChoices());
+    if (!sel.length) return;
+    this.inputText.set(sel.join(', '));
+    this.selectedChoices.set(new Set());
+    this.send();
+  }
+
+  focusOther(): void {
+    this.chatInputEl?.nativeElement.focus();
+  }
+
+  // ── Envoi ──────────────────────────────────────────────────────────────────
+
   send(): void {
     const text = this.inputText().trim();
     if (!text || this.loading()) return;
@@ -117,6 +180,7 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
 
     this.messages.update(msgs => [...msgs, { role: 'user', content: text }]);
     this.inputText.set('');
+    this.selectedChoices.set(new Set());
     this.loading.set(true);
     this.error.set('');
     this.shouldScroll = true;
@@ -126,7 +190,9 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
         next: res => {
           this.messages.update(msgs => [...msgs, {
             role: 'assistant', content: res.content,
-            spec_patch: res.spec_patch ?? null, applied: 'none',
+            spec_patch: res.spec_patch ?? null,
+            choices:    res.choices    ?? null,
+            applied: 'none',
           }]);
           this.loading.set(false);
           this.shouldScroll = true;
@@ -160,7 +226,13 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
     if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); this.send(); }
   }
 
-  clearHistory(): void { this.messages.set([]); this.error.set(''); }
+  clearHistory(): void {
+    this.messages.set([]);
+    this.error.set('');
+    this.selectedChoices.set(new Set());
+    const id = this.state.savedId();
+    if (id != null) localStorage.removeItem(`ai_chat_${id}`);
+  }
 
   formatContent(content: string): string {
     return content

@@ -236,6 +236,46 @@
             @if (msg.applied === 'replaced') { <div class="patch-applied">&#10003; Spec remplacé</div> }
           </div>
         }
+
+        <!-- Panneau de choix : visible uniquement sur le dernier message assistant -->
+        @if ($last && msg.role === 'assistant' && msg.choices && !loading()) {
+          <div class="choices-panel">
+            @if (!msg.choices.multiple) {
+              <!-- Choix unique : boutons pills -->
+              <div class="choices-list">
+                @for (item of msg.choices.items; track item) {
+                  <button class="choice-btn" (click)="pickSingle(item)">{{ item }}</button>
+                }
+                <button class="choice-btn choice-other" (click)="focusOther()" title="Saisir une réponse personnalisée">
+                  ✏ Autre...
+                </button>
+              </div>
+            } @else {
+              <!-- Choix multiples : cases à cocher -->
+              <div class="choices-list choices-multi">
+                @for (item of msg.choices.items; track item) {
+                  <label class="choice-check-label" [class.checked]="isSelected(item)">
+                    <input type="checkbox"
+                           [checked]="isSelected(item)"
+                           (change)="toggleMulti(item)" />
+                    {{ item }}
+                  </label>
+                }
+                <button class="choice-btn choice-other" (click)="focusOther()" title="Saisir des éléments supplémentaires">
+                  ✏ Autre...
+                </button>
+              </div>
+              <button class="choices-validate"
+                      [disabled]="selectedChoices().size === 0"
+                      (click)="sendSelection()">
+                Valider
+                @if (selectedChoices().size > 0) {
+                  <span class="validate-count">({{ selectedChoices().size }})</span>
+                }
+              </button>
+            }
+          </div>
+        }
       </div>
     }
 
@@ -255,6 +295,7 @@
   <!-- Zone de saisie -->
   <div class="chat-input-area">
     <textarea
+      #chatInputEl
       class="chat-input"
       [value]="inputText()"
       (input)="inputText.set($any($event.target).value)"

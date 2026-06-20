@@ -14,6 +14,10 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/pipelines/pipelines.component').then(m => m.PipelinesPageComponent),
   },
   {
+    path: 'infra',
+    loadComponent: () => import('./pages/infra/infra.component').then(m => m.InfraPageComponent),
+  },
+  {
     path: 'preview',
     loadComponent: () => import('./pages/preview/preview.component').then(m => m.PreviewPageComponent),
   },

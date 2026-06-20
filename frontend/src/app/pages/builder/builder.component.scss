@@ -37,6 +37,9 @@ $c-text:   #f1f5f9;
   .dirty-badge {
     font-size: 0.75rem;
     color: #fbbf24;
+
+    &.saving { color: #94a3b8; }
+    &.error  { color: #fca5a5; }
   }
 
   .toolbar-actions {
@@ -53,6 +56,13 @@ $c-text:   #f1f5f9;
   }
 }
 
+.toolbar-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255,255,255,0.15);
+  flex-shrink: 0;
+}
+
 .btn-toolbar {
   padding: 4px 10px;
   border: 1px solid rgba(255,255,255,0.2);
@@ -63,9 +73,15 @@ $c-text:   #f1f5f9;
   font-size: 0.82rem;
   transition: background 0.12s;
   white-space: nowrap;
+  text-decoration: none;
 
   &:hover:not(:disabled) { background: rgba(255,255,255,0.14); }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  &.btn-nav {
+    color: rgba(255,255,255,0.6);
+    &:hover { color: $c-text; }
+  }
 
   &.btn-save {
     background: #1d4ed8;

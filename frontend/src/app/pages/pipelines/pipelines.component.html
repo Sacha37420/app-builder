@@ -78,7 +78,7 @@
                       <select [value]="step.type"
                               (change)="setStepType(selectedPage.id!, pipe.id!, $index, $event)">
                         @for (t of stepTypes; track t) {
-                          <option [value]="t">{{ stepTypeLabels[t] }}</option>
+                          <option [value]="t" [selected]="t === step.type">{{ stepTypeLabels[t] }}</option>
                         }
                       </select>
                     </div>

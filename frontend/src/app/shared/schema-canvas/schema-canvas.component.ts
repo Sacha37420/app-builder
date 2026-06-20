@@ -1,5 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { JsonPipe } from '@angular/common';
 import { BuilderStateService } from '../../core/builder-state.service';
 import { EndpointGroup, FrontendService, Page, HttpMethod, InteractionType } from '../../models/app-spec.model';
 
@@ -13,7 +14,7 @@ type EditTarget =
 @Component({
   selector: 'app-schema-canvas',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, JsonPipe],
   templateUrl: './schema-canvas.component.html',
   styleUrl: './schema-canvas.component.scss',
 })
@@ -23,6 +24,7 @@ export class SchemaCanvasComponent {
   editing = signal<EditTarget>(null);
   expandedGroups = signal<Set<number>>(new Set());
   expandedPages = signal<Set<number>>(new Set());
+  expandedEndpoints = signal<Set<string>>(new Set());
 
   // ── Edition inline ──────────────────────────────────────────────────────────
 
@@ -73,11 +75,37 @@ export class SchemaCanvasComponent {
   setGroupName(id: number, e: Event): void { this.state.updateEndpointGroup(id, { name: this.val(e) }); }
   setGroupDesc(id: number, e: Event): void { this.state.updateEndpointGroup(id, { description: this.val(e) }); }
 
+  toggleEndpointDetail(gId: number, epId: number): void {
+    const key = `${gId}-${epId}`;
+    this.expandedEndpoints.update(s => {
+      const n = new Set(s);
+      n.has(key) ? n.delete(key) : n.add(key);
+      return n;
+    });
+  }
+
+  isEditingEndpoint(gId: number, epId: number): boolean {
+    return this.expandedEndpoints().has(`${gId}-${epId}`);
+  }
+
   setEndpointMethod(gId: number, epId: number, e: Event): void {
     this.state.updateEndpoint(gId, epId, { method: this.val(e) as HttpMethod });
   }
   setEndpointPath(gId: number, epId: number, e: Event): void {
     this.state.updateEndpoint(gId, epId, { path: this.val(e) });
+  }
+  setEndpointDesc(gId: number, epId: number, e: Event): void {
+    this.state.updateEndpoint(gId, epId, { description: this.val(e) });
+  }
+  setEndpointAuth(gId: number, epId: number, e: Event): void {
+    this.state.updateEndpoint(gId, epId, { auth_required: (e.target as HTMLInputElement).checked });
+  }
+  setEndpointSchema(gId: number, epId: number, kind: 'request' | 'response', e: Event): void {
+    const raw = this.val(e).trim();
+    let parsed: Record<string, string> | null = null;
+    try { parsed = raw ? JSON.parse(raw) as Record<string, string> : null; } catch { parsed = null; }
+    if (kind === 'request') this.state.updateEndpoint(gId, epId, { request_schema: parsed });
+    else                    this.state.updateEndpoint(gId, epId, { response_schema: parsed });
   }
 
   setServiceName(id: number, e: Event): void { this.state.updateService(id, { name: this.val(e) }); }

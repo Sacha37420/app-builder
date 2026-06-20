@@ -40,15 +40,62 @@
           @if (expandedGroups().has(group.id!)) {
             <div class="endpoints-list">
               @for (ep of group.endpoints; track ep.id) {
-                <div class="ep-row">
+                <div class="ep-row" [class.ep-expanded]="isEditingEndpoint(group.id!, ep.id!)">
                   <select class="method-select" [value]="ep.method"
                           (change)="setEndpointMethod(group.id!, ep.id!, $event)">
-                    @for (m of methods; track m) { <option [value]="m">{{ m }}</option> }
+                    @for (m of methods; track m) { <option [value]="m" [selected]="m === ep.method">{{ m }}</option> }
                   </select>
                   <input class="ep-path" [value]="ep.path"
                          (change)="setEndpointPath(group.id!, ep.id!, $event)" />
+                  <button class="btn-detail" (click)="toggleEndpointDetail(group.id!, ep.id!)"
+                          [title]="isEditingEndpoint(group.id!, ep.id!) ? 'Fermer le détail' : 'Voir le détail'">
+                    {{ isEditingEndpoint(group.id!, ep.id!) ? '▲' : '▼' }}
+                  </button>
                   <button class="btn-remove-sm" (click)="state.removeEndpoint(group.id!, ep.id!)">✕</button>
                 </div>
+
+                @if (isEditingEndpoint(group.id!, ep.id!)) {
+                  <div class="ep-detail">
+                    <div class="ep-detail-row">
+                      <span class="ep-detail-label">Description</span>
+                      <input class="ep-detail-input" [value]="ep.description ?? ''"
+                             (input)="setEndpointDesc(group.id!, ep.id!, $event)"
+                             placeholder="Ce que fait cet endpoint…" />
+                    </div>
+                    <div class="ep-detail-row">
+                      <span class="ep-detail-label">Auth requise</span>
+                      <label class="ep-toggle">
+                        <input type="checkbox" [checked]="ep.auth_required"
+                               (change)="setEndpointAuth(group.id!, ep.id!, $event)" />
+                        <span>{{ ep.auth_required ? 'Oui' : 'Non' }}</span>
+                      </label>
+                    </div>
+                    <div class="ep-detail-row">
+                      <span class="ep-detail-label">Requête</span>
+                      <textarea class="ep-detail-json" rows="3"
+                                [value]="ep.request_schema ? (ep.request_schema | json) : ''"
+                                placeholder="{ champ: type, … }"
+                                (change)="setEndpointSchema(group.id!, ep.id!, 'request', $event)"></textarea>
+                    </div>
+                    <div class="ep-detail-row">
+                      <span class="ep-detail-label">Réponse</span>
+                      <textarea class="ep-detail-json" rows="3"
+                                [value]="ep.response_schema ? (ep.response_schema | json) : ''"
+                                placeholder="{ champ: type, … }"
+                                (change)="setEndpointSchema(group.id!, ep.id!, 'response', $event)"></textarea>
+                    </div>
+                    @if (ep.query_params?.length) {
+                      <div class="ep-detail-row">
+                        <span class="ep-detail-label">Filtres</span>
+                        <span class="ep-detail-tags">
+                          @for (qp of ep.query_params; track qp) {
+                            <span class="ep-tag">{{ qp }}</span>
+                          }
+                        </span>
+                      </div>
+                    }
+                  </div>
+                }
               }
               <button class="btn-add-sm" (click)="state.addEndpoint(group.id!)">+ Endpoint</button>
             </div>
@@ -196,7 +243,7 @@
                   <select class="type-select"
                           [value]="inter.type"
                           (change)="setInteractionType(page.id!, inter.id!, $event)">
-                    @for (t of interactionTypes; track t) { <option [value]="t">{{ t }}</option> }
+                    @for (t of interactionTypes; track t) { <option [value]="t" [selected]="t === inter.type">{{ t }}</option> }
                   </select>
                   <button class="btn-remove-sm" (click)="state.removeInteraction(page.id!, inter.id!)">✕</button>
                 </div>
