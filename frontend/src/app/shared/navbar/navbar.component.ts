@@ -16,10 +16,15 @@ export class NavbarComponent {
 
   saving = signal(false);
   saveError = signal('');
+  menuOpen = signal(false);
 
   get username(): string {
     return this.kc.username || this.kc.email;
   }
+
+  toggleMenu(): void { this.menuOpen.update(v => !v); }
+
+  closeMenu(): void { this.menuOpen.set(false); }
 
   saveNow(): void {
     this.saving.set(true);
