@@ -15,31 +15,70 @@
     text-decoration: none;
     letter-spacing: 0.03em;
     white-space: nowrap;
+    flex-shrink: 0;
+  }
+}
+
+// ── Burger button ──────────────────────────────────────────────────────────────
+.burger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 36px;
+  height: 36px;
+  padding: 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+
+  span {
+    display: block;
+    width: 22px;
+    height: 2px;
+    background: #fff;
+    border-radius: 2px;
+    transition: transform 0.2s, opacity 0.2s;
   }
 
-  .nav-links {
-    display: flex;
-    gap: 1rem;
-    flex: 1;
+  &.open {
+    span:nth-child(1) { transform: rotate(45deg) translate(0, 7px); }
+    span:nth-child(2) { opacity: 0; }
+    span:nth-child(3) { transform: rotate(-45deg) translate(0, -7px); }
+  }
+}
 
-    a {
-      color: rgba(255, 255, 255, 0.85);
-      text-decoration: none;
-      font-size: 0.95rem;
-      padding: 4px 8px;
-      border-radius: 4px;
-      transition: background 0.15s;
+// ── Nav content wrapper ────────────────────────────────────────────────────────
+.nav-content {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 1.5rem;
+}
 
-      &:hover {
-        background: rgba(255, 255, 255, 0.15);
-        color: #fff;
-      }
+.nav-links {
+  display: flex;
+  gap: 1rem;
+  flex: 1;
 
-      &.active {
-        background: rgba(255, 255, 255, 0.2);
-        color: #fff;
-        font-weight: 600;
-      }
+  a {
+    color: rgba(255, 255, 255, 0.85);
+    text-decoration: none;
+    font-size: 0.95rem;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background 0.15s;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+
+    &.active {
+      background: rgba(255, 255, 255, 0.2);
+      color: #fff;
+      font-weight: 600;
     }
   }
 }
@@ -139,5 +178,64 @@
     white-space: nowrap;
 
     &:hover { background: rgba(255, 255, 255, 0.2); }
+  }
+}
+
+// ── Mobile ─────────────────────────────────────────────────────────────────────
+@media (max-width: 768px) {
+  .navbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 56px;
+    padding: 0 1rem;
+    row-gap: 0;
+    gap: 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .brand {
+    flex: 1;
+    height: 56px;
+    display: flex;
+    align-items: center;
+  }
+
+  .burger {
+    display: flex;
+    height: 56px;
+  }
+
+  .nav-content {
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    padding: 0.5rem 0 0.75rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    gap: 0;
+
+    &.open { display: flex; }
+  }
+
+  .nav-links {
+    flex-direction: column;
+    flex: unset;
+    gap: 0;
+
+    a { padding: 0.65rem 0.5rem; }
+  }
+
+  .save-zone {
+    padding: 0.6rem 0.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    flex-wrap: wrap;
+  }
+
+  .nav-user {
+    margin-left: 0;
+    padding: 0.6rem 0.5rem 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
   }
 }
