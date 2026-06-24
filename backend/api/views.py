@@ -201,7 +201,7 @@ SPEC_PATCH_END
 
 ### Structure exacte des éléments
 
-**data_models** (types de champs : string/text/int/decimal/bool/datetime/json/file) :
+**data_models** (types de champs : string/text/int/decimal/bool/datetime/json — **n'utilise jamais `file`**, voir règles de stockage) :
 ```json
 {
   "name": "Produit", "description": "...", "order": 0,
@@ -216,7 +216,7 @@ SPEC_PATCH_END
 }
 ```
 
-**endpoint_groups** :
+**endpoint_groups** — chaque endpoint peut inclure des `steps` décrivant le traitement serveur :
 ```json
 {
   "name": "Produits", "description": "...", "order": 0,
@@ -225,11 +225,17 @@ SPEC_PATCH_END
       "method": "GET", "path": "/api/produits/", "description": "Liste tous les produits",
       "operation": "list", "linked_model_name": "Produit", "order": 0,
       "auth_required": true, "required_roles": [],
-      "request_schema": null, "response_schema": null, "query_params": []
+      "request_schema": null, "response_schema": null, "query_params": [],
+      "steps": [
+        { "label": "Vérifier JWT", "type": "auth_check", "description": "Vérifie que le token Keycloak est valide et extrait email + groups" },
+        { "label": "Requête DB", "type": "db_query", "description": "Filtre les produits par owner_email=request.user.email avec order_by('-updated_at')" },
+        { "label": "Sérialiser", "type": "serialize", "description": "Convertit le queryset en liste JSON via ProduitSerializer(many=True)" }
+      ]
     }
   ]
 }
 ```
+Types de steps backend : `auth_check | validate | db_query | db_write | serialize | transform | error | custom`
 
 **services** :
 ```json
@@ -252,7 +258,8 @@ SPEC_PATCH_END
       "steps": [
         { "label": "Page initialisée", "type": "trigger" },
         { "label": "ProduitService.getAll()", "type": "service_call",
-          "service_method": "ProduitService.getAll()", "data_flow": "void → Produit[]" },
+          "service_method": "ProduitService.getAll()", "data_flow": "void → Produit[]",
+          "description": "Appelle GET /api/produits/ et stocke le résultat dans le signal produits$" },
         { "label": "produits$ mis à jour", "type": "state_update" }
       ]
     }
@@ -437,3 +444,14 @@ class AIChatView(APIView):
         content, patch   = _extract_patch(full_text)
         content, choices = _extract_choices(content)
         return Response({'content': content, 'provider': 'claude', 'spec_patch': patch, 'choices': choices})
+
+
+class AppSpecChatHistoryView(APIView):
+    def patch(self, request, pk):
+        try:
+            app = AppSpec.objects.get(pk=pk, owner_email=request.user.email)
+        except AppSpec.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        app.chat_history = request.data.get('chat_history', [])
+        app.save(update_fields=['chat_history'])
+        return Response({'ok': True})

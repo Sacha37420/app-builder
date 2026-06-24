@@ -1,265 +1,358 @@
-<div class="canvas">
+<div class="arch" [class.has-hover]="anyHovered">
 
-  <!-- ── EN-TÊTE APPLICATION ────────────────────────────────────────────── -->
+  <!-- ── APP HEADER ────────────────────────────────────────────────────── -->
   <div class="app-header">
     @if (isEditing('meta')) {
-      <div class="edit-inline meta-edit">
-        <input class="field-name" [value]="state.spec().name"
-               (input)="setMetaName($event)" />
-        <textarea class="field-desc" [value]="state.spec().description"
-                  (input)="setMetaDesc($event)"
-                  placeholder="Description de l'application..."></textarea>
-        <button class="btn-close" (click)="closeEdit()">Fermer</button>
+      <div class="meta-edit">
+        <input class="field-name" [value]="state.spec().name" (input)="setMetaName($event)" />
+        <textarea class="field-desc" [value]="state.spec().description" (input)="setMetaDesc($event)" placeholder="Description…"></textarea>
+        <button class="btn-close-sm" (click)="closeEdit()">Fermer</button>
       </div>
     } @else {
       <h2 class="app-name" (click)="editMeta()">{{ state.spec().name }}</h2>
-      <p class="app-desc" (click)="editMeta()">
-        {{ state.spec().description || 'Cliquer pour ajouter une description…' }}
-      </p>
+      @if (state.spec().description) { <p class="app-desc">{{ state.spec().description }}</p> }
     }
   </div>
 
-  <!-- ── SECTION BACKEND ────────────────────────────────────────────────── -->
-  <section class="section backend-section">
-    <div class="section-header backend-header">
-      <span class="section-icon">&#9881;</span>
-      <span class="section-title">Backend</span>
-      <button class="btn-add" (click)="state.addEndpointGroup()">+ Groupe</button>
+  <!-- ── DIAGRAMME ─────────────────────────────────────────────────────── -->
+  <div class="arch-diagram">
+
+    <!-- INFRA ────────────────────────────────────────────────────────────── -->
+    <div class="arch-col col-infra">
+      <div class="arch-col-hdr infra-hdr">🔐 Infrastructure</div>
+
+      <div class="infra-block">
+        <div class="ib-title">SSO Keycloak</div>
+        <div class="ib-row"><span class="ib-lbl">Auth</span><span class="ib-val">OIDC / JWT</span></div>
+        <div class="ib-row"><span class="ib-lbl">Identité</span><code class="ib-code">email</code></div>
+        <div class="ib-row"><span class="ib-lbl">Rôles</span><code class="ib-code">groups</code></div>
+      </div>
+
+      <div class="infra-block">
+        <div class="ib-title">PostgreSQL</div>
+        <div class="ib-row"><span class="ib-lbl">Schéma</span><code class="ib-code">{{ dbSchema }}</code></div>
+        <div class="ib-row"><span class="ib-lbl">Tables</span><span class="ib-val">{{ state.spec().data_models.length }}</span></div>
+      </div>
     </div>
 
-    <div class="endpoint-groups">
-      @for (group of state.spec().endpoint_groups; track group.id) {
-        <div class="block group-block">
-          <div class="block-header" (click)="toggleGroup(group.id!)">
-            <span class="block-title">{{ group.name }}</span>
-            <span class="ep-count">{{ group.endpoints.length }} ep.</span>
-            <button class="btn-edit" (click)="$event.stopPropagation(); editGroup(group.id!)">✏</button>
-            <button class="btn-remove" (click)="$event.stopPropagation(); state.removeEndpointGroup(group.id!)">✕</button>
-          </div>
+    <!-- CONN 1 ─────────────────────────────────────────────────────────── -->
+    <div class="arch-conn">
+      <div class="conn-arrow">→</div>
+      <span class="conn-tag">JWT Bearer</span>
+      <span class="conn-tag">search_path</span>
+    </div>
 
-          @if (expandedGroups().has(group.id!)) {
-            <div class="endpoints-list">
-              @for (ep of group.endpoints; track ep.id) {
-                <div class="ep-row" [class.ep-expanded]="isEditingEndpoint(group.id!, ep.id!)">
-                  <select class="method-select" [value]="ep.method"
-                          (change)="setEndpointMethod(group.id!, ep.id!, $event)">
-                    @for (m of methods; track m) { <option [value]="m" [selected]="m === ep.method">{{ m }}</option> }
-                  </select>
-                  <input class="ep-path" [value]="ep.path"
-                         (change)="setEndpointPath(group.id!, ep.id!, $event)" />
-                  <button class="btn-detail" (click)="toggleEndpointDetail(group.id!, ep.id!)"
-                          [title]="isEditingEndpoint(group.id!, ep.id!) ? 'Fermer le détail' : 'Voir le détail'">
-                    {{ isEditingEndpoint(group.id!, ep.id!) ? '▲' : '▼' }}
-                  </button>
-                  <button class="btn-remove-sm" (click)="state.removeEndpoint(group.id!, ep.id!)">✕</button>
+    <!-- BACKEND ──────────────────────────────────────────────────────────── -->
+    <div class="arch-col col-backend">
+      <div class="arch-col-hdr backend-hdr">
+        ⚙ Backend Django
+        <button class="btn-col-add" (click)="state.addEndpointGroup()">+ Groupe</button>
+      </div>
+
+      @if (state.spec().data_models.length > 0) {
+        <div class="arch-section">
+          <div class="section-lbl">Modèles de données</div>
+          @for (m of state.spec().data_models; track m.id) {
+            <div class="arch-card" [class]="elClass('model', m.id!)"
+                 (mouseenter)="setHovered('model', m.id!)" (mouseleave)="clearHovered()">
+              <div class="card-hdr" (click)="toggleModel(m.id!)">
+                <span class="card-name">{{ m.name }}</span>
+                <span class="card-badge">{{ m.fields.length }}f · {{ m.relationships.length }}r</span>
+                <span class="expand-caret">{{ expandedModels().has(m.id!) ? '▲' : '▼' }}</span>
+              </div>
+              @if (expandedModels().has(m.id!)) {
+                <div class="card-body">
+                  @for (f of m.fields; track f.name) {
+                    <div class="field-row">
+                      <code class="f-name">{{ f.name }}</code>
+                      <span class="f-type">{{ f.type }}</span>
+                      @if (f.required) { <span class="pill req">req</span> }
+                      @if (f.unique)   { <span class="pill uni">uni</span> }
+                    </div>
+                  }
+                  @for (r of m.relationships; track r.name) {
+                    <div class="field-row">
+                      <code class="f-name">{{ r.name }}</code>
+                      <span class="pill rel">{{ r.rel_type }}</span>
+                      <span class="f-type muted">→ {{ r.to_model }}</span>
+                    </div>
+                  }
+                  @let usedBy = groupsUsingModel(m.name);
+                  @if (usedBy.length > 0) {
+                    <div class="conn-row"><span class="conn-lbl">Utilisé par</span>
+                      @for (g of usedBy; track g.id) { <span class="chip chip-group">{{ g.name }}</span> }
+                    </div>
+                  }
                 </div>
+              }
+            </div>
+          }
+        </div>
+      }
 
-                @if (isEditingEndpoint(group.id!, ep.id!)) {
-                  <div class="ep-detail">
-                    <div class="ep-detail-row">
-                      <span class="ep-detail-label">Description</span>
-                      <input class="ep-detail-input" [value]="ep.description ?? ''"
-                             (input)="setEndpointDesc(group.id!, ep.id!, $event)"
-                             placeholder="Ce que fait cet endpoint…" />
+      <div class="arch-section">
+        <div class="section-lbl">API Endpoints</div>
+        @for (g of state.spec().endpoint_groups; track g.id) {
+          <div class="arch-card" [class]="elClass('group', g.id!)"
+               (mouseenter)="setHovered('group', g.id!)" (mouseleave)="clearHovered()">
+            <div class="card-hdr" (click)="toggleGroup(g.id!)">
+              @if (isEditing('group', g.id)) {
+                <input class="field-inline" [value]="g.name" (input)="setGroupName(g.id!, $event)" (click)="$event.stopPropagation()" />
+                <button class="btn-icon-ok" (click)="$event.stopPropagation(); closeEdit()">✓</button>
+              } @else {
+                <span class="card-name" (dblclick)="$event.stopPropagation(); editGroup(g.id!)">{{ g.name }}</span>
+              }
+              <span class="card-badge">{{ g.endpoints.length }} ep.</span>
+              <button class="btn-icon-rm" (click)="$event.stopPropagation(); state.removeEndpointGroup(g.id!)">✕</button>
+              <span class="expand-caret">{{ expandedGroups().has(g.id!) ? '▲' : '▼' }}</span>
+            </div>
+            @if (expandedGroups().has(g.id!)) {
+              <div class="card-body">
+                @for (ep of g.endpoints; track ep.id) {
+                  <div class="ep-block">
+                    <div class="ep-hdr" (click)="toggleEndpoint(g.id!, ep.id!)">
+                      <span class="method-badge m-{{ ep.method.toLowerCase() }}">{{ ep.method }}</span>
+                      <code class="ep-path">{{ ep.path }}</code>
+                      @if (!ep.auth_required) { <span class="pill pub">pub</span> }
+                      @if (ep.linked_model_name) { <span class="pill mdl">{{ ep.linked_model_name }}</span> }
+                      <button class="btn-icon-rm sm" (click)="$event.stopPropagation(); state.removeEndpoint(g.id!, ep.id!)">✕</button>
+                      <span class="expand-caret sm">{{ isExpandedEp(g.id!, ep.id!) ? '▲' : '▼' }}</span>
                     </div>
-                    <div class="ep-detail-row">
-                      <span class="ep-detail-label">Auth requise</span>
-                      <label class="ep-toggle">
-                        <input type="checkbox" [checked]="ep.auth_required"
-                               (change)="setEndpointAuth(group.id!, ep.id!, $event)" />
-                        <span>{{ ep.auth_required ? 'Oui' : 'Non' }}</span>
-                      </label>
-                    </div>
-                    <div class="ep-detail-row">
-                      <span class="ep-detail-label">Requête</span>
-                      <textarea class="ep-detail-json" rows="3"
-                                [value]="ep.request_schema ? (ep.request_schema | json) : ''"
-                                placeholder="{ champ: type, … }"
-                                (change)="setEndpointSchema(group.id!, ep.id!, 'request', $event)"></textarea>
-                    </div>
-                    <div class="ep-detail-row">
-                      <span class="ep-detail-label">Réponse</span>
-                      <textarea class="ep-detail-json" rows="3"
-                                [value]="ep.response_schema ? (ep.response_schema | json) : ''"
-                                placeholder="{ champ: type, … }"
-                                (change)="setEndpointSchema(group.id!, ep.id!, 'response', $event)"></textarea>
-                    </div>
-                    @if (ep.query_params?.length) {
-                      <div class="ep-detail-row">
-                        <span class="ep-detail-label">Filtres</span>
-                        <span class="ep-detail-tags">
-                          @for (qp of ep.query_params; track qp) {
-                            <span class="ep-tag">{{ qp }}</span>
-                          }
-                        </span>
+                    @if (isExpandedEp(g.id!, ep.id!)) {
+                      <div class="ep-detail">
+                        @if (ep.description) { <div class="ep-desc">{{ ep.description }}</div> }
+                        <div class="schema-row">
+                          <span class="schema-lbl">Requête</span>
+                          <code class="schema-val">{{ ep.request_schema ? (ep.request_schema | json) : '—' }}</code>
+                        </div>
+                        <div class="schema-row">
+                          <span class="schema-lbl">Réponse</span>
+                          <code class="schema-val">{{ ep.response_schema ? (ep.response_schema | json) : '—' }}</code>
+                        </div>
+                        <!-- Endpoint steps (pipeline serveur) -->
+                        @if (ep.steps && ep.steps.length > 0) {
+                          <div class="steps-section">
+                            <div class="steps-lbl">Traitement serveur</div>
+                            @for (st of ep.steps; track $index) {
+                              <div class="step-entry">
+                                <div class="step-hdr" (click)="toggleEpStep(g.id!, ep.id!, $index)">
+                                  <span class="step-num">{{ $index + 1 }}</span>
+                                  <span class="step-type st-{{ st.type }}">{{ st.type }}</span>
+                                  <span class="step-label">{{ st.label }}</span>
+                                  @if (st.description) {
+                                    <span class="expand-caret sm">{{ isExpandedEpStep(g.id!, ep.id!, $index) ? '▲' : '▼' }}</span>
+                                  }
+                                </div>
+                                @if (st.description && isExpandedEpStep(g.id!, ep.id!, $index)) {
+                                  <div class="step-desc">{{ st.description }}</div>
+                                }
+                              </div>
+                            }
+                          </div>
+                        }
+                        <!-- Edit inline -->
+                        <div class="ep-edit">
+                          <select class="sel-sm" [value]="ep.method" (change)="setEndpointMethod(g.id!, ep.id!, $event)">
+                            @for (m of methods; track m) { <option [value]="m">{{ m }}</option> }
+                          </select>
+                          <input class="inp-mono flex1" [value]="ep.path" (change)="setEndpointPath(g.id!, ep.id!, $event)" />
+                          <label class="auth-lbl">
+                            <input type="checkbox" [checked]="ep.auth_required" (change)="setEndpointAuth(g.id!, ep.id!, $event)" /> Auth
+                          </label>
+                        </div>
                       </div>
                     }
                   </div>
                 }
-              }
-              <button class="btn-add-sm" (click)="state.addEndpoint(group.id!)">+ Endpoint</button>
-            </div>
-          }
-
-          @if (isEditing('group', group.id)) {
-            <div class="edit-inline">
-              <input class="field-name" [value]="group.name"
-                     (input)="setGroupName(group.id!, $event)"
-                     placeholder="Nom du groupe" />
-              <textarea class="field-desc" [value]="group.description"
-                        (input)="setGroupDesc(group.id!, $event)"
-                        placeholder="Description…"></textarea>
-              <button class="btn-close" (click)="closeEdit()">Fermer</button>
-            </div>
-          }
-        </div>
-      }
-
-      @if (state.spec().endpoint_groups.length === 0) {
-        <div class="empty-hint">Aucun groupe — cliquez sur "+ Groupe"</div>
-      }
-    </div>
-  </section>
-
-  <!-- ── SECTION SERVICES ───────────────────────────────────────────────── -->
-  <section class="section services-section">
-    <div class="section-header services-header">
-      <span class="section-icon">&#9670;</span>
-      <span class="section-title">Services Angular</span>
-      <button class="btn-add" (click)="state.addService()">+ Service</button>
-    </div>
-
-    <div class="services-list">
-      @for (svc of state.spec().services; track svc.id) {
-        <div class="block service-block">
-          <div class="block-header">
-            @if (isEditing('service', svc.id)) {
-              <input class="field-name inline" [value]="svc.name"
-                     (input)="setServiceName(svc.id!, $event)" />
-              <button class="btn-close" (click)="closeEdit()">✓</button>
-            } @else {
-              <span class="block-title" (click)="editService(svc.id!)">{{ svc.name }}</span>
-              <button class="btn-remove" (click)="state.removeService(svc.id!)">✕</button>
-            }
-          </div>
-          <div class="service-links">
-            <span class="link-label">Groupes liés :</span>
-            @for (group of state.spec().endpoint_groups; track group.id) {
-              <button class="link-badge"
-                      [class.active]="svc.endpoint_group_ids.includes(group.id!)"
-                      (click)="toggleGroupLink(svc.id!, group.id!)">
-                {{ group.name }}
-              </button>
-            }
-          </div>
-        </div>
-      }
-
-      @if (state.spec().services.length === 0) {
-        <div class="empty-hint">Aucun service — cliquez sur "+ Service"</div>
-      }
-    </div>
-  </section>
-
-  <!-- ── SECTION FRONTEND ───────────────────────────────────────────────── -->
-  <section class="section frontend-section">
-    <div class="section-header frontend-header">
-      <span class="section-icon">&#9635;</span>
-      <span class="section-title">Frontend</span>
-      <button class="btn-add" (click)="state.addPage()">+ Page</button>
-    </div>
-
-    <div class="frontend-body">
-      <!-- Pages + interactions -->
-      <div class="pages-column">
-        @for (page of state.spec().pages; track page.id) {
-          <div class="page-row">
-            <!-- Bloc page -->
-            <div class="block page-block">
-              <div class="block-header" (click)="togglePage(page.id!)">
-                <span class="page-name">{{ page.name }}</span>
-                <span class="page-route">{{ page.route }}</span>
-                <button class="btn-edit" (click)="$event.stopPropagation(); editPage(page.id!)">✏</button>
-                <button class="btn-remove" (click)="$event.stopPropagation(); state.removePage(page.id!)">✕</button>
-              </div>
-
-              @if (isEditing('page', page.id)) {
-                <div class="edit-inline">
-                  <input class="field-name" [value]="page.name"
-                         (input)="setPageName(page.id!, $event)"
-                         placeholder="Nom de la page" />
-                  <input class="field-route" [value]="page.route"
-                         (input)="setPageRoute(page.id!, $event)"
-                         placeholder="/chemin" />
-                  <button class="btn-close" (click)="closeEdit()">Fermer</button>
-                </div>
-              }
-
-              @if (expandedPages().has(page.id!)) {
-                <!-- Services utilisés -->
-                <div class="page-services">
-                  <span class="link-label">Services :</span>
-                  @for (svc of state.spec().services; track svc.id) {
-                    <button class="link-badge"
-                            [class.active]="page.service_ids.includes(svc.id!)"
-                            (click)="toggleServiceLink(page.id!, svc.id!)">
-                      {{ svc.name }}
-                    </button>
-                  }
-                </div>
-
-                <!-- Pipelines -->
-                <div class="pipelines">
-                  <div class="sub-header">
-                    <span>Pipelines</span>
-                    <button class="btn-add-sm" (click)="state.addPipeline(page.id!)">+</button>
+                <button class="btn-add-sm" (click)="state.addEndpoint(g.id!)">+ Endpoint</button>
+                @let svcs = linkedServicesForGroup(g.id!);
+                @if (svcs.length) {
+                  <div class="conn-row"><span class="conn-lbl">Appelé par</span>
+                    @for (s of svcs; track s.id) { <span class="chip chip-svc">{{ s.name }}</span> }
                   </div>
-                  @for (pipe of page.pipelines; track pipe.id) {
-                    <div class="pipeline-item">
-                      <input class="field-sm" [value]="pipe.name"
-                             (change)="setPipelineName(page.id!, pipe.id!, $event)"
-                             placeholder="Nom du pipeline" />
-                      <span class="steps-count">{{ pipe.steps.length }} étape(s)</span>
-                      <button class="btn-remove-sm" (click)="state.removePipeline(page.id!, pipe.id!)">✕</button>
-                    </div>
-                  }
-                </div>
-              }
-            </div>
-
-            <!-- Interactions (colonne droite) -->
-            <div class="interactions-col">
-              <div class="interactions-header">
-                <span class="section-icon-sm">&#9786;</span>
-                <span>Interactions</span>
-                <button class="btn-add-sm" (click)="state.addInteraction(page.id!)">+</button>
+                }
               </div>
-              @for (inter of page.interactions; track inter.id) {
-                <div class="block interaction-block">
-                  <span class="inter-type" [class]="'type-' + inter.type">{{ inter.type }}</span>
-                  <input class="field-sm" [value]="inter.name"
-                         (change)="setInteractionName(page.id!, inter.id!, $event)"
-                         placeholder="Nom" />
-                  <select class="type-select"
-                          [value]="inter.type"
-                          (change)="setInteractionType(page.id!, inter.id!, $event)">
-                    @for (t of interactionTypes; track t) { <option [value]="t" [selected]="t === inter.type">{{ t }}</option> }
-                  </select>
-                  <button class="btn-remove-sm" (click)="state.removeInteraction(page.id!, inter.id!)">✕</button>
-                </div>
-              }
-              @if (page.interactions.length === 0) {
-                <div class="empty-hint-sm">Aucune interaction</div>
-              }
-            </div>
+            }
           </div>
         }
-
-        @if (state.spec().pages.length === 0) {
-          <div class="empty-hint">Aucune page — cliquez sur "+ Page"</div>
+        @if (state.spec().endpoint_groups.length === 0) {
+          <div class="col-empty">Aucun endpoint — demandez à l'IA ou "+ Groupe"</div>
         }
       </div>
     </div>
-  </section>
 
-</div>
+    <!-- CONN 2 ─────────────────────────────────────────────────────────── -->
+    <div class="arch-conn">
+      <div class="conn-arrow">→</div>
+      <span class="conn-tag">HTTP / JSON</span>
+      <span class="conn-tag">REST API</span>
+    </div>
+
+    <!-- FRONTEND ─────────────────────────────────────────────────────────── -->
+    <div class="arch-col col-frontend">
+      <div class="arch-col-hdr frontend-hdr">
+        ◻ Frontend Angular
+        <button class="btn-col-add" (click)="state.addPage()">+ Page</button>
+      </div>
+
+      @if (state.spec().services.length > 0) {
+        <div class="arch-section">
+          <div class="section-lbl">Services Angular</div>
+          @for (svc of state.spec().services; track svc.id) {
+            <div class="arch-card" [class]="elClass('service', svc.id!)"
+                 (mouseenter)="setHovered('service', svc.id!)" (mouseleave)="clearHovered()">
+              <div class="card-hdr">
+                @if (isEditing('service', svc.id)) {
+                  <input class="field-inline" [value]="svc.name" (input)="setServiceName(svc.id!, $event)" />
+                  <button class="btn-icon-ok" (click)="closeEdit()">✓</button>
+                } @else {
+                  <span class="card-name" (dblclick)="editService(svc.id!)">{{ svc.name }}</span>
+                  <button class="btn-icon-rm" (click)="state.removeService(svc.id!)">✕</button>
+                }
+              </div>
+              <div class="conn-row">
+                <span class="conn-lbl">Groupes</span>
+                @for (g of state.spec().endpoint_groups; track g.id) {
+                  <button class="chip chip-group" [class.active]="svc.endpoint_group_ids.includes(g.id!)"
+                          (click)="state.toggleGroupLink(svc.id!, g.id!)">{{ g.name }}</button>
+                }
+              </div>
+              @let pages = linkedPagesForService(svc.id!);
+              @if (pages.length) {
+                <div class="conn-row"><span class="conn-lbl">Pages</span>
+                  @for (p of pages; track p.id) { <span class="chip chip-page">{{ p.name }}</span> }
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+
+      <div class="arch-section">
+        <div class="section-lbl">Pages</div>
+        @for (page of state.spec().pages; track page.id) {
+          <div class="arch-card" [class]="elClass('page', page.id!)"
+               (mouseenter)="setHovered('page', page.id!)" (mouseleave)="clearHovered()">
+            <div class="card-hdr" (click)="togglePage(page.id!)">
+              @if (isEditing('page', page.id)) {
+                <input class="field-inline" [value]="page.name" (input)="setPageName(page.id!, $event)" (click)="$event.stopPropagation()" />
+                <button class="btn-icon-ok" (click)="$event.stopPropagation(); closeEdit()">✓</button>
+              } @else {
+                <span class="card-name" (dblclick)="$event.stopPropagation(); editPage(page.id!)">{{ page.name }}</span>
+              }
+              <code class="page-route">{{ page.route }}</code>
+              <span class="pill layout">{{ page.layout }}</span>
+              <button class="btn-icon-rm" (click)="$event.stopPropagation(); state.removePage(page.id!)">✕</button>
+              <span class="expand-caret">{{ expandedPages().has(page.id!) ? '▲' : '▼' }}</span>
+            </div>
+            @if (isEditing('page', page.id) && expandedPages().has(page.id!)) {
+              <div class="card-body">
+                <input class="inp-mono w100" [value]="page.route" (input)="setPageRoute(page.id!, $event)" placeholder="/route" />
+                <select class="sel-sm" [value]="page.layout" (change)="setPageLayout(page.id!, $event)">
+                  @for (l of layoutTypes; track l) { <option [value]="l">{{ l }}</option> }
+                </select>
+              </div>
+            }
+            @if (expandedPages().has(page.id!)) {
+              <div class="card-body">
+                <!-- Services -->
+                <div class="page-section">
+                  <span class="ps-lbl">Services</span>
+                  @for (svc of state.spec().services; track svc.id) {
+                    <button class="chip chip-svc" [class.active]="page.service_ids.includes(svc.id!)"
+                            (click)="state.toggleServiceLink(page.id!, svc.id!)">{{ svc.name }}</button>
+                  }
+                </div>
+                <!-- Composants -->
+                @if (page.components.length > 0) {
+                  <div class="page-section">
+                    <span class="ps-lbl">Composants</span>
+                    @for (c of page.components; track c.label) {
+                      <span class="chip comp-{{ c.type }}">{{ c.type }}: {{ c.label }}</span>
+                    }
+                  </div>
+                }
+                <!-- Interactions -->
+                @if (page.interactions.length > 0) {
+                  <div class="page-section">
+                    <span class="ps-lbl">Interactions</span>
+                    @for (i of page.interactions; track i.id) {
+                      <span class="chip inter-{{ i.type }}" [title]="i.description">{{ i.type }}: {{ i.name }}</span>
+                    }
+                  </div>
+                }
+                <!-- Pipelines -->
+                @if (page.pipelines.length > 0) {
+                  <div class="page-section">
+                    <span class="ps-lbl">Pipelines</span>
+                    @for (pipe of page.pipelines; track pipe.id) {
+                      <div class="pipeline-block">
+                        <div class="pipe-hdr" (click)="togglePipeline(page.id!, pipe.id!)">
+                          <span class="pipe-name">{{ pipe.name }}</span>
+                          <span class="card-badge">{{ pipe.steps.length }} étapes</span>
+                          <span class="expand-caret sm">{{ isExpandedPipe(page.id!, pipe.id!) ? '▲' : '▼' }}</span>
+                        </div>
+                        @if (isExpandedPipe(page.id!, pipe.id!)) {
+                          @if (pipe.description) { <div class="pipe-desc">{{ pipe.description }}</div> }
+                          <div class="steps-list">
+                            @for (st of pipe.steps; track $index) {
+                              <div class="step-entry">
+                                <div class="step-hdr" (click)="toggleStep(page.id!, pipe.id!, $index)">
+                                  <span class="step-num">{{ $index + 1 }}</span>
+                                  <span class="step-type st-{{ st.type }}">{{ st.type }}</span>
+                                  <span class="step-label">{{ st.label }}</span>
+                                  @if (st.data_flow) { <code class="step-flow">{{ st.data_flow }}</code> }
+                                  @if (st.description) {
+                                    <span class="expand-caret sm">{{ isExpandedStep(page.id!, pipe.id!, $index) ? '▲' : '▼' }}</span>
+                                  }
+                                </div>
+                                @if (st.description && isExpandedStep(page.id!, pipe.id!, $index)) {
+                                  <div class="step-desc">{{ st.description }}</div>
+                                }
+                              </div>
+                            }
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+        @if (state.spec().pages.length === 0) {
+          <div class="col-empty">Aucune page — demandez à l'IA ou "+ Page"</div>
+        }
+      </div>
+    </div>
+
+    <!-- CONN 3 ─────────────────────────────────────────────────────────── -->
+    <div class="arch-conn">
+      <div class="conn-arrow">→</div>
+      <span class="conn-tag">DOM Events</span>
+      <span class="conn-tag">Render</span>
+    </div>
+
+    <!-- NAVIGATEUR ─────────────────────────────────────────────────────── -->
+    <div class="arch-col col-browser">
+      <div class="arch-col-hdr browser-hdr">🌐 Navigateur</div>
+
+      <div class="infra-block">
+        <div class="ib-title">Utilisateur</div>
+        @for (type of interactionTypes; track type) {
+          <div class="inter-group">
+            <div class="inter-type-hdr inter-{{ type }}">{{ type }}</div>
+            @for (i of interactionsOfType(type); track i.name) {
+              <div class="inter-item" [title]="i.pageName">{{ i.name }}</div>
+            }
+          </div>
+        }
+        @if (interactionTypes.length === 0) {
+          <div class="ib-row"><span class="ib-val muted">Aucune interaction</span></div>
+        }
+      </div>
+    </div>
+
+  </div><!-- .arch-diagram -->
+</div><!-- .arch -->

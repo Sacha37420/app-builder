@@ -74,6 +74,7 @@ class Endpoint(models.Model):
     request_schema = models.JSONField(null=True, blank=True)   # {field: type}
     response_schema = models.JSONField(null=True, blank=True)  # {field: type}
     query_params = models.JSONField(default=list)          # [{name, type, required, description}]
+    steps = models.JSONField(default=list)                 # [{label, type, description}]
 
     class Meta:
         db_table = 'endpoints'

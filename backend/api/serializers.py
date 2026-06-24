@@ -17,7 +17,7 @@ class EndpointSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'method', 'path', 'description', 'order',
             'operation', 'linked_model_name', 'auth_required',
-            'required_roles', 'request_schema', 'response_schema', 'query_params',
+            'required_roles', 'request_schema', 'response_schema', 'query_params', 'steps',
         ]
 
 

@@ -2,13 +2,13 @@ import { Component, inject, signal, effect, ViewChild, ElementRef, AfterViewChec
 import { FormsModule } from '@angular/forms';
 import { BuilderApiService } from '../../core/builder-api.service';
 import { BuilderStateService } from '../../core/builder-state.service';
-import { ChatMessage, AiProvider, AgentPatch } from '../../models/app-spec.model';
+import { ChatMessage, AiProvider, AgentPatch, PersistedChatMessage } from '../../models/app-spec.model';
 
 type AppliedState = 'none' | 'merged' | 'replaced';
 
 interface Choices { multiple: boolean; items: string[]; }
 
-interface DisplayMessage extends ChatMessage {
+interface DisplayMessage extends PersistedChatMessage {
   applied?: AppliedState;
   choices?: Choices | null;
 }
@@ -88,27 +88,13 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
     effect(() => localStorage.setItem(LS.mistralKey,   this.mistralKey()));
     effect(() => localStorage.setItem(LS.mistralModel, this.mistralModel()));
 
-    effect(() => {
-      const id   = this.state.savedId();
-      const msgs = this.messages();
-      if (id != null) {
-        const slim = msgs.map(({ role, content, applied, choices }) => ({ role, content, applied, choices }));
-        localStorage.setItem(`ai_chat_${id}`, JSON.stringify(slim));
-      }
-    });
-
+    // Recharge le chat depuis le state (lui-même alimenté par le backend) à chaque changement de spec
     effect(() => {
       const _sid = this.state.specSessionId();
-      this.messages.set(this._loadChat(this.state.savedId()));
+      this.messages.set(this.state.chatHistory() as DisplayMessage[]);
       this.error.set('');
       this.selectedChoices.set(new Set());
     });
-  }
-
-  private _loadChat(id: number | null): DisplayMessage[] {
-    if (id == null) return [];
-    try { return JSON.parse(localStorage.getItem(`ai_chat_${id}`) ?? '[]') as DisplayMessage[]; }
-    catch { return []; }
   }
 
   ngOnInit(): void {
@@ -188,12 +174,14 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
     this.api.chat(this.messages(), this.state.spec(), this.provider(), this.activeKey, this.activeModel)
       .subscribe({
         next: res => {
-          this.messages.update(msgs => [...msgs, {
+          const updated: DisplayMessage[] = [...this.messages(), {
             role: 'assistant', content: res.content,
             spec_patch: res.spec_patch ?? null,
             choices:    res.choices    ?? null,
             applied: 'none',
-          }]);
+          }];
+          this.messages.set(updated);
+          this._persistChat(updated);
           this.loading.set(false);
           this.shouldScroll = true;
         },
@@ -230,8 +218,14 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
     this.messages.set([]);
     this.error.set('');
     this.selectedChoices.set(new Set());
+    this._persistChat([]);
+  }
+
+  private _persistChat(msgs: DisplayMessage[]): void {
     const id = this.state.savedId();
-    if (id != null) localStorage.removeItem(`ai_chat_${id}`);
+    if (id == null) return;
+    this.state.setChatHistory(msgs as PersistedChatMessage[]);
+    this.api.saveChatHistory(id, msgs as PersistedChatMessage[]).subscribe();
   }
 
   formatContent(content: string): string {
