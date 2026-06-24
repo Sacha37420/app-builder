@@ -2,7 +2,10 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { JsonPipe } from '@angular/common';
 import { BuilderStateService } from '../../core/builder-state.service';
-import { EndpointGroup, FrontendService, Page, HttpMethod, InteractionType } from '../../models/app-spec.model';
+import {
+  EndpointGroup, FrontendService, Page,
+  HttpMethod, InteractionType, PipelineStepType, EndpointStepType
+} from '../../models/app-spec.model';
 
 type EditTarget =
   | { kind: 'meta' }
@@ -10,6 +13,8 @@ type EditTarget =
   | { kind: 'service'; id: number }
   | { kind: 'page'; id: number }
   | null;
+
+type HoveredEl = { type: string; id: number } | null;
 
 @Component({
   selector: 'app-schema-canvas',
@@ -21,131 +26,136 @@ type EditTarget =
 export class SchemaCanvasComponent {
   state = inject(BuilderStateService);
 
+  // ── Edit ─────────────────────────────────────────────────────────────────────
   editing = signal<EditTarget>(null);
-  expandedGroups = signal<Set<number>>(new Set());
-  expandedPages = signal<Set<number>>(new Set());
+
+  // ── Expanded sets ─────────────────────────────────────────────────────────────
+  expandedModels    = signal<Set<number>>(new Set());
+  expandedGroups    = signal<Set<number>>(new Set());
   expandedEndpoints = signal<Set<string>>(new Set());
+  expandedEpSteps   = signal<Set<string>>(new Set()); // endpoint steps
+  expandedPages     = signal<Set<number>>(new Set());
+  expandedPipelines = signal<Set<string>>(new Set());
+  expandedSteps     = signal<Set<string>>(new Set());
 
-  // ── Edition inline ──────────────────────────────────────────────────────────
+  // ── Hover ─────────────────────────────────────────────────────────────────────
+  hoveredEl = signal<HoveredEl>(null);
 
-  editMeta(): void { this.editing.set({ kind: 'meta' }); }
-  editGroup(id: number): void { this.editing.set({ kind: 'group', id }); }
+  get anyHovered(): boolean { return this.hoveredEl() !== null; }
+
+  // ── Toggle helpers ────────────────────────────────────────────────────────────
+  private tog<T>(sig: ReturnType<typeof signal<Set<T>>>, key: T): void {
+    sig.update(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  }
+  toggleModel(id: number): void    { this.tog(this.expandedModels, id); }
+  toggleGroup(id: number): void    { this.tog(this.expandedGroups, id); }
+  togglePage(id: number): void     { this.tog(this.expandedPages, id); }
+  toggleEndpoint(gId: number, epId: number): void { this.tog(this.expandedEndpoints, `${gId}-${epId}`); }
+  isExpandedEp(gId: number, epId: number): boolean { return this.expandedEndpoints().has(`${gId}-${epId}`); }
+  toggleEpStep(gId: number, epId: number, i: number): void { this.tog(this.expandedEpSteps, `${gId}-${epId}-${i}`); }
+  isExpandedEpStep(gId: number, epId: number, i: number): boolean { return this.expandedEpSteps().has(`${gId}-${epId}-${i}`); }
+  togglePipeline(pageId: number, pipeId: number): void { this.tog(this.expandedPipelines, `${pageId}-${pipeId}`); }
+  isExpandedPipe(pageId: number, pipeId: number): boolean { return this.expandedPipelines().has(`${pageId}-${pipeId}`); }
+  toggleStep(pageId: number, pipeId: number, i: number): void { this.tog(this.expandedSteps, `${pageId}-${pipeId}-${i}`); }
+  isExpandedStep(pageId: number, pipeId: number, i: number): boolean { return this.expandedSteps().has(`${pageId}-${pipeId}-${i}`); }
+
+  // ── Edit helpers ──────────────────────────────────────────────────────────────
+  editMeta(): void    { this.editing.set({ kind: 'meta' }); }
+  editGroup(id: number): void   { this.editing.set({ kind: 'group', id }); }
   editService(id: number): void { this.editing.set({ kind: 'service', id }); }
-  editPage(id: number): void { this.editing.set({ kind: 'page', id }); }
-  closeEdit(): void { this.editing.set(null); }
-
+  editPage(id: number): void    { this.editing.set({ kind: 'page', id }); }
+  closeEdit(): void   { this.editing.set(null); }
   isEditing(kind: string, id?: number): boolean {
     const e = this.editing();
-    if (!e) return false;
-    if (e.kind !== kind) return false;
-    if (id !== undefined && (e as { kind: string; id: number }).id !== id) return false;
-    return true;
+    return !!e && e.kind === kind && (id === undefined || (e as any).id === id);
   }
 
-  // ── Accordéon ───────────────────────────────────────────────────────────────
+  // ── Hover / connection ────────────────────────────────────────────────────────
+  setHovered(type: string, id: number): void { this.hoveredEl.set({ type, id }); }
+  clearHovered(): void { this.hoveredEl.set(null); }
 
-  toggleGroup(id: number): void {
-    this.expandedGroups.update(s => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
+  isConnected(type: string, id: number): boolean {
+    const h = this.hoveredEl();
+    if (!h) return false;
+    const spec = this.state.spec();
+    if (h.type === 'model' && type === 'group')
+      return spec.endpoint_groups.find(g => g.id === id)?.endpoints.some(e => e.linked_model_name === spec.data_models.find(m => m.id === h.id)?.name) ?? false;
+    if (h.type === 'group' && type === 'model') {
+      const g = spec.endpoint_groups.find(g => g.id === h.id);
+      return g?.endpoints.some(e => e.linked_model_name === spec.data_models.find(m => m.id === id)?.name) ?? false;
+    }
+    if (h.type === 'group' && type === 'service')
+      return spec.services.find(s => s.id === id)?.endpoint_group_ids.includes(h.id) ?? false;
+    if (h.type === 'service' && type === 'group')
+      return spec.services.find(s => s.id === h.id)?.endpoint_group_ids.includes(id) ?? false;
+    if (h.type === 'service' && type === 'page')
+      return spec.pages.find(p => p.id === id)?.service_ids.includes(h.id) ?? false;
+    if (h.type === 'page' && type === 'service')
+      return spec.pages.find(p => p.id === h.id)?.service_ids.includes(id) ?? false;
+    return false;
   }
 
-  togglePage(id: number): void {
-    this.expandedPages.update(s => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
+  elClass(type: string, id: number): string {
+    const h = this.hoveredEl();
+    if (!h) return '';
+    if (h.type === type && h.id === id) return 'el-active';
+    if (this.isConnected(type, id)) return 'el-connected';
+    return 'el-dimmed';
   }
 
-  // ── Méthodes HTTP ────────────────────────────────────────────────────────────
+  // ── Data helpers ──────────────────────────────────────────────────────────────
+  linkedServicesForGroup(gId: number): FrontendService[] {
+    return this.state.spec().services.filter(s => s.endpoint_group_ids.includes(gId));
+  }
+  linkedPagesForService(sId: number): Page[] {
+    return this.state.spec().pages.filter(p => p.service_ids.includes(sId));
+  }
+  groupsForService(sId: number): EndpointGroup[] {
+    const svc = this.state.spec().services.find(s => s.id === sId);
+    return svc ? this.state.spec().endpoint_groups.filter(g => svc.endpoint_group_ids.includes(g.id!)) : [];
+  }
+  groupsUsingModel(name: string): EndpointGroup[] {
+    return this.state.spec().endpoint_groups.filter(g => g.endpoints.some(e => e.linked_model_name === name));
+  }
 
+  // ── Browser column ────────────────────────────────────────────────────────────
+  get interactionTypes(): InteractionType[] {
+    const types = new Set<InteractionType>();
+    for (const p of this.state.spec().pages) for (const i of p.interactions) types.add(i.type as InteractionType);
+    return Array.from(types);
+  }
+  interactionsOfType(type: InteractionType): { name: string; pageName: string }[] {
+    const result: { name: string; pageName: string }[] = [];
+    for (const p of this.state.spec().pages)
+      for (const i of p.interactions) if (i.type === type) result.push({ name: i.name, pageName: p.name });
+    return result;
+  }
+
+  // ── App name as DB schema ─────────────────────────────────────────────────────
+  get dbSchema(): string {
+    return this.state.spec().name.toLowerCase()
+      .replace(/[éèêëàâäùûüôöîï]/g, c => ({'é':'e','è':'e','ê':'e','ë':'e','à':'a','â':'a','ä':'a','ù':'u','û':'u','ü':'u','ô':'o','ö':'o','î':'i','ï':'i'})[c] ?? c)
+      .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  }
+
+  // ── Constants ─────────────────────────────────────────────────────────────────
   readonly methods: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
-  readonly interactionTypes: InteractionType[] = ['click', 'form', 'navigation', 'display', 'other'];
+  readonly layoutTypes = ['list', 'detail', 'form', 'dashboard', 'mixed'] as const;
+  readonly interTypesList: InteractionType[] = ['click', 'form', 'navigation', 'display', 'other'];
+  readonly epStepTypes: EndpointStepType[] = ['auth_check', 'validate', 'db_query', 'db_write', 'serialize', 'transform', 'error', 'custom'];
+  readonly pipeStepTypes: PipelineStepType[] = ['trigger', 'service_call', 'transform', 'state_update', 'navigate', 'error'];
 
-  // ── Helpers event → state (évite les object literals dans les templates) ────
-
+  // ── Event helpers ─────────────────────────────────────────────────────────────
   val(e: Event): string { return (e.target as HTMLInputElement).value; }
-
-  setMetaName(e: Event): void       { this.state.updateMeta(this.val(e), this.state.spec().description); }
-  setMetaDesc(e: Event): void       { this.state.updateMeta(this.state.spec().name, this.val(e)); }
-
+  setMetaName(e: Event): void { this.state.updateMeta(this.val(e), this.state.spec().description); }
+  setMetaDesc(e: Event): void { this.state.updateMeta(this.state.spec().name, this.val(e)); }
   setGroupName(id: number, e: Event): void { this.state.updateEndpointGroup(id, { name: this.val(e) }); }
   setGroupDesc(id: number, e: Event): void { this.state.updateEndpointGroup(id, { description: this.val(e) }); }
-
-  toggleEndpointDetail(gId: number, epId: number): void {
-    const key = `${gId}-${epId}`;
-    this.expandedEndpoints.update(s => {
-      const n = new Set(s);
-      n.has(key) ? n.delete(key) : n.add(key);
-      return n;
-    });
-  }
-
-  isEditingEndpoint(gId: number, epId: number): boolean {
-    return this.expandedEndpoints().has(`${gId}-${epId}`);
-  }
-
-  setEndpointMethod(gId: number, epId: number, e: Event): void {
-    this.state.updateEndpoint(gId, epId, { method: this.val(e) as HttpMethod });
-  }
-  setEndpointPath(gId: number, epId: number, e: Event): void {
-    this.state.updateEndpoint(gId, epId, { path: this.val(e) });
-  }
-  setEndpointDesc(gId: number, epId: number, e: Event): void {
-    this.state.updateEndpoint(gId, epId, { description: this.val(e) });
-  }
-  setEndpointAuth(gId: number, epId: number, e: Event): void {
-    this.state.updateEndpoint(gId, epId, { auth_required: (e.target as HTMLInputElement).checked });
-  }
-  setEndpointSchema(gId: number, epId: number, kind: 'request' | 'response', e: Event): void {
-    const raw = this.val(e).trim();
-    let parsed: Record<string, string> | null = null;
-    try { parsed = raw ? JSON.parse(raw) as Record<string, string> : null; } catch { parsed = null; }
-    if (kind === 'request') this.state.updateEndpoint(gId, epId, { request_schema: parsed });
-    else                    this.state.updateEndpoint(gId, epId, { response_schema: parsed });
-  }
-
+  setEndpointMethod(gId: number, epId: number, e: Event): void { this.state.updateEndpoint(gId, epId, { method: this.val(e) as HttpMethod }); }
+  setEndpointPath(gId: number, epId: number, e: Event): void { this.state.updateEndpoint(gId, epId, { path: this.val(e) }); }
+  setEndpointAuth(gId: number, epId: number, e: Event): void { this.state.updateEndpoint(gId, epId, { auth_required: (e.target as HTMLInputElement).checked }); }
   setServiceName(id: number, e: Event): void { this.state.updateService(id, { name: this.val(e) }); }
-
   setPageName(id: number, e: Event): void  { this.state.updatePage(id, { name: this.val(e) }); }
   setPageRoute(id: number, e: Event): void { this.state.updatePage(id, { route: this.val(e) }); }
-
-  setPipelineName(pId: number, ppId: number, e: Event): void {
-    this.state.updatePipeline(pId, ppId, { name: this.val(e) });
-  }
-  setInteractionName(pId: number, iId: number, e: Event): void {
-    this.state.updateInteraction(pId, iId, { name: this.val(e) });
-  }
-  setInteractionType(pageId: number, interId: number, event: Event): void {
-    const type = this.val(event) as InteractionType;
-    this.state.updateInteraction(pageId, interId, { type });
-  }
-
-  methodClass(method: HttpMethod): string {
-    return `method-${method.toLowerCase()}`;
-  }
-
-  // ── Liaison service/groupe ───────────────────────────────────────────────────
-
-  toggleGroupLink(svcId: number, groupId: number): void {
-    const svc = this.state.spec().services.find(s => s.id === svcId);
-    if (!svc) return;
-    const ids = svc.endpoint_group_ids.includes(groupId)
-      ? svc.endpoint_group_ids.filter(id => id !== groupId)
-      : [...svc.endpoint_group_ids, groupId];
-    this.state.updateService(svcId, { endpoint_group_ids: ids });
-  }
-
-  toggleServiceLink(pageId: number, svcId: number): void {
-    const page = this.state.spec().pages.find(p => p.id === pageId);
-    if (!page) return;
-    const ids = page.service_ids.includes(svcId)
-      ? page.service_ids.filter(id => id !== svcId)
-      : [...page.service_ids, svcId];
-    this.state.updatePage(pageId, { service_ids: ids });
-  }
-
+  setPageLayout(id: number, e: Event): void { this.state.updatePage(id, { layout: this.val(e) as any }); }
 }

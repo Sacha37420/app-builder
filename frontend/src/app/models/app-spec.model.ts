@@ -5,6 +5,7 @@ export type InteractionType = 'click' | 'form' | 'navigation' | 'display' | 'oth
 export type OperationType = 'list' | 'create' | 'retrieve' | 'update' | 'partial_update' | 'delete' | 'custom';
 export type PageLayout = 'list' | 'detail' | 'form' | 'dashboard' | 'mixed';
 export type PipelineStepType = 'trigger' | 'service_call' | 'transform' | 'state_update' | 'navigate' | 'error';
+export type EndpointStepType = 'auth_check' | 'validate' | 'db_query' | 'db_write' | 'serialize' | 'transform' | 'error' | 'custom';
 export type FieldType = 'string' | 'text' | 'int' | 'decimal' | 'bool' | 'datetime' | 'json' | 'file';
 export type RelType = 'FK' | 'M2M' | 'O2O';
 export type AiProvider = 'claude' | 'mistral';
@@ -47,6 +48,12 @@ export interface QueryParam {
   description: string;
 }
 
+export interface EndpointStep {
+  label: string;
+  type: EndpointStepType;
+  description?: string;
+}
+
 export interface Endpoint {
   id?: number;
   method: HttpMethod;
@@ -61,6 +68,7 @@ export interface Endpoint {
   request_schema: Record<string, string> | null;   // {field: type}
   response_schema: Record<string, string> | null;
   query_params: QueryParam[];
+  steps?: EndpointStep[];
 }
 
 export interface EndpointGroup {
@@ -101,6 +109,7 @@ export interface Interaction {
 export interface PipelineStep {
   id?: number;
   label: string;
+  description?: string;
   type: PipelineStepType;
   service_method?: string;   // ex: "ProduitService.create(formData)"
   data_flow?: string;        // ex: "CreateProduitDto → Produit"
@@ -134,6 +143,7 @@ export interface AppSpec {
   name: string;
   description: string;
   owner_email?: string;
+  chat_history?: PersistedChatMessage[];
   created_at?: string;
   updated_at?: string;
   data_models: DataModel[];
@@ -143,6 +153,14 @@ export interface AppSpec {
 }
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
+
+export interface PersistedChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  spec_patch?: AgentPatch | null;
+  applied?: string;
+  choices?: { multiple: boolean; items: string[] } | null;
+}
 
 export interface AgentPatchService {
   name: string;
@@ -172,13 +190,13 @@ export interface AgentPatch {
   endpoint_groups?: Array<Omit<EndpointGroup, 'id'> & { endpoints: Omit<Endpoint, 'id'>[] }>;
   services?: AgentPatchService[];
   pages?: AgentPatchPage[];
+  remove_models?: string[];
+  remove_endpoint_groups?: string[];
+  remove_services?: string[];
+  remove_pages?: string[];
 }
 
-export interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-  spec_patch?: AgentPatch | null;
-}
+export interface ChatMessage extends PersistedChatMessage {}
 
 // ── Helpers de génération de code ─────────────────────────────────────────────
 

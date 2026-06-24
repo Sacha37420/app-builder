@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { AppSpec, ChatMessage, AiProvider, AgentPatch } from '../models/app-spec.model';
+import { AppSpec, ChatMessage, AiProvider, AgentPatch, PersistedChatMessage } from '../models/app-spec.model';
 
 interface EnvWindow {
   __env?: { apiUrl?: string };
@@ -47,5 +47,9 @@ export class BuilderApiService {
       `${this.base}/api/chat/`,
       { messages: cleanMessages, app_spec: appSpec, provider, api_key: apiKey, model },
     );
+  }
+
+  saveChatHistory(id: number, history: PersistedChatMessage[]): Observable<{ ok: boolean }> {
+    return this.http.patch<{ ok: boolean }>(`${this.base}/api/apps/${id}/chat/`, { chat_history: history });
   }
 }
