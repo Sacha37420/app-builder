@@ -89,6 +89,12 @@
                                (input)="setStepLabel(selectedPage.id!, pipe.id!, $index, $event)"
                                placeholder="Ce que fait cette étape…" />
                       </label>
+                      <label>
+                        <span>Description</span>
+                        <input [value]="step.description ?? ''"
+                               (input)="setStepDescription(selectedPage.id!, pipe.id!, $index, $event)"
+                               placeholder="Détail de l'opération…" />
+                      </label>
                       @if (step.type === 'service_call') {
                         <label>
                           <span>Méthode</span>
@@ -96,11 +102,13 @@
                                  (input)="setStepServiceMethod(selectedPage.id!, pipe.id!, $index, $event)"
                                  placeholder="ex: ProduitService.create(formData)" />
                         </label>
+                      }
+                      @if (step.type === 'service_call' || step.type === 'transform') {
                         <label>
                           <span>Flux de données</span>
                           <input [value]="step.data_flow ?? ''"
                                  (input)="setStepDataFlow(selectedPage.id!, pipe.id!, $index, $event)"
-                                 placeholder="ex: CreateProduitDto → Produit" />
+                                 placeholder="ex: RawData → ProcessedResult" />
                         </label>
                       }
                       @if (step.type !== 'trigger') {

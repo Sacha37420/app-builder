@@ -81,6 +81,9 @@ export class PipelinesPageComponent {
   setStepDataFlow(pageId: number, pipeId: number, idx: number, e: Event): void {
     this.state.updatePipelineStep(pageId, pipeId, idx, { data_flow: this.val(e) });
   }
+  setStepDescription(pageId: number, pipeId: number, idx: number, e: Event): void {
+    this.state.updatePipelineStep(pageId, pipeId, idx, { description: this.val(e) });
+  }
   setStepOnError(pageId: number, pipeId: number, idx: number, e: Event): void {
     this.state.updatePipelineStep(pageId, pipeId, idx, { on_error: this.val(e) });
   }
