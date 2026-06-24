@@ -96,15 +96,29 @@ $step-colors: (
   .chevron { color: rgba(255,255,255,0.4); font-size: 0.72rem; flex-shrink: 0; }
 }
 
-.pipe-name-input {
-  background: transparent; border: none; border-bottom: 1px solid transparent;
-  color: $c-text; font-weight: 700; font-size: 0.95rem; outline: none; width: 100%;
-  &:focus { border-bottom-color: #818cf8; }
+.pipe-name-text {
+  font-weight: 700; font-size: 0.95rem; color: $c-text;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.pipe-desc-input {
-  background: transparent; border: none; border-bottom: 1px solid transparent;
-  color: rgba(255,255,255,0.5); font-size: 0.78rem; outline: none; width: 100%;
-  &:focus { border-bottom-color: #818cf8; color: $c-text; }
+.pipe-desc-text {
+  font-size: 0.78rem; color: rgba(255,255,255,0.45);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.pipeline-meta-edit {
+  width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 0.4rem;
+  margin-bottom: 1rem; padding: 0.6rem 0.8rem;
+  background: rgba(255,255,255,0.03); border-radius: 6px; border: 1px solid $c-border;
+
+  label {
+    display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem;
+    span { width: 90px; flex-shrink: 0; color: rgba(255,255,255,0.45); font-weight: 600; }
+    input {
+      flex: 1; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+      color: $c-text; border-radius: 4px; padding: 3px 6px; font-size: 0.78rem; outline: none;
+      &:focus { border-color: #818cf8; }
+    }
+  }
 }
 
 // ── Flux d'étapes ─────────────────────────────────────────────────────────────

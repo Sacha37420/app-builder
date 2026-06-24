@@ -52,14 +52,10 @@
           <div class="pipeline-header" (click)="togglePipeline(pipe.id!)">
             <span class="pipe-icon">&#9654;</span>
             <div class="pipe-title-block">
-              <input class="pipe-name-input" [value]="pipe.name"
-                     (click)="$event.stopPropagation()"
-                     (input)="setPipelineName(selectedPage.id!, pipe.id!, $event)"
-                     placeholder="Nom du pipeline" />
-              <input class="pipe-desc-input" [value]="pipe.description"
-                     (click)="$event.stopPropagation()"
-                     (input)="setPipelineDesc(selectedPage.id!, pipe.id!, $event)"
-                     placeholder="Description…" />
+              <span class="pipe-name-text">{{ pipe.name || 'Sans nom' }}</span>
+              @if (pipe.description) {
+                <span class="pipe-desc-text">{{ pipe.description }}</span>
+              }
             </div>
             <span class="steps-count">{{ totalSteps(pipe) }} étape(s)</span>
             <button class="btn-remove" (click)="$event.stopPropagation(); state.removePipeline(selectedPage.id!, pipe.id!)">✕</button>
@@ -68,6 +64,22 @@
 
           @if (expandedPipelineId() === pipe.id) {
             <div class="pipeline-flow">
+
+              <!-- ── Édition nom / description du pipeline ── -->
+              <div class="pipeline-meta-edit">
+                <label>
+                  <span>Nom</span>
+                  <input [value]="pipe.name"
+                         (input)="setPipelineName(selectedPage.id!, pipe.id!, $event)"
+                         placeholder="Nom du pipeline" />
+                </label>
+                <label>
+                  <span>Description</span>
+                  <input [value]="pipe.description"
+                         (input)="setPipelineDesc(selectedPage.id!, pipe.id!, $event)"
+                         placeholder="Description…" />
+                </label>
+              </div>
 
               <!-- ── Étapes sous forme de flux vertical ── -->
               @for (step of pipe.steps; track $index) {
