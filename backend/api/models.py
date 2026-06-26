@@ -2,8 +2,17 @@ from django.db import models
 
 
 class AppSpec(models.Model):
+    APP_TYPE_CHOICES = [
+        ('django-angular', 'Django + Angular'),
+        ('django',         'Django seul'),
+        ('spring-angular', 'Spring + Angular'),
+        ('spring',         'Spring seul'),
+        ('angular',        'Angular seul'),
+    ]
+
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
+    app_type = models.CharField(max_length=30, choices=APP_TYPE_CHOICES, default='django-angular')
     owner_email = models.EmailField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

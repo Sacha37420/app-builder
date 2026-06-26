@@ -65,7 +65,7 @@
           @if (expandedPipelineId() === pipe.id) {
             <div class="pipeline-flow">
 
-              <!-- ── Édition nom / description du pipeline ── -->
+              <!-- ── Édition nom / description / déclencheur ── -->
               <div class="pipeline-meta-edit">
                 <label>
                   <span>Nom</span>
@@ -78,6 +78,18 @@
                   <input [value]="pipe.description"
                          (input)="setPipelineDesc(selectedPage.id!, pipe.id!, $event)"
                          placeholder="Description…" />
+                </label>
+                <label>
+                  <span>⚡ Interaction déclencheure</span>
+                  <select [value]="pipe.trigger_interaction ?? ''"
+                          (change)="setTriggerInteraction(selectedPage.id!, pipe.id!, $event)">
+                    <option value="">— non liée —</option>
+                    @for (inter of getPageInteractions(selectedPage); track inter.id) {
+                      <option [value]="inter.name" [selected]="inter.name === pipe.trigger_interaction">
+                        {{ inter.name }} ({{ inter.type }})
+                      </option>
+                    }
+                  </select>
                 </label>
               </div>
 
@@ -109,7 +121,13 @@
                       </label>
                       @if (step.type === 'service_call') {
                         <label>
-                          <span>Méthode</span>
+                          <span>Service Angular</span>
+                          <input [value]="step.service_name ?? ''"
+                                 (input)="setStepServiceName(selectedPage.id!, pipe.id!, $index, $event)"
+                                 placeholder="ex: ProduitService" />
+                        </label>
+                        <label>
+                          <span>Appel complet</span>
                           <input [value]="step.service_method ?? ''"
                                  (input)="setStepServiceMethod(selectedPage.id!, pipe.id!, $index, $event)"
                                  placeholder="ex: ProduitService.create(formData)" />

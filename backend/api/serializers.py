@@ -157,7 +157,7 @@ class AppSpecSerializer(serializers.ModelSerializer):
     class Meta:
         model = AppSpec
         fields = [
-            'id', 'name', 'description', 'owner_email',
+            'id', 'name', 'description', 'app_type', 'owner_email',
             'created_at', 'updated_at',
             'data_models', 'endpoint_groups', 'services', 'pages',
         ]

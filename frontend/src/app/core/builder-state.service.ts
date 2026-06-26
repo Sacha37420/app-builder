@@ -3,7 +3,7 @@ import { Subject, throwError } from 'rxjs';
 import { debounceTime, filter, switchMap, tap, catchError } from 'rxjs/operators';
 import { Observable } from 'rxjs';
 import {
-  AppSpec, DataModel, ModelField, ModelRelationship,
+  AppSpec, AppType, DataModel, ModelField, ModelRelationship,
   EndpointGroup, Endpoint, FrontendService, Page,
   Interaction, Pipeline, PipelineStep, PageComponent,
   OperationType, PageLayout, AgentPatch, PersistedChatMessage,
@@ -16,6 +16,7 @@ export type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error';
 const EMPTY_SPEC: AppSpec = {
   name: 'Mon Application',
   description: '',
+  app_type: 'django-angular',
   data_models: [],
   endpoint_groups: [],
   services: [],
@@ -117,6 +118,10 @@ export class BuilderStateService {
 
   updateMeta(name: string, description: string): void {
     this.mutate(s => ({ ...s, name, description }));
+  }
+
+  updateAppType(app_type: AppType): void {
+    this.mutate(s => ({ ...s, app_type }));
   }
 
   // ── Phase 1 : DataModels ─────────────────────────────────────────────────────
@@ -575,7 +580,10 @@ export class BuilderStateService {
       items.map((inter, j) => ({ ...inter, id: this.tid(), order: j }));
 
     const buildPipelines = (items: Array<Omit<Pipeline, 'id' | 'order'> & { order?: number }>): Pipeline[] =>
-      items.map((pl, k) => ({ ...pl, id: this.tid(), order: pl.order ?? k, steps: pl.steps ?? [] }));
+      items.map((pl, k) => ({
+        ...pl, id: this.tid(), order: pl.order ?? k, steps: pl.steps ?? [],
+        trigger_interaction: pl.trigger_interaction,
+      }));
 
     const patchPageMap = new Map((n.pages ?? []).map(p => [p.name, p]));
     const allPages: Page[] = [
@@ -613,9 +621,10 @@ export class BuilderStateService {
   }
 
   replaceFromAgent(patch: AgentPatch): void {
-    this.mutate(() => ({
+    this.mutate(cur => ({
       name: patch.set_meta?.name ?? 'Mon Application',
       description: patch.set_meta?.description ?? '',
+      app_type: cur.app_type,
       data_models: [], endpoint_groups: [], services: [], pages: [],
     }));
     this.mergeFromAgent({ ...patch, set_meta: undefined });
@@ -792,8 +801,17 @@ export class BuilderStateService {
             .map((pl: any) => ({
               name: str(pl.name),
               description: str(pl.description),
+              trigger_interaction: pl.trigger_interaction ? str(pl.trigger_interaction) : undefined,
               order: typeof pl.order === 'number' ? pl.order : 0,
-              steps: arr<PipelineStep>(pl.steps),
+              steps: arr<PipelineStep>(pl.steps).map((st: any) => ({
+                label: str(st.label),
+                type: st.type ?? 'trigger',
+                ...(st.description && { description: str(st.description) }),
+                ...(st.service_name && { service_name: str(st.service_name) }),
+                ...(st.service_method && { service_method: str(st.service_method) }),
+                ...(st.data_flow && { data_flow: str(st.data_flow) }),
+                ...(st.on_error && { on_error: str(st.on_error) }),
+              })),
             })),
         })),
     };
