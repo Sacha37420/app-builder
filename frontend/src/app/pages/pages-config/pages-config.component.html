@@ -1,0 +1,226 @@
+<app-navbar />
+
+<div class="pages-config">
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       COLONNE GAUCHE — Services Angular (Phase 3a)
+  ═══════════════════════════════════════════════════════════════════════ -->
+  <section class="services-panel">
+    <div class="panel-header">
+      <span class="panel-title">③ Services Angular</span>
+      <span class="count">{{ state.spec().services.length }}</span>
+      <button class="btn-add-sm" (click)="state.addService()">+ Service</button>
+    </div>
+
+    @if (state.spec().services.length === 0) {
+      <div class="empty-panel">Aucun service défini.<br>Utilisez le chat IA ou ajoutez-en un manuellement.</div>
+    }
+
+    @for (svc of state.spec().services; track svc.id) {
+      <div class="service-card">
+        <div class="svc-header">
+          <input class="svc-name-input" [value]="svc.name"
+                 (input)="setServiceName(svc.id!, $event)"
+                 placeholder="NomDuService" />
+          <button class="btn-remove-icon" (click)="state.removeService(svc.id!)">✕</button>
+        </div>
+
+        <div class="svc-groups">
+          <span class="svc-label">Groupes d'endpoints liés :</span>
+          @for (g of state.spec().endpoint_groups; track g.id) {
+            <label class="group-toggle" [class.active]="svc.endpoint_group_ids.includes(g.id!)">
+              <input type="checkbox"
+                     [checked]="svc.endpoint_group_ids.includes(g.id!)"
+                     (change)="state.toggleGroupLink(svc.id!, g.id!)" />
+              {{ g.name }}
+            </label>
+          }
+          @if (state.spec().endpoint_groups.length === 0) {
+            <span class="no-groups">Aucun groupe disponible (Phase 2)</span>
+          }
+        </div>
+      </div>
+    }
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       COLONNE DROITE — Pages Angular (Phase 3b)
+  ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="pages-panel">
+
+    <!-- Sidebar pages -->
+    <aside class="pages-sidebar">
+      <div class="sidebar-header">
+        <span>Pages</span>
+        <span class="count">{{ state.spec().pages.length }}</span>
+        <button class="btn-add-sm" (click)="state.addPage()">+</button>
+      </div>
+
+      @for (page of state.spec().pages; track page.id) {
+        <div class="sidebar-item"
+             [class.active]="selectedPageId() === page.id"
+             (click)="selectPage(page.id!)">
+          <span class="page-name">{{ page.name }}</span>
+          <span class="page-route">{{ page.route }}</span>
+        </div>
+      }
+      @if (state.spec().pages.length === 0) {
+        <div class="sidebar-empty">Aucune page définie</div>
+      }
+    </aside>
+
+    <!-- Détail page sélectionnée -->
+    <main class="page-detail">
+      @if (!selectedPage) {
+        <div class="select-hint">
+          <div class="hint-icon">③</div>
+          <p>Phase 3 — Pages Angular</p>
+          <p class="hint-sub">Sélectionnez une page pour voir ses composants et interactions.</p>
+        </div>
+      } @else {
+
+        <!-- En-tête page -->
+        <div class="page-header-bar">
+          <input class="page-name-input" [value]="selectedPage.name"
+                 (input)="setPageName(selectedPage.id!, $event)"
+                 placeholder="NomDeLaPage" />
+          <input class="page-route-input" [value]="selectedPage.route"
+                 (input)="setPageRoute(selectedPage.id!, $event)"
+                 placeholder="/ma-route/:id" />
+          <select [value]="selectedPage.layout"
+                  (change)="setPageLayout(selectedPage.id!, $event)">
+            @for (l of layouts; track l) {
+              <option [value]="l" [selected]="l === selectedPage.layout">{{ layoutLabels[l] }}</option>
+            }
+          </select>
+          <button class="btn-danger-sm" (click)="state.removePage(selectedPage.id!)">Supprimer</button>
+        </div>
+
+        <!-- Services liés -->
+        <div class="section-block">
+          <div class="section-title">Services utilisés par cette page</div>
+          <div class="service-toggles">
+            @for (svc of state.spec().services; track svc.id) {
+              <label class="svc-toggle" [class.active]="selectedPage.service_ids.includes(svc.id!)">
+                <input type="checkbox"
+                       [checked]="selectedPage.service_ids.includes(svc.id!)"
+                       (change)="state.toggleServiceLink(selectedPage.id!, svc.id!)" />
+                {{ svc.name }}
+              </label>
+            }
+            @if (state.spec().services.length === 0) {
+              <span class="empty-sm">Aucun service disponible</span>
+            }
+          </div>
+        </div>
+
+        <!-- Composants UI -->
+        <div class="section-block">
+          <div class="section-title-row">
+            <span class="section-title">Composants UI</span>
+            <button class="btn-add-sm" (click)="state.addComponent(selectedPage.id!)">+ Composant</button>
+          </div>
+
+          @if (selectedPage.components.length === 0) {
+            <div class="empty-sm">Aucun composant — ajouter un tableau, formulaire, graphique ou carte.</div>
+          }
+
+          @for (comp of selectedPage.components; track $index) {
+            <div class="comp-card">
+              <div class="comp-header">
+                <select [value]="comp.type" (change)="setCompType(selectedPage.id!, $index, $event)">
+                  @for (ct of compTypes; track ct) {
+                    <option [value]="ct" [selected]="ct === comp.type">{{ ct }}</option>
+                  }
+                </select>
+                <input [value]="comp.label" (input)="setCompLabel(selectedPage.id!, $index, $event)"
+                       placeholder="Label du composant" class="comp-label-input" />
+                <select [value]="comp.linked_model ?? ''"
+                        (change)="setCompModel(selectedPage.id!, $index, $event)">
+                  <option value="">— modèle lié —</option>
+                  @for (m of state.getModelNames(); track m) {
+                    <option [value]="m" [selected]="m === comp.linked_model">{{ m }}</option>
+                  }
+                </select>
+                <button class="btn-remove-icon" (click)="state.removeComponent(selectedPage.id!, $index)">✕</button>
+              </div>
+
+              <!-- Champs du composant -->
+              <div class="comp-fields-row">
+                <span class="fields-label">
+                  @if (comp.type === 'table') { Colonnes }
+                  @else if (comp.type === 'form') { Champs du formulaire }
+                  @else { Champs affichés }
+                  :
+                </span>
+
+                <!-- Suggestions depuis le modèle lié -->
+                @if (comp.linked_model) {
+                  <div class="field-suggestions">
+                    @for (f of getModelFields(comp.linked_model); track f) {
+                      <button class="field-chip"
+                              [class.selected]="(comp.fields ?? []).includes(f)"
+                              (click)="(comp.fields ?? []).includes(f)
+                                ? removeCompField(selectedPage.id!, comp, $index, (comp.fields ?? []).indexOf(f))
+                                : addCompField(selectedPage.id!, comp, $index, f)">
+                        {{ f }}
+                      </button>
+                    }
+                  </div>
+                }
+
+                <!-- Champs sélectionnés -->
+                <div class="selected-fields">
+                  @for (f of comp.fields ?? []; track $index) {
+                    <span class="field-tag">
+                      {{ f }}
+                      <button (click)="removeCompField(selectedPage.id!, comp, $index, $index)">×</button>
+                    </span>
+                  }
+                  @if ((comp.fields ?? []).length === 0 && !comp.linked_model) {
+                    <span class="empty-sm">Choisir un modèle lié pour voir les champs disponibles</span>
+                  }
+                  @if ((comp.fields ?? []).length === 0 && comp.linked_model) {
+                    <span class="empty-sm">Cliquer sur les champs ci-dessus pour les sélectionner</span>
+                  }
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+
+        <!-- Interactions -->
+        <div class="section-block">
+          <div class="section-title-row">
+            <span class="section-title">Interactions utilisateur</span>
+            <button class="btn-add-sm" (click)="state.addInteraction(selectedPage.id!)">+ Interaction</button>
+          </div>
+
+          @if (selectedPage.interactions.length === 0) {
+            <div class="empty-sm">Aucune interaction définie.</div>
+          }
+
+          @for (inter of selectedPage.interactions; track inter.id) {
+            <div class="interaction-row">
+              <select [value]="inter.type"
+                      (change)="setInteractionType(selectedPage.id!, inter.id!, $event)">
+                @for (it of interactionTypes; track it) {
+                  <option [value]="it" [selected]="it === inter.type">{{ it }}</option>
+                }
+              </select>
+              <input [value]="inter.name"
+                     (input)="setInteractionName(selectedPage.id!, inter.id!, $event)"
+                     placeholder="Nom de l'interaction" class="inter-name" />
+              <input [value]="inter.description"
+                     (input)="setInteractionDesc(selectedPage.id!, inter.id!, $event)"
+                     placeholder="Description…" class="inter-desc" />
+              <button class="btn-remove-icon" (click)="state.removeInteraction(selectedPage.id!, inter.id!)">✕</button>
+            </div>
+          }
+        </div>
+
+      }
+    </main>
+  </div>
+
+</div>

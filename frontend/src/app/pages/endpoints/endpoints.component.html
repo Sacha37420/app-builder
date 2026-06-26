@@ -1,0 +1,208 @@
+<app-navbar />
+
+<div class="endpoints-page">
+
+  <!-- ── Sidebar groupes ────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <span>Groupes d'endpoints</span>
+      <span class="count">{{ state.spec().endpoint_groups.length }}</span>
+    </div>
+    @for (g of state.spec().endpoint_groups; track g.id) {
+      <div class="sidebar-item"
+           [class.active]="selectedGroupId() === g.id"
+           (click)="selectGroup(g.id!)">
+        <span class="group-name">{{ g.name }}</span>
+        <span class="ep-count">{{ g.endpoints.length }} endpoint(s)</span>
+      </div>
+    }
+    @if (state.spec().endpoint_groups.length === 0) {
+      <div class="sidebar-empty">Aucun groupe — utilisez le chat IA pour en créer</div>
+    }
+    <button class="btn-add-group" (click)="state.addEndpointGroup()">+ Groupe</button>
+  </aside>
+
+  <!-- ── Contenu principal ──────────────────────────────────────────────── -->
+  <main class="endpoints-main">
+
+    @if (!selectedGroup) {
+      <div class="select-hint">
+        <div class="hint-icon">②</div>
+        <p>Phase 2 — API Backend</p>
+        <p class="hint-sub">Sélectionnez un groupe dans la liste à gauche pour voir et éditer ses endpoints.</p>
+      </div>
+    } @else {
+
+      <!-- ── En-tête du groupe ── -->
+      <div class="group-header">
+        <div class="group-meta">
+          <input class="group-name-input" [value]="selectedGroup.name"
+                 (input)="setGroupName(selectedGroup.id!, $event)"
+                 placeholder="Nom du groupe" />
+          <input class="group-desc-input" [value]="selectedGroup.description"
+                 (input)="setGroupDesc(selectedGroup.id!, $event)"
+                 placeholder="Description du groupe…" />
+        </div>
+        <div class="group-actions">
+          <button class="btn-add" (click)="state.addEndpoint(selectedGroup.id!)">+ Endpoint</button>
+          <button class="btn-danger" (click)="state.removeEndpointGroup(selectedGroup.id!)">Supprimer le groupe</button>
+        </div>
+      </div>
+
+      @if (selectedGroup.endpoints.length === 0) {
+        <div class="empty-msg">Aucun endpoint dans ce groupe.</div>
+      }
+
+      <!-- ── Liste des endpoints ── -->
+      @for (ep of selectedGroup.endpoints; track ep.id) {
+        <div class="endpoint-card" [class.expanded]="expandedEndpointId() === ep.id">
+
+          <!-- En-tête (toujours visible) -->
+          <div class="ep-header" (click)="toggleEndpoint(ep.id!)">
+            <span class="method-badge" [style.background]="methodColors[ep.method]">{{ ep.method }}</span>
+            <span class="ep-path">{{ ep.path || '/chemin' }}</span>
+            <span class="ep-desc">{{ ep.description }}</span>
+            @if (ep.required_roles.length > 0) {
+              <span class="roles-badge">🔒 {{ ep.required_roles.join(', ') }}</span>
+            }
+            @if (!ep.auth_required) {
+              <span class="public-badge">public</span>
+            }
+            <button class="btn-remove" (click)="$event.stopPropagation(); state.removeEndpoint(selectedGroup.id!, ep.id!)">✕</button>
+            <span class="chevron">{{ expandedEndpointId() === ep.id ? '▲' : '▼' }}</span>
+          </div>
+
+          <!-- Corps expandé -->
+          @if (expandedEndpointId() === ep.id) {
+            <div class="ep-body">
+
+              <!-- Ligne 1 : méthode + chemin + description -->
+              <div class="ep-row">
+                <label class="field-group">
+                  <span>Méthode</span>
+                  <select [value]="ep.method" (change)="setMethod(selectedGroup.id!, ep.id!, $event)">
+                    @for (m of methods; track m) {
+                      <option [value]="m" [selected]="m === ep.method">{{ m }}</option>
+                    }
+                  </select>
+                </label>
+                <label class="field-group flex2">
+                  <span>Chemin</span>
+                  <input [value]="ep.path" (input)="setPath(selectedGroup.id!, ep.id!, $event)"
+                         placeholder="/api/ressource/:id" />
+                </label>
+                <label class="field-group flex3">
+                  <span>Description</span>
+                  <input [value]="ep.description" (input)="setDescription(selectedGroup.id!, ep.id!, $event)"
+                         placeholder="Ce que fait cet endpoint…" />
+                </label>
+              </div>
+
+              <!-- Ligne 2 : opération + modèle -->
+              <div class="ep-row">
+                <label class="field-group">
+                  <span>Opération DRF</span>
+                  <select [value]="ep.operation" (change)="setOperation(selectedGroup.id!, ep.id!, $event)">
+                    @for (op of operations; track op) {
+                      <option [value]="op" [selected]="op === ep.operation">{{ op }}</option>
+                    }
+                  </select>
+                </label>
+                <label class="field-group flex2">
+                  <span>Modèle lié</span>
+                  <select [value]="ep.linked_model_name" (change)="setLinkedModel(selectedGroup.id!, ep.id!, $event)">
+                    <option value="">— aucun —</option>
+                    @for (m of state.getModelNames(); track m) {
+                      <option [value]="m" [selected]="m === ep.linked_model_name">{{ m }}</option>
+                    }
+                  </select>
+                </label>
+                <label class="field-group auth-toggle">
+                  <span>Auth requise</span>
+                  <input type="checkbox" [checked]="ep.auth_required"
+                         (change)="setAuthRequired(selectedGroup.id!, ep.id!, $event)" />
+                </label>
+              </div>
+
+              <!-- Rôles requis -->
+              <div class="section-block">
+                <div class="section-title">🔒 Rôles requis (groupes Keycloak)</div>
+                <div class="roles-container">
+                  @for (role of ep.required_roles; track role) {
+                    <span class="role-tag">
+                      {{ role }}
+                      <button (click)="removeRole(selectedGroup.id!, ep, role)">×</button>
+                    </span>
+                  }
+                  @if (ep.required_roles.length === 0) {
+                    <span class="roles-empty">Accessible à tous les utilisateurs connectés</span>
+                  }
+                  <input class="role-input" placeholder="Ajouter un rôle (Entrée)"
+                         (keydown)="onRoleKeydown(selectedGroup.id!, ep, $event)" />
+                </div>
+              </div>
+
+              <!-- Query params -->
+              <div class="section-block">
+                <div class="section-title-row">
+                  <span class="section-title">🔍 Paramètres de filtre / recherche</span>
+                  <button class="btn-add-sm" (click)="addQueryParam(selectedGroup.id!, ep)">+ Param</button>
+                </div>
+                @if ((ep.query_params ?? []).length === 0) {
+                  <div class="empty-sm">Aucun paramètre de filtre défini</div>
+                }
+                @for (qp of ep.query_params; track $index) {
+                  <div class="qp-row">
+                    <input [value]="qp.name" (input)="updateQueryParam(selectedGroup.id!, ep, $index, { name: val($event) })"
+                           placeholder="nom" class="qp-name" />
+                    <select [value]="qp.type" (change)="setQueryParamType(selectedGroup.id!, ep, $index, $event)">
+                      @for (ft of fieldTypes; track ft) {
+                        <option [value]="ft" [selected]="ft === qp.type">{{ ft }}</option>
+                      }
+                    </select>
+                    <label class="qp-required">
+                      <input type="checkbox" [checked]="qp.required"
+                             (change)="updateQueryParam(selectedGroup.id!, ep, $index, { required: checked($event) })" />
+                      requis
+                    </label>
+                    <input [value]="qp.description" (input)="updateQueryParam(selectedGroup.id!, ep, $index, { description: val($event) })"
+                           placeholder="description…" class="qp-desc" />
+                    <button class="btn-remove-sm" (click)="removeQueryParam(selectedGroup.id!, ep, $index)">✕</button>
+                  </div>
+                }
+              </div>
+
+              <!-- Steps serveur -->
+              <div class="section-block">
+                <div class="section-title-row">
+                  <span class="section-title">⚙ Étapes de traitement serveur</span>
+                  <button class="btn-add-sm" (click)="addStep(selectedGroup.id!, ep)">+ Étape</button>
+                </div>
+                @if ((ep.steps ?? []).length === 0) {
+                  <div class="empty-sm">Aucune étape définie</div>
+                }
+                @for (step of ep.steps ?? []; track $index) {
+                  <div class="step-row">
+                    <span class="step-num">{{ $index + 1 }}</span>
+                    <select [value]="step.type" (change)="setStepType(selectedGroup.id!, ep, $index, $event)">
+                      @for (st of stepTypes; track st) {
+                        <option [value]="st" [selected]="st === step.type">{{ st }}</option>
+                      }
+                    </select>
+                    <input [value]="step.label" (input)="updateStep(selectedGroup.id!, ep, $index, { label: val($event) })"
+                           placeholder="Label de l'étape" class="step-label" />
+                    <input [value]="step.description ?? ''" (input)="updateStep(selectedGroup.id!, ep, $index, { description: val($event) })"
+                           placeholder="Description…" class="step-desc" />
+                    <button class="btn-remove-sm" (click)="removeStep(selectedGroup.id!, ep, $index)">✕</button>
+                  </div>
+                }
+              </div>
+
+            </div>
+          }
+
+        </div>
+      }
+    }
+  </main>
+</div>

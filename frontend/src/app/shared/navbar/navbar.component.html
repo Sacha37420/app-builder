@@ -7,11 +7,13 @@
 
   <div class="nav-content" [class.open]="menuOpen()">
     <div class="nav-links">
-      <a routerLink="/"          routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMenu()">Canvas</a>
-      <a routerLink="/models"    routerLinkActive="active" (click)="closeMenu()">Modèles</a>
-      <a routerLink="/infra"     routerLinkActive="active" (click)="closeMenu()">Infrastructure</a>
-      <a routerLink="/pipelines" routerLinkActive="active" (click)="closeMenu()">Pipelines</a>
-      <a routerLink="/preview"   routerLinkActive="active" (click)="closeMenu()">Code</a>
+      <a routerLink="/"            routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMenu()">Canvas</a>
+      <a routerLink="/models"      routerLinkActive="active" (click)="closeMenu()">① Modèles</a>
+      <a routerLink="/endpoints"   routerLinkActive="active" (click)="closeMenu()">② API</a>
+      <a routerLink="/pages-config" routerLinkActive="active" (click)="closeMenu()">③ Pages</a>
+      <a routerLink="/pipelines"   routerLinkActive="active" (click)="closeMenu()">④ Pipelines</a>
+      <a routerLink="/preview"     routerLinkActive="active" (click)="closeMenu()">Code</a>
+      <a routerLink="/infra"       routerLinkActive="active" (click)="closeMenu()">Infra</a>
     </div>
 
     <div class="save-zone">

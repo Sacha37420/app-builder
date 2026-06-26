@@ -9,6 +9,7 @@ export type EndpointStepType = 'auth_check' | 'validate' | 'db_query' | 'db_writ
 export type FieldType = 'string' | 'text' | 'int' | 'decimal' | 'bool' | 'datetime' | 'json' | 'file';
 export type RelType = 'FK' | 'M2M' | 'O2O';
 export type AiProvider = 'claude' | 'mistral';
+export type AppType = 'django-angular' | 'django' | 'spring-angular' | 'spring' | 'angular';
 
 // ── Phase 1 : Modèles de données ──────────────────────────────────────────────
 
@@ -111,6 +112,7 @@ export interface PipelineStep {
   label: string;
   description?: string;
   type: PipelineStepType;
+  service_name?: string;     // ex: "ProduitService" (classe Angular)
   service_method?: string;   // ex: "ProduitService.create(formData)"
   data_flow?: string;        // ex: "CreateProduitDto → Produit"
   on_error?: string;         // comportement en cas d'erreur
@@ -120,6 +122,7 @@ export interface Pipeline {
   id?: number;
   name: string;
   description: string;
+  trigger_interaction?: string;  // name d'une Interaction de la même page
   steps: PipelineStep[];
   order: number;
 }
@@ -142,6 +145,7 @@ export interface AppSpec {
   id?: number;
   name: string;
   description: string;
+  app_type: AppType;
   owner_email?: string;
   chat_history?: PersistedChatMessage[];
   created_at?: string;
@@ -179,6 +183,7 @@ export interface AgentPatchPage {
   pipelines: Array<{
     name: string;
     description: string;
+    trigger_interaction?: string;
     order?: number;
     steps: PipelineStep[];
   }>;

@@ -87,4 +87,14 @@ export class PipelinesPageComponent {
   setStepOnError(pageId: number, pipeId: number, idx: number, e: Event): void {
     this.state.updatePipelineStep(pageId, pipeId, idx, { on_error: this.val(e) });
   }
+  setStepServiceName(pageId: number, pipeId: number, idx: number, e: Event): void {
+    this.state.updatePipelineStep(pageId, pipeId, idx, { service_name: this.val(e) });
+  }
+  setTriggerInteraction(pageId: number, pipeId: number, e: Event): void {
+    this.state.updatePipeline(pageId, pipeId, { trigger_interaction: this.val(e) || undefined });
+  }
+
+  getPageInteractions(page: import('../../models/app-spec.model').Page) {
+    return page.interactions;
+  }
 }

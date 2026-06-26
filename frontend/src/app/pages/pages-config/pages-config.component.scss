@@ -1,0 +1,242 @@
+$c-bg: #0f172a; $c-surface: #1e293b; $c-border: rgba(255,255,255,0.08); $c-text: #f1f5f9;
+$c-muted: rgba(255,255,255,0.4);
+
+.pages-config {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  height: calc(100vh - 56px);
+  background: $c-bg;
+  color: $c-text;
+  overflow: hidden;
+}
+
+// ══ Panneau services (gauche) ═════════════════════════════════════════════════
+.services-panel {
+  background: #0d1526;
+  border-right: 1px solid $c-border;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+}
+
+.panel-header {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.75rem 1rem; border-bottom: 1px solid $c-border;
+  position: sticky; top: 0; background: #0d1526; z-index: 1;
+  .panel-title { font-weight: 700; font-size: 0.85rem; flex: 1; }
+  .count { font-size: 0.72rem; background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 10px; }
+}
+
+.empty-panel {
+  padding: 1.5rem 1rem; color: $c-muted; font-size: 0.8rem;
+  font-style: italic; text-align: center; line-height: 1.6;
+}
+
+.service-card {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid $c-border;
+
+  .svc-header {
+    display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;
+  }
+
+  .svc-name-input {
+    flex: 1; font-weight: 600; font-size: 0.85rem; font-family: monospace;
+    background: transparent; border: none; border-bottom: 1px solid $c-border;
+    color: #93c5fd; padding: 0.15rem 0;
+    &:focus { outline: none; border-color: #3b82f6; }
+  }
+
+  .svc-label { display: block; font-size: 0.7rem; color: $c-muted; margin-bottom: 0.35rem; }
+
+  .svc-groups {
+    display: flex; flex-direction: column; gap: 0.25rem;
+  }
+}
+
+.group-toggle {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-size: 0.78rem; color: $c-muted; cursor: pointer; padding: 0.15rem 0;
+  input { accent-color: #3b82f6; }
+  &.active { color: $c-text; }
+}
+
+.no-groups { font-size: 0.75rem; color: $c-muted; font-style: italic; }
+
+// ══ Panneau pages (droite) ════════════════════════════════════════════════════
+.pages-panel {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  overflow: hidden;
+}
+
+.pages-sidebar {
+  background: #111827;
+  border-right: 1px solid $c-border;
+  overflow-y: auto;
+
+  .sidebar-header {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.75rem 0.75rem; font-weight: 700; font-size: 0.85rem;
+    border-bottom: 1px solid $c-border; position: sticky; top: 0;
+    background: #111827; z-index: 1;
+    span:first-child { flex: 1; }
+    .count { font-size: 0.72rem; background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 10px; }
+  }
+
+  .sidebar-item {
+    padding: 0.55rem 0.75rem; cursor: pointer; border-bottom: 1px solid $c-border;
+    transition: background 0.12s;
+    &:hover { background: rgba(255,255,255,0.04); }
+    &.active { background: rgba(139,92,246,0.15); border-left: 3px solid #8b5cf6; }
+    .page-name { display: block; font-weight: 600; font-size: 0.82rem; }
+    .page-route { display: block; font-size: 0.7rem; color: $c-muted; font-family: monospace; margin-top: 1px; }
+  }
+
+  .sidebar-empty { padding: 1rem 0.75rem; color: $c-muted; font-size: 0.78rem; font-style: italic; }
+}
+
+// ── Détail page ───────────────────────────────────────────────────────────────
+.page-detail {
+  overflow-y: auto; padding: 1.25rem;
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+}
+
+.select-hint {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; height: 60%; color: $c-muted; text-align: center;
+  .hint-icon { font-size: 3rem; font-weight: 700; color: rgba(255,255,255,0.12); margin-bottom: 0.5rem; }
+  p { font-size: 0.88rem; margin: 0.2rem 0; }
+  .hint-sub { font-size: 0.78rem; }
+}
+
+.page-header-bar {
+  display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1rem; flex-wrap: wrap;
+
+  .page-name-input {
+    font-size: 1.05rem; font-weight: 700; background: transparent;
+    border: none; border-bottom: 1px solid $c-border; color: $c-text;
+    padding: 0.2rem 0; min-width: 160px;
+    &:focus { outline: none; border-color: #8b5cf6; }
+  }
+  .page-route-input {
+    font-family: monospace; font-size: 0.82rem; background: rgba(255,255,255,0.05);
+    border: 1px solid $c-border; border-radius: 5px; color: #93c5fd;
+    padding: 0.3rem 0.6rem; min-width: 140px;
+    &:focus { outline: none; border-color: #8b5cf6; }
+  }
+  select {
+    background: rgba(255,255,255,0.05); border: 1px solid $c-border;
+    border-radius: 5px; color: $c-text; padding: 0.3rem 0.6rem; font-size: 0.82rem;
+    &:focus { outline: none; border-color: #8b5cf6; }
+  }
+}
+
+// ── Sections ──────────────────────────────────────────────────────────────────
+.section-block {
+  background: rgba(0,0,0,0.15); border: 1px solid $c-border;
+  border-radius: 8px; padding: 0.85rem; margin-bottom: 0.85rem;
+}
+
+.section-title {
+  font-size: 0.72rem; font-weight: 700; color: rgba(255,255,255,0.45);
+  text-transform: uppercase; letter-spacing: 0.06em; display: block; margin-bottom: 0.6rem;
+}
+
+.section-title-row {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem;
+}
+
+// Services liés
+.service-toggles {
+  display: flex; flex-wrap: wrap; gap: 0.4rem;
+}
+
+.svc-toggle {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 3px 10px; border-radius: 12px; cursor: pointer; font-size: 0.8rem;
+  background: rgba(255,255,255,0.04); color: $c-muted; border: 1px solid $c-border;
+  input { accent-color: #8b5cf6; }
+  &.active { background: rgba(139,92,246,0.15); color: #c4b5fd; border-color: rgba(139,92,246,0.3); }
+}
+
+// ── Composants ────────────────────────────────────────────────────────────────
+.comp-card {
+  background: rgba(255,255,255,0.03); border: 1px solid $c-border;
+  border-radius: 6px; padding: 0.7rem; margin-bottom: 0.6rem;
+
+  .comp-header {
+    display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem;
+    select, input {
+      background: rgba(255,255,255,0.05); border: 1px solid $c-border;
+      border-radius: 5px; color: $c-text; padding: 0.3rem 0.5rem; font-size: 0.8rem;
+      &:focus { outline: none; border-color: #8b5cf6; }
+    }
+    .comp-label-input { flex: 1; }
+  }
+}
+
+.comp-fields-row {
+  .fields-label {
+    font-size: 0.72rem; color: $c-muted; text-transform: uppercase;
+    letter-spacing: 0.04em; display: block; margin-bottom: 0.4rem;
+  }
+}
+
+.field-suggestions {
+  display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.4rem;
+}
+
+.field-chip {
+  padding: 2px 9px; border-radius: 10px; font-size: 0.76rem; font-family: monospace;
+  cursor: pointer; border: 1px solid $c-border;
+  background: rgba(255,255,255,0.04); color: $c-muted;
+  transition: all 0.12s;
+  &:hover { background: rgba(139,92,246,0.12); color: $c-text; border-color: rgba(139,92,246,0.3); }
+  &.selected { background: rgba(139,92,246,0.2); color: #c4b5fd; border-color: rgba(139,92,246,0.4); }
+}
+
+.selected-fields {
+  display: flex; flex-wrap: wrap; gap: 0.3rem; min-height: 1.5rem;
+}
+
+.field-tag {
+  display: inline-flex; align-items: center; gap: 0.2rem;
+  background: rgba(139,92,246,0.15); color: #c4b5fd;
+  padding: 1px 8px; border-radius: 10px; font-size: 0.76rem; font-family: monospace;
+  button { background: none; border: none; color: #c4b5fd; cursor: pointer; font-size: 0.9rem; padding: 0; }
+}
+
+// ── Interactions ──────────────────────────────────────────────────────────────
+.interaction-row {
+  display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;
+  select, input {
+    background: rgba(255,255,255,0.05); border: 1px solid $c-border;
+    border-radius: 5px; color: $c-text; padding: 0.3rem 0.5rem; font-size: 0.8rem;
+    &:focus { outline: none; border-color: #8b5cf6; }
+  }
+  .inter-name { width: 180px; }
+  .inter-desc { flex: 1; }
+}
+
+// ── Boutons ───────────────────────────────────────────────────────────────────
+.btn-add-sm {
+  padding: 2px 8px; background: rgba(139,92,246,0.12); color: #a78bfa;
+  border: 1px solid rgba(139,92,246,0.25); border-radius: 4px; cursor: pointer; font-size: 0.75rem;
+  &:hover { background: rgba(139,92,246,0.22); }
+}
+.btn-remove-icon {
+  background: none; border: none; color: rgba(239,68,68,0.4); cursor: pointer; font-size: 0.85rem;
+  &:hover { color: #ef4444; }
+}
+.btn-danger-sm {
+  padding: 0.3rem 0.7rem; background: rgba(239,68,68,0.1); color: #f87171;
+  border: 1px solid rgba(239,68,68,0.25); border-radius: 5px; cursor: pointer; font-size: 0.78rem;
+  &:hover { background: rgba(239,68,68,0.2); }
+}
+.empty-sm { font-size: 0.78rem; color: $c-muted; font-style: italic; }
