@@ -14,6 +14,10 @@ class AppSpec(models.Model):
     description = models.TextField(blank=True)
     app_type = models.CharField(max_length=30, choices=APP_TYPE_CHOICES, default='django-angular')
     owner_email = models.EmailField(max_length=255, blank=True)
+    # Historique de conversation IA (persisté via AppSpecChatHistoryView).
+    # Présent en base depuis la migration 0003 — la colonne est NOT NULL,
+    # donc le champ doit rester déclaré ici sinon tout INSERT échoue.
+    chat_history = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -153,6 +157,9 @@ class Pipeline(models.Model):
     page = models.ForeignKey(Page, related_name='pipelines', on_delete=models.CASCADE)
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
+    # Nom de l'Interaction (même page) qui déclenche ce pipeline. Émis par l'IA
+    # et affiché par le frontend ; stocké comme nom libre, pas une FK.
+    trigger_interaction = models.CharField(max_length=200, blank=True)
     # [{id, label, type (trigger/service_call/transform/state_update/navigate/error),
     #   service_method, data_flow, on_error}]
     steps = models.JSONField(default=list)

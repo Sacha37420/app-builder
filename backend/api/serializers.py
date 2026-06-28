@@ -59,7 +59,7 @@ class InteractionSerializer(serializers.ModelSerializer):
 class PipelineSerializer(serializers.ModelSerializer):
     class Meta:
         model = Pipeline
-        fields = ['id', 'name', 'description', 'steps', 'order']
+        fields = ['id', 'name', 'description', 'trigger_interaction', 'steps', 'order']
 
 
 class FrontendServiceSerializer(serializers.ModelSerializer):
@@ -158,10 +158,13 @@ class AppSpecSerializer(serializers.ModelSerializer):
         model = AppSpec
         fields = [
             'id', 'name', 'description', 'app_type', 'owner_email',
-            'created_at', 'updated_at',
+            'created_at', 'updated_at', 'chat_history',
             'data_models', 'endpoint_groups', 'services', 'pages',
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        # chat_history est exposé en lecture (pour loadSpec côté frontend) mais
+        # écrit uniquement via l'endpoint dédié PATCH /api/apps/<id>/chat/,
+        # pour ne pas être écrasé par l'autosave PUT de la spec complète.
+        read_only_fields = ['created_at', 'updated_at', 'chat_history']
 
     # ── Helpers de résolution des IDs temporaires ──────────────────────────────
 
