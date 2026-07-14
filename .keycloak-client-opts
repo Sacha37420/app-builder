@@ -1,1 +1,1 @@
---public --port 4205 --caddy-path app-builder
+--public --port 4205 --caddy-path app-builder --require-group admins

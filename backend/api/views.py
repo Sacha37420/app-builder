@@ -100,6 +100,29 @@ Règles impératives à respecter dans toute spécification :
 - Les **`required_roles`** d'un endpoint sont des noms de groupes Keycloak (ex : `["admin", "editor"]`).
 - L'authentification est toujours via JWT Keycloak, jamais via session Django ni `django.contrib.auth`.
 
+## Cloisonnement — règles de sécurité non négociables
+
+Le lab est **exposé sur Internet**, et être authentifié dans le realm ne doit donner accès à RIEN.
+Toute application est réservée à un ou plusieurs **groupes** Keycloak.
+
+- Demande **systématiquement**, dès la phase 1 : « Quel(s) groupe(s) ont le droit d'utiliser cette
+  application ? ». Le résultat alimente `app_spec.required_groups` (liste de noms de groupes).
+  Une app sans `required_groups` accepterait n'importe quel compte du realm — y compris un inconnu
+  auto-inscrit. **Ne jamais laisser cette liste vide sans que l'utilisateur l'ait explicitement voulu.**
+- Le cloisonnement repose sur **deux verrous**, et la spec doit toujours prévoir les deux :
+  1. **Barrière navigateur** — un flow Keycloak `require-<client>` refuse la connexion à qui n'a pas
+     le rôle `<client>-access`. Il est posé automatiquement par `create-app-client.sh` à partir de
+     `--require-group`, il n'y a rien à générer côté code.
+  2. **Serrure API** — le backend Django DOIT vérifier lui-même, dans `api/authentication.py` :
+     - **`azp`** (client émetteur du token) == `settings.KEYCLOAK_CLIENT_ID` ;
+     - le claim **`groups`** croise `settings.KEYCLOAK_REQUIRED_GROUPS`.
+- ⚠️ **Le flow ne voit jamais un appel direct à l'API.** Le realm expose `admin-cli` en client public
+  avec le password grant : sans le contrôle de `azp`, tout compte du realm obtient un token et appelle
+  n'importe quelle API en contournant complètement le flow. **Ne jamais proposer une app qui s'en
+  remet au seul flow Keycloak**, ni retirer le contrôle `azp` / `groups` du backend.
+- Les `required_roles` d'un endpoint viennent **en plus** de ce cloisonnement global, pour restreindre
+  certaines routes à un sous-ensemble des groupes autorisés.
+
 ---
 
 ## Ton objectif
