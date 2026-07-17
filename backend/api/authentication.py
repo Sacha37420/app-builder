@@ -32,6 +32,11 @@ class KeycloakJWTAuthentication(BaseAuthentication):
 
     _jwks_client: PyJWKClient | None = None
 
+    def _allowed_client_ids(self) -> set[str]:
+        """Clients dont le 'azp' est accepté. Un seul par défaut (le sien) —
+        une sous-classe peut l'élargir pour une vue explicitement inter-apps."""
+        return {settings.KEYCLOAK_CLIENT_ID}
+
     @classmethod
     def _get_jwks_client(cls) -> PyJWKClient:
         if cls._jwks_client is None:
@@ -70,10 +75,11 @@ class KeycloakJWTAuthentication(BaseAuthentication):
         # tout compte — y compris un compte auto-inscrit — pourrait s'en servir
         # pour appeler cette API. On vérifie 'azp' plutôt que 'aud' car Keycloak
         # ne place pas le clientId dans 'aud' sans mapper d'audience dédié.
-        if claims.get('azp') != settings.KEYCLOAK_CLIENT_ID:
+        allowed = self._allowed_client_ids()
+        if claims.get('azp') not in allowed:
             raise AuthenticationFailed(
-                "Ce token a été émis pour un autre client que "
-                f"'{settings.KEYCLOAK_CLIENT_ID}'."
+                "Ce token a été émis pour un client non autorisé ici "
+                f"(attendu : {', '.join(sorted(allowed))})."
             )
 
         # Cloisonnement par groupe. KEYCLOAK_REQUIRED_GROUPS vide ⇒ aucun filtre :
@@ -96,3 +102,27 @@ class KeycloakJWTAuthentication(BaseAuthentication):
             )
 
         return KeycloakUser(claims), token
+
+
+class TrustedClientJWTAuthentication(KeycloakJWTAuthentication):
+    """
+    Comme KeycloakJWTAuthentication, mais accepte AUSSI les tokens émis pour
+    'front-cadriciel' (le portail du lab), en plus de app-builder lui-même.
+
+    Réservée aux vues qui n'exposent aucune donnée propre à un utilisateur
+    (pas de filtre owner_email — ex. AppSpecPublicView, InfrastructureView) :
+    front-cadriciel affiche un aperçu de ce catalogue sur son tableau de bord,
+    via un appel cross-app authentifié — jamais anonyme, et jamais pour les
+    vues qui filtrent par propriétaire (celles-là restent strictement
+    mono-client, cf. KeycloakJWTAuthentication).
+
+    Le cloisonnement par groupe (KEYCLOAK_REQUIRED_GROUPS, ici 'admins') reste
+    hérité tel quel : un utilisateur front-cadriciel qui n'est pas admin est
+    toujours refusé, exactement comme s'il utilisait app-builder directement.
+    Ne PAS élargir TRUSTED_CLIENT_IDS sans réfléchir à cette conséquence.
+    """
+
+    TRUSTED_CLIENT_IDS = frozenset({'front-cadriciel'})
+
+    def _allowed_client_ids(self) -> set[str]:
+        return super()._allowed_client_ids() | self.TRUSTED_CLIENT_IDS

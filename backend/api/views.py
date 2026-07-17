@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import generics, status
 from rest_framework.response import Response
+from .authentication import TrustedClientJWTAuthentication
 from .models import AppSpec
 from .serializers import AppSpecSerializer
 
@@ -369,13 +370,27 @@ class AppSpecDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class AppSpecPublicView(generics.ListAPIView):
-    """GET /api/apps/public/ — toutes les specs, tous utilisateurs confondus."""
+    """
+    GET /api/apps/public/ — toutes les specs, tous utilisateurs confondus.
+
+    Pas de filtre owner_email : aucune donnée propre à un utilisateur n'est
+    exposée ici. Accepte donc aussi les tokens 'front-cadriciel' (portail du
+    lab, qui affiche un aperçu sur son tableau de bord), cf.
+    TrustedClientJWTAuthentication — le cloisonnement par groupe reste inchangé.
+    """
+    authentication_classes = [TrustedClientJWTAuthentication]
     serializer_class = AppSpecSerializer
     queryset = AppSpec.objects.all().order_by('-updated_at')
 
 
 class InfrastructureView(APIView):
-    """GET /api/infrastructure/ — apps hébergées parsées depuis ports.env."""
+    """
+    GET /api/infrastructure/ — apps hébergées parsées depuis ports.env.
+
+    Même exemption que AppSpecPublicView (cf. TrustedClientJWTAuthentication) :
+    front-cadriciel en a besoin pour son onglet "Apps hébergées".
+    """
+    authentication_classes = [TrustedClientJWTAuthentication]
 
     _PORTS_FILE = '/ports.env'
 
