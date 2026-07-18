@@ -1,12 +1,10 @@
 import re
 import json
 import requests as http_requests
-from decouple import config as env_config
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import generics, status
 from rest_framework.response import Response
-from .authentication import TrustedClientJWTAuthentication
 from .models import AppSpec
 from .serializers import AppSpecSerializer
 
@@ -367,69 +365,6 @@ class AppSpecDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         return AppSpec.objects.filter(owner_email=self.request.user.email)
-
-
-class AppSpecPublicView(generics.ListAPIView):
-    """
-    GET /api/apps/public/ — toutes les specs, tous utilisateurs confondus.
-
-    Pas de filtre owner_email : aucune donnée propre à un utilisateur n'est
-    exposée ici. Accepte donc aussi les tokens 'front-cadriciel' (portail du
-    lab, qui affiche un aperçu sur son tableau de bord), cf.
-    TrustedClientJWTAuthentication — le cloisonnement par groupe reste inchangé.
-    """
-    authentication_classes = [TrustedClientJWTAuthentication]
-    serializer_class = AppSpecSerializer
-    queryset = AppSpec.objects.all().order_by('-updated_at')
-
-
-class InfrastructureView(APIView):
-    """
-    GET /api/infrastructure/ — apps hébergées parsées depuis ports.env.
-
-    Même exemption que AppSpecPublicView (cf. TrustedClientJWTAuthentication) :
-    front-cadriciel en a besoin pour son onglet "Apps hébergées".
-    """
-    authentication_classes = [TrustedClientJWTAuthentication]
-
-    _PORTS_FILE = '/ports.env'
-
-    def get(self, request):
-        domain = env_config('DOMAIN', default='')
-        try:
-            with open(self._PORTS_FILE, 'r') as f:
-                content = f.read()
-        except FileNotFoundError:
-            return Response({'apps': [], 'error': 'ports.env introuvable'})
-
-        apps = []
-        for line in content.strip().splitlines():
-            line = line.strip()
-            if not line or line.startswith('#') or line.startswith('__'):
-                continue
-            parts = line.split(':')
-            name = parts[0]
-            backend_port = int(parts[1]) if len(parts) > 1 and parts[1] else None
-            frontend_port = int(parts[2]) if len(parts) > 2 and parts[2] else None
-
-            if domain:
-                base = f'https://{domain}'
-                frontend_url = f'{base}/{name}/' if frontend_port else None
-                backend_url  = f'{base}/{name}-api/' if backend_port else None
-            else:
-                base = 'http://localhost'
-                frontend_url = f'{base}:{frontend_port}/' if frontend_port else None
-                backend_url  = f'{base}:{backend_port}/' if backend_port else None
-
-            apps.append({
-                'name': name,
-                'backend_port': backend_port,
-                'frontend_port': frontend_port,
-                'frontend_url': frontend_url,
-                'backend_url': backend_url,
-            })
-
-        return Response({'apps': apps})
 
 
 class AIChatView(APIView):

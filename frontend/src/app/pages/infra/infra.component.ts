@@ -1,5 +1,4 @@
 import { Component, inject, computed } from '@angular/core';
-import { NavbarComponent } from '../../shared/navbar/navbar.component';
 import { BuilderStateService } from '../../core/builder-state.service';
 import { DataModel, ModelField, ModelRelationship, FieldType } from '../../models/app-spec.model';
 
@@ -91,7 +90,7 @@ function buildTable(model: DataModel, allModels: DataModel[]): SqlTable {
 @Component({
   selector: 'app-infra-page',
   standalone: true,
-  imports: [NavbarComponent],
+  imports: [],
   templateUrl: './infra.component.html',
   styleUrl: './infra.component.scss',
 })

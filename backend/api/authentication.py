@@ -102,27 +102,3 @@ class KeycloakJWTAuthentication(BaseAuthentication):
             )
 
         return KeycloakUser(claims), token
-
-
-class TrustedClientJWTAuthentication(KeycloakJWTAuthentication):
-    """
-    Comme KeycloakJWTAuthentication, mais accepte AUSSI les tokens émis pour
-    'front-cadriciel' (le portail du lab), en plus de app-builder lui-même.
-
-    Réservée aux vues qui n'exposent aucune donnée propre à un utilisateur
-    (pas de filtre owner_email — ex. AppSpecPublicView, InfrastructureView) :
-    front-cadriciel affiche un aperçu de ce catalogue sur son tableau de bord,
-    via un appel cross-app authentifié — jamais anonyme, et jamais pour les
-    vues qui filtrent par propriétaire (celles-là restent strictement
-    mono-client, cf. KeycloakJWTAuthentication).
-
-    Le cloisonnement par groupe (KEYCLOAK_REQUIRED_GROUPS, ici 'admins') reste
-    hérité tel quel : un utilisateur front-cadriciel qui n'est pas admin est
-    toujours refusé, exactement comme s'il utilisait app-builder directement.
-    Ne PAS élargir TRUSTED_CLIENT_IDS sans réfléchir à cette conséquence.
-    """
-
-    TRUSTED_CLIENT_IDS = frozenset({'front-cadriciel'})
-
-    def _allowed_client_ids(self) -> set[str]:
-        return super()._allowed_client_ids() | self.TRUSTED_CLIENT_IDS

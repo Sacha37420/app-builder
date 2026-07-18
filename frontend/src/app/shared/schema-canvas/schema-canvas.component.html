@@ -32,6 +32,13 @@
         <div class="ib-title">PostgreSQL</div>
         <div class="ib-row"><span class="ib-lbl">Schéma</span><code class="ib-code">{{ dbSchema }}</code></div>
         <div class="ib-row"><span class="ib-lbl">Tables</span><span class="ib-val">{{ state.spec().data_models.length }}</span></div>
+        @if (tableNames.length > 0) {
+          <div class="ib-table-list">
+            @for (t of tableNames; track t) {
+              <code class="ib-table-name">{{ t }}</code>
+            }
+          </div>
+        }
       </div>
     </div>
 

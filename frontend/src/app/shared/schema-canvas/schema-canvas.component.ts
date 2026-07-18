@@ -138,6 +138,15 @@ export class SchemaCanvasComponent {
       .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
   }
 
+  // ── Noms de tables (mêmes noms que la page /infra) ────────────────────────────
+  get tableNames(): string[] {
+    return this.state.spec().data_models.map(m => this.toSnake(m.name));
+  }
+
+  private toSnake(s: string): string {
+    return s.replace(/([A-Z])/g, m => `_${m.toLowerCase()}`).replace(/^_/, '');
+  }
+
   // ── Constants ─────────────────────────────────────────────────────────────────
   readonly methods: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
   readonly layoutTypes = ['list', 'detail', 'form', 'dashboard', 'mixed'] as const;

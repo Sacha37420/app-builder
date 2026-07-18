@@ -22,7 +22,6 @@ services:
       - dev-net
     volumes:
       - ./backend:/app
-      - ../ports.env:/ports.env:ro
     labels:
       caddy: "${DOMAIN}"
       caddy.handle_path: "/app-builder-api/*"

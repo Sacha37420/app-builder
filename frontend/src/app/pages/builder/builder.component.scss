@@ -5,10 +5,14 @@ $c-text:   #f1f5f9;
 .builder-layout {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100vh; // pas de bandeau horizontal en desktop — la sidebar est verticale
   background: $c-bg;
   color: $c-text;
   overflow: hidden;
+}
+
+@media (max-width: 899px) {
+  .builder-layout { height: calc(100vh - var(--nav-h)); } // bandeau mobile compact au-dessus
 }
 
 // ── Toolbar ────────────────────────────────────────────────────────────────────
@@ -53,6 +57,40 @@ $c-text:   #f1f5f9;
     font-size: 0.8rem;
     color: #fca5a5;
     padding: 0 0.25rem;
+  }
+}
+
+/* Bouton « ⋯ Menu » : masqué en desktop, où toute la rangée d'actions
+   (Modèles, Infrastructure, Pipelines, Code, Nouveau, Mes apps, Sauvegarder)
+   tient déjà sans gêner. */
+.toolbar-toggle {
+  display: none;
+
+  &.on {
+    background: rgba(255,255,255,0.16);
+    border-color: rgba(255,255,255,0.32);
+  }
+}
+
+@media (max-width: 899px) {
+  /* Repliée par défaut : la rangée de navigation/actions ne s'affiche qu'au clic
+     sur « ⋯ Menu », pour ne pas empiéter sur la hauteur, déjà réduite, laissée
+     au canevas de schéma par le bandeau mobile.
+     Sélecteur `.toolbar .toolbar-actions` (et non `.toolbar-actions` seul) :
+     doit égaler la spécificité de la règle nichée dans `.toolbar { }` plus haut,
+     sans quoi celle-ci l'emporte toujours et le repli ne s'applique jamais. */
+  .toolbar-toggle {
+    display: inline-flex;
+  }
+
+  .toolbar .toolbar-actions {
+    display: none;
+    width: 100%;
+    flex-wrap: wrap;
+
+    &.expanded {
+      display: flex;
+    }
   }
 }
 
@@ -134,6 +172,9 @@ $c-text:   #f1f5f9;
 }
 
 .app-list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   cursor: pointer;
   border-bottom: 1px solid $c-border;
@@ -141,6 +182,11 @@ $c-text:   #f1f5f9;
 
   &:hover { background: rgba(255,255,255,0.06); }
   &:last-child { border-bottom: none; }
+
+  .app-item-info {
+    flex: 1;
+    min-width: 0;
+  }
 
   .app-item-name {
     display: block;
@@ -156,12 +202,74 @@ $c-text:   #f1f5f9;
   }
 }
 
+.btn-delete-app {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.35);
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: background 0.12s, color 0.12s;
+
+  &:hover {
+    background: rgba(248,113,113,0.15);
+    color: #fca5a5;
+  }
+}
+
+// ── Bascule Canevas / Chat (mobile) ──────────────────────────────────────────────
+// Masquée en desktop : canevas et chat y sont déjà côte à côte, une bascule
+// n'aurait aucun sens.
+.mobile-view-switch {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  .mobile-view-switch {
+    display: flex;
+    flex-shrink: 0;
+    border-bottom: 1px solid $c-border;
+  }
+
+  .mv-btn {
+    flex: 1;
+    padding: 0.5rem;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: rgba(255,255,255,0.5);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+
+    &.active {
+      color: $c-text;
+      border-bottom-color: #3b82f6;
+    }
+  }
+}
+
 // ── Corps principal ────────────────────────────────────────────────────────────
 .main-body {
   display: grid;
   grid-template-columns: 1fr 380px;
   flex: 1;
   overflow: hidden;
+}
+
+@media (max-width: 899px) {
+  // Un seul panneau visible à la fois : canevas et chat se disputeraient
+  // sinon le même petit écran, sans qu'aucun des deux ne soit lisible.
+  .main-body {
+    grid-template-columns: 1fr;
+  }
+
+  .canvas-pane.mobile-hidden,
+  .chat-pane.mobile-hidden {
+    display: none;
+  }
 }
 
 .canvas-pane {

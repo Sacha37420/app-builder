@@ -12,7 +12,18 @@
         @default           { @if (state.isDirty()) { <span class="dirty-badge">&#9679; non sauvegardé</span> } }
       }
     </div>
-    <div class="toolbar-actions">
+    <button
+      type="button"
+      class="btn-toolbar toolbar-toggle"
+      [class.on]="toolbarExpanded()"
+      (click)="toolbarExpanded.set(!toolbarExpanded())"
+      [attr.aria-expanded]="toolbarExpanded()"
+      title="Plus d'actions"
+    >
+      &#8943; Menu
+    </button>
+
+    <div class="toolbar-actions" [class.expanded]="toolbarExpanded()">
       <a class="btn-toolbar btn-nav" routerLink="/models">Modèles</a>
       <a class="btn-toolbar btn-nav" routerLink="/infra">Infrastructure</a>
       <a class="btn-toolbar btn-nav" routerLink="/pipelines">Pipelines</a>
@@ -42,22 +53,46 @@
       }
       @for (app of savedApps(); track app.id) {
         <div class="app-list-item" (click)="loadApp(app)">
-          <span class="app-item-name">{{ app.name }}</span>
-          <span class="app-item-meta">
-            {{ app.endpoint_groups?.length ?? 0 }} groupes ·
-            {{ app.pages?.length ?? 0 }} pages
-          </span>
+          <div class="app-item-info">
+            <span class="app-item-name">{{ app.name }}</span>
+            <span class="app-item-meta">
+              {{ app.endpoint_groups?.length ?? 0 }} groupes ·
+              {{ app.pages?.length ?? 0 }} pages
+            </span>
+          </div>
+          <button
+            type="button"
+            class="btn-delete-app"
+            title="Supprimer cette application"
+            (click)="deleteApp(app, $event)"
+          >&#128465;</button>
         </div>
       }
     </div>
   }
 
+  <!-- ── Bascule Canevas / Chat (mobile uniquement) ──────────────────── -->
+  <div class="mobile-view-switch">
+    <button
+      type="button"
+      class="mv-btn"
+      [class.active]="mobileView() === 'canvas'"
+      (click)="mobileView.set('canvas')"
+    >&#128202; Canevas</button>
+    <button
+      type="button"
+      class="mv-btn"
+      [class.active]="mobileView() === 'chat'"
+      (click)="mobileView.set('chat')"
+    >&#128172; Chat IA</button>
+  </div>
+
   <!-- ── Corps principal ─────────────────────────────────────────────── -->
   <div class="main-body">
-    <div class="canvas-pane">
+    <div class="canvas-pane" [class.mobile-hidden]="mobileView() !== 'canvas'">
       <app-schema-canvas />
     </div>
-    <div class="chat-pane">
+    <div class="chat-pane" [class.mobile-hidden]="mobileView() !== 'chat'">
       <app-ai-chat />
     </div>
   </div>

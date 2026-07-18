@@ -2,12 +2,11 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { BuilderStateService } from '../../core/builder-state.service';
 import { DataModel, FieldType, RelType } from '../../models/app-spec.model';
-import { NavbarComponent } from '../../shared/navbar/navbar.component';
 
 @Component({
   selector: 'app-models-page',
   standalone: true,
-  imports: [FormsModule, NavbarComponent],
+  imports: [FormsModule],
   templateUrl: './models.component.html',
   styleUrl: './models.component.scss',
 })

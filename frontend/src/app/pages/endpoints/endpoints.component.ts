@@ -5,12 +5,11 @@ import {
   EndpointGroup, Endpoint, HttpMethod, OperationType,
   QueryParam, EndpointStep, EndpointStepType, FieldType,
 } from '../../models/app-spec.model';
-import { NavbarComponent } from '../../shared/navbar/navbar.component';
 
 @Component({
   selector: 'app-endpoints-page',
   standalone: true,
-  imports: [FormsModule, NavbarComponent],
+  imports: [FormsModule],
   templateUrl: './endpoints.component.html',
   styleUrl: './endpoints.component.scss',
 })

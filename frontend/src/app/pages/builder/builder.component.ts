@@ -20,6 +20,15 @@ export class BuilderComponent implements OnInit {
   savedApps = signal<AppSpec[]>([]);
   showAppList = signal(false);
 
+  /** Repliée par défaut sous 900px : évite que la rangée de navigation/actions
+   *  n'empiète sur la hauteur, réduite, allouée au canevas de schéma. */
+  toolbarExpanded = signal(false);
+
+  /** Sous 900px, canevas et chat ne tiennent plus côte à côte : un onglet
+   *  bascule entre les deux au lieu de les empiler (ce qui les rendrait
+   *  illisibles). Sans effet en desktop, où les deux restent affichés. */
+  mobileView = signal<'canvas' | 'chat'>('canvas');
+
   ngOnInit(): void {
     this.loadList();
   }
@@ -41,6 +50,20 @@ export class BuilderComponent implements OnInit {
   loadApp(app: AppSpec): void {
     this.state.loadSpec(app);
     this.showAppList.set(false);
+  }
+
+  deleteApp(app: AppSpec, event: Event): void {
+    event.stopPropagation();
+    if (!app.id) return;
+    if (!confirm(`Supprimer l'application "${app.name}" ? Cette action est irréversible.`)) return;
+
+    this.api.deleteApp(app.id).subscribe({
+      next: () => {
+        if (this.state.spec().id === app.id) this.state.resetSpec();
+        this.loadList();
+      },
+      error: () => {},
+    });
   }
 
   newApp(): void {

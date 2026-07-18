@@ -5,12 +5,11 @@ import {
   Page, FrontendService, PageComponent, Interaction,
   PageLayout, InteractionType,
 } from '../../models/app-spec.model';
-import { NavbarComponent } from '../../shared/navbar/navbar.component';
 
 @Component({
   selector: 'app-pages-page',
   standalone: true,
-  imports: [FormsModule, NavbarComponent],
+  imports: [FormsModule],
   templateUrl: './pages-config.component.html',
   styleUrl: './pages-config.component.scss',
 })

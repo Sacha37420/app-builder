@@ -4,10 +4,14 @@ $c-muted: rgba(255,255,255,0.4);
 .endpoints-page {
   display: grid;
   grid-template-columns: 240px 1fr;
-  height: calc(100vh - 56px);
+  height: 100vh; // pas de bandeau horizontal en desktop — la sidebar est verticale
   background: $c-bg;
   color: $c-text;
   overflow: hidden;
+}
+
+@media (max-width: 899px) {
+  .endpoints-page { height: calc(100vh - var(--nav-h)); } // bandeau mobile compact au-dessus
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────

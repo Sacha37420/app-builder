@@ -2,7 +2,11 @@ $c-bg: #0f172a; $c-surface: #1e293b; $c-border: rgba(255,255,255,0.08); $c-text:
 
 .preview-page {
   display: flex; flex-direction: column;
-  height: calc(100vh - 56px); background: $c-bg; color: $c-text; overflow: hidden;
+  height: 100vh; background: $c-bg; color: $c-text; overflow: hidden; // pas de bandeau horizontal en desktop
+}
+
+@media (max-width: 899px) {
+  .preview-page { height: calc(100vh - var(--nav-h)); } // bandeau mobile compact au-dessus
 }
 
 // ── Score de complétude ───────────────────────────────────────────────────────

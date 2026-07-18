@@ -9,9 +9,15 @@ $c-o2o:     #8b5cf6;
 $c-m2m:     #10b981;
 
 .infra-page {
+  min-height: 100vh; // fond auparavant hérité du <body> sombre — désormais explicite (body suit le thème clair/sombre Foyer)
   padding: 1.5rem;
+  background: $c-bg;
   color: $c-text;
   max-width: 1400px;
+}
+
+@media (max-width: 899px) {
+  .infra-page { min-height: calc(100vh - var(--nav-h)); }
 }
 
 .page-header {
@@ -110,6 +116,12 @@ $c-m2m:     #10b981;
   width: 100%;
   border-collapse: collapse;
   font-size: 0.8rem;
+
+  /* Scrollable horizontalement plutôt que débordant/coupé sur mobile. */
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 
   th {
     padding: 0.35rem 0.65rem;

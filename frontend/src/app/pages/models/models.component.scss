@@ -2,10 +2,14 @@ $c-bg: #0f172a; $c-surface: #1e293b; $c-border: rgba(255,255,255,0.08);
 $c-text: #f1f5f9; $c-accent: #818cf8; $c-model: #0369a1;
 
 .models-page {
-  min-height: calc(100vh - 56px);
+  min-height: 100vh; // pas de bandeau horizontal en desktop — la sidebar est verticale
   background: $c-bg;
   color: $c-text;
   padding: 1.5rem;
+}
+
+@media (max-width: 899px) {
+  .models-page { min-height: calc(100vh - var(--nav-h)); } // bandeau mobile compact au-dessus
 }
 
 .page-header {
@@ -83,6 +87,12 @@ $c-text: #f1f5f9; $c-accent: #818cf8; $c-model: #0369a1;
 
 .fields-table {
   width: 100%; border-collapse: collapse; font-size: 0.8rem;
+
+  /* Scrollable horizontalement plutôt que débordant/coupé sur mobile. */
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 
   th {
     text-align: left; padding: 4px 6px;

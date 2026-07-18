@@ -1,6 +1,5 @@
 import { Component, inject, signal, computed } from '@angular/core';
 import { BuilderStateService } from '../../core/builder-state.service';
-import { NavbarComponent } from '../../shared/navbar/navbar.component';
 import {
   generateModelsPy, generateSerializersPy, generateViewsPy,
   generateUrlsPy, generateServiceTs, generateComponentTs,
@@ -12,7 +11,7 @@ type Tab = 'models_py' | 'serializers_py' | 'views_py' | 'urls_py' | 'service_ts
 @Component({
   selector: 'app-preview-page',
   standalone: true,
-  imports: [NavbarComponent],
+  imports: [],
   templateUrl: './preview.component.html',
   styleUrl: './preview.component.scss',
 })

@@ -2,12 +2,11 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { BuilderStateService } from '../../core/builder-state.service';
 import { Page, Pipeline, PipelineStep, PipelineStepType } from '../../models/app-spec.model';
-import { NavbarComponent } from '../../shared/navbar/navbar.component';
 
 @Component({
   selector: 'app-pipelines-page',
   standalone: true,
-  imports: [FormsModule, NavbarComponent],
+  imports: [FormsModule],
   templateUrl: './pipelines.component.html',
   styleUrl: './pipelines.component.scss',
 })
