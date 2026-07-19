@@ -1,1 +1,1 @@
---public --port 4205 --caddy-path app-builder --require-group developers,admins,famille,amis,manager,cuisinier,serveur
+--public --port 4205 --caddy-path app-builder --require-group developers,admins,famille,amis,dom,harem,manager,cuisinier,serveur
