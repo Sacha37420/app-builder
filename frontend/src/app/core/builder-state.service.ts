@@ -17,6 +17,7 @@ const EMPTY_SPEC: AppSpec = {
   name: 'Mon Application',
   description: '',
   app_type: 'django-angular',
+  required_groups: [],
   data_models: [],
   endpoint_groups: [],
   services: [],
@@ -89,7 +90,7 @@ export class BuilderStateService {
   }
 
   loadSpec(spec: AppSpec): void {
-    this.spec.set(spec);
+    this.spec.set({ ...spec, required_groups: spec.required_groups ?? [] });
     this.savedId.set(spec.id ?? null);
     this.isDirty.set(false);
     this.saveStatus.set('saved');
@@ -122,6 +123,20 @@ export class BuilderStateService {
 
   updateAppType(app_type: AppType): void {
     this.mutate(s => ({ ...s, app_type }));
+  }
+
+  updateRequiredGroups(required_groups: string[]): void {
+    this.mutate(s => ({ ...s, required_groups }));
+  }
+
+  addRequiredGroup(name: string): void {
+    const g = name.trim();
+    if (!g || this.spec().required_groups.includes(g)) return;
+    this.updateRequiredGroups([...this.spec().required_groups, g]);
+  }
+
+  removeRequiredGroup(name: string): void {
+    this.updateRequiredGroups(this.spec().required_groups.filter(g => g !== name));
   }
 
   // ── Phase 1 : DataModels ─────────────────────────────────────────────────────
@@ -505,8 +520,17 @@ export class BuilderStateService {
     const removedSvcs   = new Set(n.remove_services ?? []);
     const removedPages  = new Set(n.remove_pages ?? []);
 
+    const patchGroups = n.set_meta?.required_groups;
     const newMeta = n.set_meta
-      ? { name: n.set_meta.name ?? s.name, description: n.set_meta.description ?? s.description }
+      ? {
+          name: n.set_meta.name ?? s.name,
+          description: n.set_meta.description ?? s.description,
+          // Fusion (union), pas remplacement : un patch qui ajoute un groupe ne doit
+          // jamais faire disparaître ceux déjà validés dans une conversation précédente.
+          ...(patchGroups?.length && {
+            required_groups: Array.from(new Set([...s.required_groups, ...patchGroups])),
+          }),
+        }
       : {};
 
     // ── Phase 1 : DataModels — upsert par nom ─────────────────────────────────
@@ -624,6 +648,7 @@ export class BuilderStateService {
     this.mutate(cur => ({
       name: patch.set_meta?.name ?? 'Mon Application',
       description: patch.set_meta?.description ?? '',
+      required_groups: patch.set_meta?.required_groups ?? [],
       app_type: cur.app_type,
       data_models: [], endpoint_groups: [], services: [], pages: [],
     }));
@@ -634,6 +659,7 @@ export class BuilderStateService {
     const n = this._normalizePatch(patch);
     const parts: string[] = [];
     if (n.set_meta?.name) parts.push(`nom → "${n.set_meta.name}"`);
+    if (n.set_meta?.required_groups?.length) parts.push(`groupes requis → ${n.set_meta.required_groups.join(', ')}`);
     if (n.data_models?.length) parts.push(`${n.data_models.length} modèle(s)`);
     if (n.remove_models?.length) parts.push(`−${n.remove_models.length} modèle(s)`);
     if (n.endpoint_groups?.length) {
@@ -705,8 +731,19 @@ export class BuilderStateService {
     const rmSvcs     = arr<string>(r['remove_services']        ?? r['delete_services']);
     const rmPages    = arr<string>(r['remove_pages']           ?? r['delete_pages']);
 
+    // set_meta.required_groups reste en pass-through pour name/description (undefined
+    // doit rester undefined pour laisser le ?? de mergeFromAgent/replaceFromAgent
+    // retomber sur l'existant) — seul required_groups est assaini si présent.
+    const rawGroupNames = raw.set_meta?.required_groups;
+    const setMeta = raw.set_meta ? {
+      ...raw.set_meta,
+      ...(Array.isArray(rawGroupNames) && {
+        required_groups: arr<string>(rawGroupNames).map(g => str(g)).filter(Boolean),
+      }),
+    } : undefined;
+
     return {
-      set_meta: raw.set_meta,
+      set_meta: setMeta,
       remove_models: rmModels,
       remove_endpoint_groups: rmGroups,
       remove_services: rmSvcs,

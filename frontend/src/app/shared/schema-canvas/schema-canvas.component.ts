@@ -158,6 +158,15 @@ export class SchemaCanvasComponent {
   val(e: Event): string { return (e.target as HTMLInputElement).value; }
   setMetaName(e: Event): void { this.state.updateMeta(this.val(e), this.state.spec().description); }
   setMetaDesc(e: Event): void { this.state.updateMeta(this.state.spec().name, this.val(e)); }
+
+  removeRequiredGroup(g: string): void { this.state.removeRequiredGroup(g); }
+  onRequiredGroupKeydown(e: KeyboardEvent): void {
+    if (e.key !== 'Enter' && e.key !== ',') return;
+    e.preventDefault();
+    const input = e.target as HTMLInputElement;
+    this.state.addRequiredGroup(input.value);
+    input.value = '';
+  }
   setGroupName(id: number, e: Event): void { this.state.updateEndpointGroup(id, { name: this.val(e) }); }
   setGroupDesc(id: number, e: Event): void { this.state.updateEndpointGroup(id, { description: this.val(e) }); }
   setEndpointMethod(gId: number, epId: number, e: Event): void { this.state.updateEndpoint(gId, epId, { method: this.val(e) as HttpMethod }); }

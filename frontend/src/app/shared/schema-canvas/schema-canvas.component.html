@@ -26,6 +26,22 @@
         <div class="ib-row"><span class="ib-lbl">Auth</span><span class="ib-val">OIDC / JWT</span></div>
         <div class="ib-row"><span class="ib-lbl">Identité</span><code class="ib-code">email</code></div>
         <div class="ib-row"><span class="ib-lbl">Rôles</span><code class="ib-code">groups</code></div>
+        <div class="ib-row ib-groups-row">
+          <span class="ib-lbl">Groupes requis</span>
+          <div class="ib-groups-editor">
+            @for (g of state.spec().required_groups; track g) {
+              <span class="ib-group-tag">
+                {{ g }}
+                <button type="button" (click)="removeRequiredGroup(g)">×</button>
+              </span>
+            }
+            @if (state.spec().required_groups.length === 0) {
+              <span class="ib-groups-empty">&#9888; aucun — app ouverte à tout le realm</span>
+            }
+            <input class="ib-group-input" placeholder="+ groupe (Entrée)"
+                   (keydown)="onRequiredGroupKeydown($event)" />
+          </div>
+        </div>
       </div>
 
       <div class="infra-block">

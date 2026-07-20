@@ -14,6 +14,10 @@ class AppSpec(models.Model):
     description = models.TextField(blank=True)
     app_type = models.CharField(max_length=30, choices=APP_TYPE_CHOICES, default='django-angular')
     owner_email = models.EmailField(max_length=255, blank=True)
+    # Groupes Keycloak autorisés à utiliser l'app une fois déployée (cloisonnement,
+    # cf. CLAUDE.md « Sécurité — cloisonnement des applications »). Champ structuré
+    # plutôt qu'une mention dans le chat : il doit survivre à un effacement du chat.
+    required_groups = models.JSONField(default=list)
     # Historique de conversation IA (persisté via AppSpecChatHistoryView).
     # Présent en base depuis la migration 0003 — la colonne est NOT NULL,
     # donc le champ doit rester déclaré ici sinon tout INSERT échoue.

@@ -215,6 +215,7 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
   }
 
   clearHistory(): void {
+    if (!confirm("Effacer tout l'historique de conversation ? Cette action est irréversible.")) return;
     this.messages.set([]);
     this.error.set('');
     this.selectedChoices.set(new Set());

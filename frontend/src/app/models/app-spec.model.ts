@@ -147,6 +147,10 @@ export interface AppSpec {
   description: string;
   app_type: AppType;
   owner_email?: string;
+  // Groupes Keycloak autorisés à utiliser l'app (cloisonnement) — champ structuré,
+  // survit à un effacement de l'historique de chat (contrairement à ce qui n'est
+  // dit qu'en conversation).
+  required_groups: string[];
   chat_history?: PersistedChatMessage[];
   created_at?: string;
   updated_at?: string;
@@ -190,7 +194,7 @@ export interface AgentPatchPage {
 }
 
 export interface AgentPatch {
-  set_meta?: { name?: string; description?: string };
+  set_meta?: { name?: string; description?: string; required_groups?: string[] };
   data_models?: Omit<DataModel, 'id'>[];
   endpoint_groups?: Array<Omit<EndpointGroup, 'id'> & { endpoints: Omit<Endpoint, 'id'>[] }>;
   services?: AgentPatchService[];

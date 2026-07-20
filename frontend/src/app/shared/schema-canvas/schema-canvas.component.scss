@@ -134,6 +134,24 @@ $c-muted:    rgba(255,255,255,0.45);
 .ib-val   { color: rgba(255,255,255,0.8); }
 .ib-code  { font-family: monospace; font-size: 0.72rem; background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 3px; }
 
+.ib-groups-row  { align-items: flex-start; }
+.ib-groups-editor {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem;
+}
+.ib-group-tag {
+  display: inline-flex; align-items: center; gap: 0.2rem;
+  background: rgba(251,191,36,0.15); color: #fbbf24;
+  padding: 1px 7px; border-radius: 10px; font-size: 0.72rem;
+  button { background: none; border: none; color: #fbbf24; cursor: pointer; font-size: 0.9rem; line-height: 1; padding: 0; }
+}
+.ib-groups-empty { font-size: 0.7rem; color: #fbbf24; font-style: italic; }
+.ib-group-input {
+  background: rgba(255,255,255,0.05); border: 1px dashed $c-border;
+  border-radius: 10px; color: $c-text; padding: 1px 8px; font-size: 0.72rem;
+  width: 110px;
+  &:focus { outline: none; border-color: #fbbf24; }
+}
+
 .ib-table-list {
   display: flex;
   flex-direction: column;
