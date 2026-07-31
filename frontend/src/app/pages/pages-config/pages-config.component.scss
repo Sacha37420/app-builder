@@ -1,12 +1,9 @@
-$c-bg: #0f172a; $c-surface: #1e293b; $c-border: rgba(255,255,255,0.08); $c-text: #f1f5f9;
-$c-muted: rgba(255,255,255,0.4);
-
 .pages-config {
   display: grid;
   grid-template-columns: 300px 1fr;
   height: 100vh; // pas de bandeau horizontal en desktop — la sidebar est verticale
-  background: $c-bg;
-  color: $c-text;
+  background: var(--bg);
+  color: var(--text);
   overflow: hidden;
 }
 
@@ -16,33 +13,33 @@ $c-muted: rgba(255,255,255,0.4);
 
 // ══ Panneau services (gauche) ═════════════════════════════════════════════════
 .services-panel {
-  background: #0d1526;
-  border-right: 1px solid $c-border;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0;
 
   &::-webkit-scrollbar { width: 4px; }
-  &::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+  &::-webkit-scrollbar-thumb { background: var(--overlay-strong); border-radius: 2px; }
 }
 
 .panel-header {
   display: flex; align-items: center; gap: 0.5rem;
-  padding: 0.75rem 1rem; border-bottom: 1px solid $c-border;
-  position: sticky; top: 0; background: #0d1526; z-index: 1;
+  padding: 0.75rem 1rem; border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: var(--bg); z-index: 1;
   .panel-title { font-weight: 700; font-size: 0.85rem; flex: 1; }
-  .count { font-size: 0.72rem; background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 10px; }
+  .count { font-size: 0.72rem; background: var(--overlay-strong); padding: 1px 6px; border-radius: 10px; }
 }
 
 .empty-panel {
-  padding: 1.5rem 1rem; color: $c-muted; font-size: 0.8rem;
+  padding: 1.5rem 1rem; color: var(--text-mute); font-size: 0.8rem;
   font-style: italic; text-align: center; line-height: 1.6;
 }
 
 .service-card {
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid $c-border;
+  border-bottom: 1px solid var(--border);
 
   .svc-header {
     display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;
@@ -50,12 +47,12 @@ $c-muted: rgba(255,255,255,0.4);
 
   .svc-name-input {
     flex: 1; font-weight: 600; font-size: 0.85rem; font-family: monospace;
-    background: transparent; border: none; border-bottom: 1px solid $c-border;
-    color: #93c5fd; padding: 0.15rem 0;
-    &:focus { outline: none; border-color: #3b82f6; }
+    background: transparent; border: none; border-bottom: 1px solid var(--border);
+    color: var(--accent); padding: 0.15rem 0;
+    &:focus { outline: none; border-color: var(--accent); }
   }
 
-  .svc-label { display: block; font-size: 0.7rem; color: $c-muted; margin-bottom: 0.35rem; }
+  .svc-label { display: block; font-size: 0.7rem; color: var(--text-mute); margin-bottom: 0.35rem; }
 
   .svc-groups {
     display: flex; flex-direction: column; gap: 0.25rem;
@@ -64,12 +61,12 @@ $c-muted: rgba(255,255,255,0.4);
 
 .group-toggle {
   display: flex; align-items: center; gap: 0.4rem;
-  font-size: 0.78rem; color: $c-muted; cursor: pointer; padding: 0.15rem 0;
-  input { accent-color: #3b82f6; }
-  &.active { color: $c-text; }
+  font-size: 0.78rem; color: var(--text-mute); cursor: pointer; padding: 0.15rem 0;
+  input { accent-color: var(--accent); }
+  &.active { color: var(--text); }
 }
 
-.no-groups { font-size: 0.75rem; color: $c-muted; font-style: italic; }
+.no-groups { font-size: 0.75rem; color: var(--text-mute); font-style: italic; }
 
 // ══ Panneau pages (droite) ════════════════════════════════════════════════════
 .pages-panel {
@@ -79,42 +76,42 @@ $c-muted: rgba(255,255,255,0.4);
 }
 
 .pages-sidebar {
-  background: #111827;
-  border-right: 1px solid $c-border;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
   overflow-y: auto;
 
   .sidebar-header {
     display: flex; align-items: center; gap: 0.4rem;
     padding: 0.75rem 0.75rem; font-weight: 700; font-size: 0.85rem;
-    border-bottom: 1px solid $c-border; position: sticky; top: 0;
-    background: #111827; z-index: 1;
+    border-bottom: 1px solid var(--border); position: sticky; top: 0;
+    background: var(--bg); z-index: 1;
     span:first-child { flex: 1; }
-    .count { font-size: 0.72rem; background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 10px; }
+    .count { font-size: 0.72rem; background: var(--overlay-strong); padding: 1px 6px; border-radius: 10px; }
   }
 
   .sidebar-item {
-    padding: 0.55rem 0.75rem; cursor: pointer; border-bottom: 1px solid $c-border;
+    padding: 0.55rem 0.75rem; cursor: pointer; border-bottom: 1px solid var(--border);
     transition: background 0.12s;
-    &:hover { background: rgba(255,255,255,0.04); }
-    &.active { background: rgba(139,92,246,0.15); border-left: 3px solid #8b5cf6; }
+    &:hover { background: var(--overlay-weak); }
+    &.active { background: color-mix(in srgb, var(--cat-purple) 15%, transparent); border-left: 3px solid var(--cat-purple); }
     .page-name { display: block; font-weight: 600; font-size: 0.82rem; }
-    .page-route { display: block; font-size: 0.7rem; color: $c-muted; font-family: monospace; margin-top: 1px; }
+    .page-route { display: block; font-size: 0.7rem; color: var(--text-mute); font-family: monospace; margin-top: 1px; }
   }
 
-  .sidebar-empty { padding: 1rem 0.75rem; color: $c-muted; font-size: 0.78rem; font-style: italic; }
+  .sidebar-empty { padding: 1rem 0.75rem; color: var(--text-mute); font-size: 0.78rem; font-style: italic; }
 }
 
 // ── Détail page ───────────────────────────────────────────────────────────────
 .page-detail {
   overflow-y: auto; padding: 1.25rem;
   &::-webkit-scrollbar { width: 4px; }
-  &::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+  &::-webkit-scrollbar-thumb { background: var(--overlay-strong); border-radius: 2px; }
 }
 
 .select-hint {
   display: flex; flex-direction: column; align-items: center;
-  justify-content: center; height: 60%; color: $c-muted; text-align: center;
-  .hint-icon { font-size: 3rem; font-weight: 700; color: rgba(255,255,255,0.12); margin-bottom: 0.5rem; }
+  justify-content: center; height: 60%; color: var(--text-mute); text-align: center;
+  .hint-icon { font-size: 3rem; font-weight: 700; color: var(--text-faint); margin-bottom: 0.5rem; }
   p { font-size: 0.88rem; margin: 0.2rem 0; }
   .hint-sub { font-size: 0.78rem; }
 }
@@ -124,31 +121,34 @@ $c-muted: rgba(255,255,255,0.4);
 
   .page-name-input {
     font-size: 1.05rem; font-weight: 700; background: transparent;
-    border: none; border-bottom: 1px solid $c-border; color: $c-text;
+    border: none; border-bottom: 1px solid var(--border); color: var(--text);
     padding: 0.2rem 0; min-width: 160px;
-    &:focus { outline: none; border-color: #8b5cf6; }
+    &:focus { outline: none; border-color: var(--cat-purple); }
   }
   .page-route-input {
-    font-family: monospace; font-size: 0.82rem; background: rgba(255,255,255,0.05);
-    border: 1px solid $c-border; border-radius: 5px; color: #93c5fd;
+    font-family: monospace; font-size: 0.82rem; background: var(--overlay-weak);
+    border: 1px solid var(--border); border-radius: 5px; color: var(--accent);
     padding: 0.3rem 0.6rem; min-width: 140px;
-    &:focus { outline: none; border-color: #8b5cf6; }
+    &:focus { outline: none; border-color: var(--cat-purple); }
   }
   select {
-    background: rgba(255,255,255,0.05); border: 1px solid $c-border;
-    border-radius: 5px; color: $c-text; padding: 0.3rem 0.6rem; font-size: 0.82rem;
-    &:focus { outline: none; border-color: #8b5cf6; }
+    background: var(--overlay-weak); border: 1px solid var(--border);
+    border-radius: 5px; color: var(--text); padding: 0.3rem 0.6rem; font-size: 0.82rem;
+    &:focus { outline: none; border-color: var(--cat-purple); }
   }
 }
 
 // ── Sections ──────────────────────────────────────────────────────────────────
+// Posé directement sur le fond de page (var(--bg)) : un ton "recessed" via
+// noir translucide (et non var(--overlay-weak), adaptatif mais pas assez
+// distinct ici) pour rester visible comme un renfoncement dans les deux thèmes.
 .section-block {
-  background: rgba(0,0,0,0.15); border: 1px solid $c-border;
+  background: color-mix(in srgb, black 6%, transparent); border: 1px solid var(--border);
   border-radius: 8px; padding: 0.85rem; margin-bottom: 0.85rem;
 }
 
 .section-title {
-  font-size: 0.72rem; font-weight: 700; color: rgba(255,255,255,0.45);
+  font-size: 0.72rem; font-weight: 700; color: var(--text-mute);
   text-transform: uppercase; letter-spacing: 0.06em; display: block; margin-bottom: 0.6rem;
 }
 
@@ -164,22 +164,22 @@ $c-muted: rgba(255,255,255,0.4);
 .svc-toggle {
   display: inline-flex; align-items: center; gap: 0.35rem;
   padding: 3px 10px; border-radius: 12px; cursor: pointer; font-size: 0.8rem;
-  background: rgba(255,255,255,0.04); color: $c-muted; border: 1px solid $c-border;
-  input { accent-color: #8b5cf6; }
-  &.active { background: rgba(139,92,246,0.15); color: #c4b5fd; border-color: rgba(139,92,246,0.3); }
+  background: var(--overlay-weak); color: var(--text-mute); border: 1px solid var(--border);
+  input { accent-color: var(--cat-purple); }
+  &.active { background: color-mix(in srgb, var(--cat-purple) 15%, transparent); color: var(--cat-purple); border-color: color-mix(in srgb, var(--cat-purple) 30%, transparent); }
 }
 
 // ── Composants ────────────────────────────────────────────────────────────────
 .comp-card {
-  background: rgba(255,255,255,0.03); border: 1px solid $c-border;
+  background: var(--overlay-weak); border: 1px solid var(--border);
   border-radius: 6px; padding: 0.7rem; margin-bottom: 0.6rem;
 
   .comp-header {
     display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem;
     select, input {
-      background: rgba(255,255,255,0.05); border: 1px solid $c-border;
-      border-radius: 5px; color: $c-text; padding: 0.3rem 0.5rem; font-size: 0.8rem;
-      &:focus { outline: none; border-color: #8b5cf6; }
+      background: var(--overlay-weak); border: 1px solid var(--border);
+      border-radius: 5px; color: var(--text); padding: 0.3rem 0.5rem; font-size: 0.8rem;
+      &:focus { outline: none; border-color: var(--cat-purple); }
     }
     .comp-label-input { flex: 1; }
   }
@@ -187,7 +187,7 @@ $c-muted: rgba(255,255,255,0.4);
 
 .comp-fields-row {
   .fields-label {
-    font-size: 0.72rem; color: $c-muted; text-transform: uppercase;
+    font-size: 0.72rem; color: var(--text-mute); text-transform: uppercase;
     letter-spacing: 0.04em; display: block; margin-bottom: 0.4rem;
   }
 }
@@ -198,11 +198,11 @@ $c-muted: rgba(255,255,255,0.4);
 
 .field-chip {
   padding: 2px 9px; border-radius: 10px; font-size: 0.76rem; font-family: monospace;
-  cursor: pointer; border: 1px solid $c-border;
-  background: rgba(255,255,255,0.04); color: $c-muted;
+  cursor: pointer; border: 1px solid var(--border);
+  background: var(--overlay-weak); color: var(--text-mute);
   transition: all 0.12s;
-  &:hover { background: rgba(139,92,246,0.12); color: $c-text; border-color: rgba(139,92,246,0.3); }
-  &.selected { background: rgba(139,92,246,0.2); color: #c4b5fd; border-color: rgba(139,92,246,0.4); }
+  &:hover { background: color-mix(in srgb, var(--cat-purple) 12%, transparent); color: var(--text); border-color: color-mix(in srgb, var(--cat-purple) 30%, transparent); }
+  &.selected { background: color-mix(in srgb, var(--cat-purple) 20%, transparent); color: var(--cat-purple); border-color: color-mix(in srgb, var(--cat-purple) 40%, transparent); }
 }
 
 .selected-fields {
@@ -211,18 +211,18 @@ $c-muted: rgba(255,255,255,0.4);
 
 .field-tag {
   display: inline-flex; align-items: center; gap: 0.2rem;
-  background: rgba(139,92,246,0.15); color: #c4b5fd;
+  background: color-mix(in srgb, var(--cat-purple) 15%, transparent); color: var(--cat-purple);
   padding: 1px 8px; border-radius: 10px; font-size: 0.76rem; font-family: monospace;
-  button { background: none; border: none; color: #c4b5fd; cursor: pointer; font-size: 0.9rem; padding: 0; }
+  button { background: none; border: none; color: var(--cat-purple); cursor: pointer; font-size: 0.9rem; padding: 0; }
 }
 
 // ── Interactions ──────────────────────────────────────────────────────────────
 .interaction-row {
   display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;
   select, input {
-    background: rgba(255,255,255,0.05); border: 1px solid $c-border;
-    border-radius: 5px; color: $c-text; padding: 0.3rem 0.5rem; font-size: 0.8rem;
-    &:focus { outline: none; border-color: #8b5cf6; }
+    background: var(--overlay-weak); border: 1px solid var(--border);
+    border-radius: 5px; color: var(--text); padding: 0.3rem 0.5rem; font-size: 0.8rem;
+    &:focus { outline: none; border-color: var(--cat-purple); }
   }
   .inter-name { width: 180px; }
   .inter-desc { flex: 1; }
@@ -230,17 +230,17 @@ $c-muted: rgba(255,255,255,0.4);
 
 // ── Boutons ───────────────────────────────────────────────────────────────────
 .btn-add-sm {
-  padding: 2px 8px; background: rgba(139,92,246,0.12); color: #a78bfa;
-  border: 1px solid rgba(139,92,246,0.25); border-radius: 4px; cursor: pointer; font-size: 0.75rem;
-  &:hover { background: rgba(139,92,246,0.22); }
+  padding: 2px 8px; background: color-mix(in srgb, var(--cat-purple) 12%, transparent); color: var(--cat-purple);
+  border: 1px solid color-mix(in srgb, var(--cat-purple) 25%, transparent); border-radius: 4px; cursor: pointer; font-size: 0.75rem;
+  &:hover { background: color-mix(in srgb, var(--cat-purple) 22%, transparent); }
 }
 .btn-remove-icon {
-  background: none; border: none; color: rgba(239,68,68,0.4); cursor: pointer; font-size: 0.85rem;
-  &:hover { color: #ef4444; }
+  background: none; border: none; color: color-mix(in srgb, var(--danger) 40%, transparent); cursor: pointer; font-size: 0.85rem;
+  &:hover { color: var(--danger); }
 }
 .btn-danger-sm {
-  padding: 0.3rem 0.7rem; background: rgba(239,68,68,0.1); color: #f87171;
-  border: 1px solid rgba(239,68,68,0.25); border-radius: 5px; cursor: pointer; font-size: 0.78rem;
-  &:hover { background: rgba(239,68,68,0.2); }
+  padding: 0.3rem 0.7rem; background: var(--danger-tint); color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent); border-radius: 5px; cursor: pointer; font-size: 0.78rem;
+  &:hover { background: color-mix(in srgb, var(--danger) 20%, transparent); }
 }
-.empty-sm { font-size: 0.78rem; color: $c-muted; font-style: italic; }
+.empty-sm { font-size: 0.78rem; color: var(--text-mute); font-style: italic; }

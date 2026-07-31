@@ -24,11 +24,6 @@ export class EndpointsPageComponent {
   readonly stepTypes: EndpointStepType[] = ['auth_check', 'validate', 'db_query', 'db_write', 'serialize', 'transform', 'error', 'custom'];
   readonly fieldTypes: FieldType[] = ['string', 'int', 'bool', 'decimal', 'datetime', 'text'];
 
-  readonly methodColors: Record<HttpMethod, string> = {
-    GET: '#10b981', POST: '#3b82f6', PUT: '#f59e0b',
-    PATCH: '#8b5cf6', DELETE: '#ef4444',
-  };
-
   readonly operationLabels: Record<OperationType, string> = {
     list: 'list', create: 'create', retrieve: 'retrieve',
     update: 'update', partial_update: 'partial_update',

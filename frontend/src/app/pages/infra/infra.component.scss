@@ -1,18 +1,8 @@
-$c-bg:      #0f172a;
-$c-surface: #1e293b;
-$c-border:  rgba(255,255,255,0.08);
-$c-text:    #f1f5f9;
-$c-accent:  #818cf8;
-$c-pk:      #f59e0b;
-$c-fk:      #3b82f6;
-$c-o2o:     #8b5cf6;
-$c-m2m:     #10b981;
-
 .infra-page {
   min-height: 100vh; // fond auparavant hérité du <body> sombre — désormais explicite (body suit le thème clair/sombre Foyer)
   padding: 1.5rem;
-  background: $c-bg;
-  color: $c-text;
+  background: var(--bg);
+  color: var(--text);
   max-width: 1400px;
 }
 
@@ -33,27 +23,27 @@ $c-m2m:     #10b981;
   font-size: 1.2rem;
   font-weight: 700;
   margin: 0;
-  color: $c-text;
+  color: var(--text);
 }
 
 .btn-copy {
   padding: 6px 14px;
-  background: rgba($c-accent, 0.15);
-  border: 1px solid rgba($c-accent, 0.4);
-  color: $c-accent;
+  background: var(--accent-tint);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent);
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.82rem;
   transition: background 0.12s;
-  &:hover { background: rgba($c-accent, 0.28); }
+  &:hover { background: color-mix(in srgb, var(--accent) 28%, transparent); }
 }
 
 .empty-state {
   padding: 2rem;
   text-align: center;
-  color: rgba(255,255,255,0.4);
+  color: var(--text-mute);
   font-size: 0.9rem;
-  border: 1px dashed $c-border;
+  border: 1px dashed var(--border);
   border-radius: 8px;
 }
 
@@ -66,16 +56,16 @@ $c-m2m:     #10b981;
 }
 
 .table-card {
-  background: $c-surface;
-  border: 1px solid $c-border;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
 }
 
 .table-card-header {
-  background: rgba(255,255,255,0.04);
+  background: var(--overlay-weak);
   padding: 0.65rem 0.85rem;
-  border-bottom: 1px solid $c-border;
+  border-bottom: 1px solid var(--border);
 }
 
 .table-name-block {
@@ -85,7 +75,7 @@ $c-m2m:     #10b981;
 }
 
 .table-icon {
-  color: $c-accent;
+  color: var(--accent);
   font-size: 0.7rem;
   flex-shrink: 0;
 }
@@ -94,12 +84,12 @@ $c-m2m:     #10b981;
   font-weight: 700;
   font-family: monospace;
   font-size: 0.95rem;
-  color: $c-accent;
+  color: var(--accent);
 }
 
 .model-name {
   font-size: 0.72rem;
-  color: rgba(255,255,255,0.45);
+  color: var(--text-mute);
   margin-left: 0.4rem;
   &::before { content: '('; }
   &::after  { content: ')'; }
@@ -107,7 +97,7 @@ $c-m2m:     #10b981;
 
 .table-desc {
   font-size: 0.78rem;
-  color: rgba(255,255,255,0.5);
+  color: var(--text-mute);
   margin: 0.3rem 0 0;
 }
 
@@ -130,27 +120,27 @@ $c-m2m:     #10b981;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: rgba(255,255,255,0.4);
-    border-bottom: 1px solid $c-border;
-    background: rgba(0,0,0,0.15);
+    color: var(--text-mute);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
   }
 
   td {
     padding: 0.3rem 0.65rem;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--border);
     vertical-align: middle;
   }
 
   tr:last-child td { border-bottom: none; }
 
-  tr.pk-row td  { background: rgba($c-pk,  0.05); }
-  tr.fk-row td  { background: rgba($c-fk,  0.04); }
+  tr.pk-row td { background: color-mix(in srgb, var(--cat-amber) 5%, transparent); }
+  tr.fk-row td { background: color-mix(in srgb, var(--cat-blue) 4%, transparent); }
 }
 
 .col-name { font-family: monospace; font-weight: 600; white-space: nowrap; }
-.col-type { font-family: monospace; color: #7dd3fc; }
-.col-bool { text-align: center; color: rgba(255,255,255,0.5); }
-.col-default { font-family: monospace; font-size: 0.72rem; color: rgba(255,255,255,0.4); }
+.col-type { font-family: monospace; color: var(--cat-cyan); }
+.col-bool { text-align: center; color: var(--text-mute); }
+.col-default { font-family: monospace; font-size: 0.72rem; color: var(--text-mute); }
 
 // ── Badges ────────────────────────────────────────────────────────────────────
 .badge {
@@ -162,15 +152,15 @@ $c-m2m:     #10b981;
   vertical-align: middle;
   letter-spacing: 0.04em;
 }
-.badge-pk  { background: rgba($c-pk,  0.2); color: $c-pk;  border: 1px solid rgba($c-pk,  0.4); }
-.badge-fk  { background: rgba($c-fk,  0.2); color: $c-fk;  border: 1px solid rgba($c-fk,  0.4); }
-.badge-o2o { background: rgba($c-o2o, 0.2); color: $c-o2o; border: 1px solid rgba($c-o2o, 0.4); }
+.badge-pk  { background: color-mix(in srgb, var(--cat-amber) 20%, transparent);  color: var(--cat-amber);  border: 1px solid color-mix(in srgb, var(--cat-amber) 40%, transparent); }
+.badge-fk  { background: color-mix(in srgb, var(--cat-blue) 20%, transparent);   color: var(--cat-blue);   border: 1px solid color-mix(in srgb, var(--cat-blue) 40%, transparent); }
+.badge-o2o { background: color-mix(in srgb, var(--cat-purple) 20%, transparent); color: var(--cat-purple); border: 1px solid color-mix(in srgb, var(--cat-purple) 40%, transparent); }
 
 // ── Contraintes ───────────────────────────────────────────────────────────────
 .constraints {
   padding: 0.5rem 0.75rem;
-  background: rgba(0,0,0,0.15);
-  border-top: 1px solid $c-border;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
@@ -179,46 +169,46 @@ $c-m2m:     #10b981;
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: rgba(255,255,255,0.35);
+  color: var(--text-faint);
   font-weight: 600;
 }
 .constraint-line {
   font-size: 0.72rem;
   font-family: monospace;
-  color: rgba($c-fk, 0.8);
+  color: var(--cat-blue);
   word-break: break-all;
 }
 
 // ── DDL ───────────────────────────────────────────────────────────────────────
 .ddl-block {
-  border-top: 1px solid $c-border;
+  border-top: 1px solid var(--border);
 
   summary {
     padding: 0.4rem 0.75rem;
     font-size: 0.75rem;
-    color: rgba(255,255,255,0.4);
+    color: var(--text-faint);
     cursor: pointer;
     user-select: none;
-    &:hover { color: rgba(255,255,255,0.7); }
+    &:hover { color: var(--text-mute); }
   }
 }
 
 .ddl-pre {
   margin: 0;
   padding: 0.65rem 0.85rem;
-  background: rgba(0,0,0,0.3);
+  background: color-mix(in srgb, black 5%, var(--bg));
   font-family: monospace;
   font-size: 0.75rem;
-  color: #a5b4fc;
+  color: var(--accent);
   overflow-x: auto;
   white-space: pre;
 }
 
 // ── M2M ───────────────────────────────────────────────────────────────────────
 .m2m-card {
-  border-top: 1px solid $c-border;
+  border-top: 1px solid var(--border);
   padding: 0.5rem 0.75rem;
-  background: rgba($c-m2m, 0.04);
+  background: color-mix(in srgb, var(--cat-green) 4%, transparent);
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
@@ -226,19 +216,19 @@ $c-m2m:     #10b981;
 .m2m-label {
   font-size: 0.68rem;
   text-transform: uppercase;
-  color: $c-m2m;
+  color: var(--cat-green);
   font-weight: 600;
   letter-spacing: 0.07em;
 }
 .m2m-name {
   font-family: monospace;
   font-size: 0.8rem;
-  color: rgba($c-m2m, 0.9);
+  color: var(--cat-green);
 }
 
 // ── Relations ─────────────────────────────────────────────────────────────────
 .relations-section {
-  border-top: 1px solid $c-border;
+  border-top: 1px solid var(--border);
   padding-top: 1.25rem;
 }
 
@@ -261,12 +251,12 @@ $c-m2m:     #10b981;
   font-size: 0.8rem;
   font-family: monospace;
 }
-.rel-from  { color: $c-accent; font-weight: 600; }
-.rel-arrow { color: rgba(255,255,255,0.35); }
-.rel-to    { color: #7dd3fc; }
+.rel-from  { color: var(--accent); font-weight: 600; }
+.rel-arrow { color: var(--text-faint); }
+.rel-to    { color: var(--cat-cyan); }
 .rel-junction {
   font-size: 0.7rem;
-  color: rgba(255,255,255,0.3);
+  color: var(--text-faint);
   &::before { content: '('; }
   &::after  { content: ')'; }
 }

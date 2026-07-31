@@ -57,7 +57,7 @@
 
           <!-- En-tête (toujours visible) -->
           <div class="ep-header" (click)="toggleEndpoint(ep.id!)">
-            <span class="method-badge" [style.background]="methodColors[ep.method]">{{ ep.method }}</span>
+            <span class="method-badge m-{{ ep.method.toLowerCase() }}">{{ ep.method }}</span>
             <span class="ep-path">{{ ep.path || '/chemin' }}</span>
             <span class="ep-desc">{{ ep.description }}</span>
             @if (ep.required_roles.length > 0) {

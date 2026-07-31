@@ -36,6 +36,66 @@
   --sidebar-w: 240px;
   --sidebar-w-collapsed: 76px;
   color-scheme: light;
+
+  /* ── Tokens locaux — migration Foyer des pages builder (schema-canvas,
+     ai-chat, pages-config, endpoints, pipelines, builder, preview, infra,
+     models). Ne pas redéfinir les tokens Foyer ci-dessus ici : ceux-ci ne
+     couvrent que des besoins propres à ces 9 composants. Voir
+     app-builder/CLAUDE.md ou le commit de migration pour le détail. ── */
+
+  /* Nappes translucides génériques — s'adaptent à la surface sur laquelle
+     elles sont posées (assombrissent en clair, éclaircissent en sombre),
+     contrairement à --bg/--card qui sont des couleurs opaques fixes.
+     Utilisées pour hovers, fonds de champs de saisie, bordures accentuées. */
+  --overlay-weak:   rgba(15,23,42,0.04);
+  --overlay-hover:  rgba(15,23,42,0.07);
+  --overlay-strong: rgba(15,23,42,0.14);
+
+  /* Texte très estompé (icônes décoratives, placeholders, "n/a") — encore
+     plus discret que --text-mute. */
+  --text-faint: #a6acbc;
+
+  /* Texte clair fixe pour poser sur un aplat de couleur saturée et sombre
+     (badges/pastilles catégorielles ci-dessous) — ne s'inverse jamais avec
+     le thème, contrairement à --accent-on, car ces aplats restent sombres
+     dans les deux thèmes. */
+  --on-solid: #f8fafc;
+
+  --shadow-color: rgba(15,23,42,0.18);
+
+  /* Palette catégorielle générique (6 teintes) — distinctions "de type"
+     sans rapport avec le thème clair/sombre : chips de groupe/service/page,
+     types de composants, types d'interaction, colonnes PK/FK/O2O/M2M
+     (infra), types d'étape de pipeline. Réutilisée telle quelle partout où
+     une de ces distinctions est nécessaire plutôt que d'en recréer une par
+     endroit. */
+  --cat-blue:   #1d4ed8;
+  --cat-purple: #7c3aed;
+  --cat-green:  #15803d;
+  --cat-amber:  #b45309;
+  --cat-cyan:   #0e7490;
+  --cat-gray:   #4b5563;
+
+  /* Types d'étape de pipeline sans équivalent dans la palette catégorielle
+     ci-dessus (auth_check, validate, db_write, serialize) — les autres
+     types (trigger, service_call, transform, state_update, navigate,
+     error, db_query, custom) réutilisent cat-* / success / danger. */
+  --step-auth:      #4338ca;
+  --step-validate:  #be185d;
+  --step-dbwrite:   #0f766e;
+  --step-serialize: #57534e;
+
+  /* Colonnes du diagramme d'architecture (schema-canvas) — aplats fixes,
+     volontairement identiques dans les deux thèmes (bandeaux de couleur à
+     texte clair, comme des étiquettes). */
+  --diag-infra:    #4c1d95;
+  --diag-backend:  #1e3a5f;
+  --diag-frontend: #14532d;
+  --diag-browser:  #7c2d12;
+
+  /* Badges fournisseur IA (ai-chat) */
+  --provider-claude:  #7c3aed;
+  --provider-mistral: #c2410c;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -47,6 +107,33 @@
     --bg: #0c0e14; --card: #14171f; --border: #262b38;
     --text: #eef0f5; --text-mute: #98a0b3; --accent-on: #0c0e14;
     color-scheme: dark;
+
+    --overlay-weak:   rgba(255,255,255,0.05);
+    --overlay-hover:  rgba(255,255,255,0.08);
+    --overlay-strong: rgba(255,255,255,0.16);
+    --text-faint: #4b5165;
+    --on-solid: #f8fafc;
+    --shadow-color: rgba(0,0,0,0.55);
+
+    --cat-blue:   #60a5fa;
+    --cat-purple: #a78bfa;
+    --cat-green:  #4ade80;
+    --cat-amber:  #fbbf24;
+    --cat-cyan:   #22d3ee;
+    --cat-gray:   #9ca3af;
+
+    --step-auth:      #818cf8;
+    --step-validate:  #f472b6;
+    --step-dbwrite:   #2dd4bf;
+    --step-serialize: #a8a29e;
+
+    --diag-infra:    #4c1d95;
+    --diag-backend:  #1e3a5f;
+    --diag-frontend: #14532d;
+    --diag-browser:  #7c2d12;
+
+    --provider-claude:  #c4b5fd;
+    --provider-mistral: #fb923c;
   }
 }
 
@@ -60,6 +147,33 @@
   --bg: #0c0e14; --card: #14171f; --border: #262b38;
   --text: #eef0f5; --text-mute: #98a0b3; --accent-on: #0c0e14;
   color-scheme: dark;
+
+  --overlay-weak:   rgba(255,255,255,0.05);
+  --overlay-hover:  rgba(255,255,255,0.08);
+  --overlay-strong: rgba(255,255,255,0.16);
+  --text-faint: #4b5165;
+  --on-solid: #f8fafc;
+  --shadow-color: rgba(0,0,0,0.55);
+
+  --cat-blue:   #60a5fa;
+  --cat-purple: #a78bfa;
+  --cat-green:  #4ade80;
+  --cat-amber:  #fbbf24;
+  --cat-cyan:   #22d3ee;
+  --cat-gray:   #9ca3af;
+
+  --step-auth:      #818cf8;
+  --step-validate:  #f472b6;
+  --step-dbwrite:   #2dd4bf;
+  --step-serialize: #a8a29e;
+
+  --diag-infra:    #4c1d95;
+  --diag-backend:  #1e3a5f;
+  --diag-frontend: #14532d;
+  --diag-browser:  #7c2d12;
+
+  --provider-claude:  #c4b5fd;
+  --provider-mistral: #fb923c;
 }
 
 :root[data-theme="light"] {
@@ -71,6 +185,33 @@
   --text: #12141c; --text-mute: #5b6172;
   --accent-on: #ffffff;
   color-scheme: light;
+
+  --overlay-weak:   rgba(15,23,42,0.04);
+  --overlay-hover:  rgba(15,23,42,0.07);
+  --overlay-strong: rgba(15,23,42,0.14);
+  --text-faint: #a6acbc;
+  --on-solid: #f8fafc;
+  --shadow-color: rgba(15,23,42,0.18);
+
+  --cat-blue:   #1d4ed8;
+  --cat-purple: #7c3aed;
+  --cat-green:  #15803d;
+  --cat-amber:  #b45309;
+  --cat-cyan:   #0e7490;
+  --cat-gray:   #4b5563;
+
+  --step-auth:      #4338ca;
+  --step-validate:  #be185d;
+  --step-dbwrite:   #0f766e;
+  --step-serialize: #57534e;
+
+  --diag-infra:    #4c1d95;
+  --diag-backend:  #1e3a5f;
+  --diag-frontend: #14532d;
+  --diag-browser:  #7c2d12;
+
+  --provider-claude:  #7c3aed;
+  --provider-mistral: #c2410c;
 }
 
 /* ─── Reset ──────────────────────────────────────────────────────────── */
