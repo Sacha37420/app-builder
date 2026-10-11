@@ -164,7 +164,10 @@ class AppSpecSerializer(serializers.ModelSerializer):
         # chat_history est exposé en lecture (pour loadSpec côté frontend) mais
         # écrit uniquement via l'endpoint dédié PATCH /api/apps/<id>/chat/,
         # pour ne pas être écrasé par l'autosave PUT de la spec complète.
-        read_only_fields = ['created_at', 'updated_at', 'chat_history']
+        # owner_email n'est jamais écrit par le client : il est posé par le
+        # serveur à la création (AppSpecListCreateView.perform_create). Sans
+        # cela, un PATCH déposait sa spécification dans le catalogue d'un autre.
+        read_only_fields = ['created_at', 'updated_at', 'chat_history', 'owner_email']
 
     # ── Helpers de résolution des IDs temporaires ──────────────────────────────
 

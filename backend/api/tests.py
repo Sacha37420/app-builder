@@ -243,18 +243,18 @@ class ProprieteTests(Base):
         self.assertEqual(AppSpec.objects.get(pk=resp.json()['id']).owner_email, 'alice@ssolab.local')
         self.assertEqual(len(self.bob.get('/api/apps/').json()), 1)
 
-    @unittest.expectedFailure
     def test_modification_ne_change_pas_le_proprietaire(self):
-        # DÉFAUT (rapport chantier « tests ») : `owner_email` est inscriptible
-        # dans AppSpecSerializer. La création l'écrase (perform_create), pas
-        # la modification : PATCH {"owner_email": "<autre>"} dépose sa
-        # spécification — contenu libre et `required_groups` compris — dans
-        # le catalogue d'un autre compte, sans son accord, et lab-admin la lui
-        # attribue. Correctif : `owner_email` dans `read_only_fields`.
+        # `owner_email` est en lecture seule : un PATCH ne dépose pas sa
+        # spécification (contenu libre, `required_groups` compris) dans le
+        # catalogue d'un autre compte, que lab-admin lui attribuerait.
         resp = self.alice.post('/api/apps/', {'name': 'Cheval de Troie'}, format='json')
         pk = resp.json()['id']
-        self.alice.patch(f'/api/apps/{pk}/', {'owner_email': 'bob@ssolab.local'}, format='json')
-        self.assertEqual(AppSpec.objects.get(pk=pk).owner_email, 'alice@ssolab.local')
+        for methode in (self.alice.patch, self.alice.put):
+            resp = methode(f'/api/apps/{pk}/', {'name': 'Cheval de Troie', 'owner_email': 'bob@ssolab.local'},
+                           format='json')
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(AppSpec.objects.get(pk=pk).owner_email, 'alice@ssolab.local')
+        self.assertEqual(len(self.bob.get('/api/apps/').json()), 1)
 
     def test_l_enregistrement_complet_n_ecrase_pas_la_conversation(self):
         # chat_history est en lecture seule dans la spec : il ne s'écrit que
