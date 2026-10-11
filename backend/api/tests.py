@@ -16,7 +16,6 @@ Aucun appel sortant : Anthropic et Mistral sont simulés.
 """
 import json
 import time
-import unittest
 from unittest import mock
 
 import jwt
@@ -375,18 +374,18 @@ class SpecificationTests(Base):
         self.assertEqual(len(apres['endpoint_groups']), 2)
         self.assertEqual(len(apres['pages']), 1)
 
-    @unittest.expectedFailure
     def test_layout_trop_long_refuse_proprement(self):
-        # DÉFAUT (rapport chantier « tests ») : PageSerializer accepte un
-        # `layout` de 50 caractères, la colonne `pages.layout` en tient 20
-        # (comme le miroir de lab-admin). Entre 21 et 50 caractères, la
-        # validation passe et PostgreSQL lève « value too long » : erreur 500
-        # au lieu d'un 400. Correctif : max_length=20 dans le sérialiseur, ou
-        # colonne élargie (et miroir de lab-admin avec).
+        # Le sérialiseur est aligné sur la colonne `pages.layout` (20
+        # caractères, comme le miroir de lab-admin) : au-delà, 400 et non une
+        # erreur de base rendue en 500.
         spec = _spec_complete()
         spec['pages'][0]['layout'] = 'tableau-de-bord-personnalise'
         resp = self.alice.post('/api/apps/', spec, format='json')
         self.assertEqual(resp.status_code, 400)
+        self.assertIn('layout', str(resp.json()))
+        self.assertEqual(AppSpec.objects.count(), 0)
+        spec['pages'][0]['layout'] = 'x' * 20
+        self.assertEqual(self.alice.post('/api/apps/', spec, format='json').status_code, 201)
 
     def test_tables_lues_par_lab_admin(self):
         # lab-admin lit ces tables directement (api/models_appbuilder.py,

@@ -96,7 +96,9 @@ class FrontendServiceSerializer(serializers.ModelSerializer):
 
 class PageSerializer(serializers.ModelSerializer):
     # CharField sans choices pour accepter kanban, calendar, grid, progress, public…
-    layout = serializers.CharField(max_length=50, default='mixed')
+    # max_length = celui de la colonne pages.layout (20) : au-delà, PostgreSQL
+    # refusait l'écriture et l'API répondait 500 au lieu de 400.
+    layout = serializers.CharField(max_length=20, default='mixed')
     interactions = InteractionSerializer(many=True, required=False)
     pipelines = PipelineSerializer(many=True, required=False)
     # Même raison que endpoint_group_ids : accepte des IDs temporaires négatifs
