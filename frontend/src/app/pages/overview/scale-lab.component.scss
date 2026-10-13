@@ -1,0 +1,42 @@
+// Échelle « Dans le lab » : chaîne de gauche à droite, de haut en bas sous 900 px.
+:host { display: block; min-width: 0; }
+
+.chain {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+}
+.node { flex: 1 1 150px; max-width: 260px; }
+button.node { cursor: pointer; }
+button.node:hover { background: var(--overlay-hover); }
+.count { display: block; margin-top: var(--space-1); font-weight: 600; }
+.enter { display: block; margin-top: var(--space-2); color: var(--accent); font-weight: 600; text-decoration: underline; }
+
+.arrow {
+  display: flex; flex-direction: column; align-items: center; flex: 0 0 auto;
+  color: var(--text-mute); font-size: var(--text-xs); text-align: center;
+  svg { width: 40px; height: 12px; }
+}
+.arrow-label { max-width: 110px; }
+
+// Embranchement : tout ce qui part du dernier nœud du tronc.
+.branches {
+  display: flex; flex-direction: column; gap: var(--space-2); flex: 1 1 260px; min-width: 0;
+  padding-left: var(--space-2); border-left: 2px solid var(--border);
+}
+.branch { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.branch .node { max-width: none; }
+
+.rules-title { margin-top: var(--space-5); }
+.rules {
+  list-style: none; display: grid; gap: var(--space-2);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+}
+
+@media (max-width: 899px) {
+  .chain { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
+  .node { flex: 0 0 auto; max-width: none; }
+  .arrow { flex-direction: row; justify-content: center; gap: var(--space-2); padding: var(--space-1) 0; }
+  .arrow svg { transform: rotate(90deg); }
+  .arrow-label { max-width: none; }
+  .branches { flex: 0 0 auto; padding-left: 0; border-left: none; }
+  .branch { flex-direction: column; align-items: stretch; }
+}

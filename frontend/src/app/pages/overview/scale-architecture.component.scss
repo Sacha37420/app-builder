@@ -1,0 +1,42 @@
+// Échelle « Architecture » : trois colonnes, une seule sous 900 px.
+:host { display: block; min-width: 0; }
+
+.hint { margin-bottom: var(--space-3); }
+
+.cols {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4); align-items: start;
+}
+.col { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.n {
+  padding: 0 var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-full);
+  font-size: var(--text-xs); color: var(--text-mute);
+}
+
+h3 { font-size: var(--text-base); font-weight: 600; }
+.rel { margin-top: var(--space-1); color: var(--text-mute); }
+
+// Voisin direct de l'élément actif : bordure pleine à la teinte de son genre.
+.is-near { border-color: var(--k); box-shadow: 0 0 0 1px var(--k); }
+
+.endpoints {
+  list-style: none; margin-top: var(--space-1);
+  border-top: 1px solid var(--border);
+  li {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2);
+    padding: var(--space-2) var(--space-1); border-bottom: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+  li:last-child { border-bottom: none; }
+  .ov-detail { flex-basis: 100%; margin-top: 0; }
+}
+.route { font-weight: 600; }
+.badge {
+  padding: 0 var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-full);
+  font-size: var(--text-xs); color: var(--text-mute);
+}
+.badge.public { color: var(--warning); border-color: var(--warning); background: var(--warning-tint); font-weight: 600; }
+
+@media (max-width: 899px) {
+  .cols { grid-template-columns: minmax(0, 1fr); }
+}

@@ -29,5 +29,9 @@ export const routes: Routes = [
     path: 'preview',
     loadComponent: () => import('./pages/preview/preview.component').then(m => m.PreviewPageComponent),
   },
+  {
+    path: 'overview',
+    loadComponent: () => import('./pages/overview/overview.component').then(m => m.OverviewPageComponent),
+  },
   { path: '**', redirectTo: '' },
 ];

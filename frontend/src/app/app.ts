@@ -38,6 +38,7 @@ export class AppComponent {
 
   readonly navItems: NavItem[] = [
     { path: '/',             label: 'Canvas',       abbr: 'Cv', exact: true },
+    { path: '/overview',     label: "Vue d'ensemble", abbr: 'Vu' },
     { path: '/models',       label: '① Modèles',    abbr: 'Mo' },
     { path: '/endpoints',    label: '② API',        abbr: 'Ap' },
     { path: '/pages-config', label: '③ Pages',      abbr: 'Pa' },

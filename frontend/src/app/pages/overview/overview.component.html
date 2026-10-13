@@ -1,0 +1,90 @@
+<div class="ov-page">
+
+  <h1 class="ov-title">Vue d'ensemble</h1>
+  <p class="ov-intro">
+    Votre app, du plus large (sa place dans le lab) au plus fin (une étape de pipeline).
+    Cliquez sur un élément pour y entrer ; le fil d'Ariane et « Remonter » ramènent en arrière.
+  </p>
+
+  @if (state.savedId() === null) {
+    <div class="ov-card ov-empty">
+      <p>Enregistrez la spécification pour la voir à toutes les échelles.</p>
+    </div>
+  } @else {
+
+    @if (failed()) {
+      <div class="ov-banner" role="alert">
+        <strong>Vue d'ensemble indisponible</strong>
+        <span>Le serveur n'a pas répondu, ou la spécification est introuvable.</span>
+        <button type="button" class="ov-btn" (click)="reload()">Réessayer</button>
+      </div>
+    }
+
+    @if (loading() && !store.graph()) {
+      <p class="ov-muted" role="status">Chargement de la vue d'ensemble…</p>
+    }
+
+    @if (store.graph(); as g) {
+
+      <p class="ov-muted">
+        <strong>{{ g.spec.name }}</strong> — état du {{ g.spec.updated_at | date:'dd/MM/yyyy HH:mm' }}
+        @if (unsaved()) {
+          — <strong class="ov-warn">des modifications sont en attente d'enregistrement</strong>
+        }
+        @if (loading()) { <span role="status">— actualisation…</span> }
+      </p>
+
+      <!-- ── Barre d'échelles ──────────────────────────────────────────── -->
+      <nav class="ov-tabs" aria-label="Échelles, de la plus large à la plus fine">
+        @for (s of g.scales; track s.id; let i = $index) {
+          <button type="button" class="ov-tab"
+                  [class.active]="store.scale() === s.id"
+                  [attr.aria-current]="store.scale() === s.id ? 'true' : null"
+                  (click)="store.open(s.id)">
+            <span class="ov-tab-n" aria-hidden="true">{{ i + 1 }}</span>{{ s.label }}
+          </button>
+        }
+      </nav>
+
+      <!-- ── Fil d'Ariane ──────────────────────────────────────────────── -->
+      <div class="ov-trail">
+        <nav aria-label="Fil d'Ariane">
+          <ol class="ov-crumbs">
+            @for (c of store.crumbs(); track $index) {
+              <li>
+                @if (c.current) {
+                  <span class="ov-crumb-here" aria-current="location">{{ c.label }}</span>
+                } @else {
+                  <button type="button" class="ov-link" (click)="store.open(c.scale, c.node)">{{ c.label }}</button>
+                }
+              </li>
+            }
+          </ol>
+        </nav>
+        @if (store.canUp()) {
+          <button type="button" class="ov-btn" (click)="store.up()">
+            <span aria-hidden="true">↑</span> Remonter
+          </button>
+        }
+      </div>
+
+      @if (store.filter(); as f) {
+        <p class="ov-filter">
+          <span>Seulement ce qui dépend de <strong>{{ f.label }}</strong>.</span>
+          <button type="button" class="ov-link" (click)="store.open(store.scale())">Tout afficher</button>
+        </p>
+      }
+
+      <!-- ── L'échelle courante ────────────────────────────────────────── -->
+      <section [attr.aria-label]="store.scaleLabel(store.scale())">
+        @switch (store.scale()) {
+          @case ('overview')     { <app-ov-lab /> }
+          @case ('architecture') { <app-ov-architecture /> }
+          @case ('data')         { <app-ov-data /> }
+          @case ('pipelines')    { <app-ov-pipelines /> }
+          @case ('roadmap')      { <app-ov-roadmap /> }
+        }
+      </section>
+    }
+  }
+</div>

@@ -1,0 +1,115 @@
+@if (empty()) {
+  <p class="ov-card ov-empty">Aucune page, aucun service ni aucun groupe d'endpoints décrit ici pour l'instant.</p>
+} @else {
+  <p class="ov-muted hint">
+    Une page utilise des services, un service appelle des groupes d'endpoints. Survolez ou sélectionnez un
+    élément : ceux qui lui sont liés restent en avant, les autres s'estompent.
+    @if (pinned() !== null) {
+      <button type="button" class="ov-link" (click)="pinned.set(null)">Tout réafficher</button>
+    }
+  </p>
+
+  <div class="cols">
+
+    <!-- ── Pages ───────────────────────────────────────────────────────── -->
+    <section class="col" aria-labelledby="ov-col-pages">
+      <h2 class="ov-h2" id="ov-col-pages">Pages <span class="n">{{ store.n(pages().length) }}</span></h2>
+      @for (p of pages(); track p.id) {
+        <article class="ov-card k-green" [id]="store.domId(p.id)" tabindex="-1"
+                 [class.is-focus]="store.isFocus(p.id)" [class.is-dim]="isDim(p.id)" [class.is-near]="isNear(p.id)"
+                 (mouseenter)="hover.set(p.id)" (mouseleave)="hover.set(null)"
+                 (focusin)="hover.set(p.id)" (focusout)="hover.set(null)" (click)="pinned.set(p.id)">
+          <span class="ov-kind">{{ store.kind(p).label }}</span>
+          <h3 class="ov-name">{{ p.label }}</h3>
+          @if (p.detail) { <span class="ov-detail ov-mono">{{ p.detail }}</span> }
+          <p class="rel">Utilise : {{ names(p.id, 'uses', 'out') || 'aucun service' }}</p>
+          @if (names(p.id, 'reads', 'out'); as models) { <p class="rel">Affiche : {{ models }}</p> }
+          <div class="ov-chips">
+            <button type="button" class="ov-link" (click)="store.enter(p)"
+                    [attr.aria-label]="'Pipelines de la page ' + p.label + ' (' + (store.countLabel(p) || 'aucun') + ')'">
+              {{ store.countLabel(p) || 'Pipelines' }} <span aria-hidden="true">→</span>
+            </button>
+            <app-ov-lots [node]="p.id" />
+          </div>
+        </article>
+      } @empty {
+        <p class="ov-muted">Aucune page décrite pour l'instant.</p>
+      }
+    </section>
+
+    <!-- ── Services ────────────────────────────────────────────────────── -->
+    <section class="col" aria-labelledby="ov-col-services">
+      <h2 class="ov-h2" id="ov-col-services">Services <span class="n">{{ store.n(services().length) }}</span></h2>
+      @for (s of services(); track s.id) {
+        <article class="ov-card k-purple" [id]="store.domId(s.id)" tabindex="-1"
+                 [class.is-focus]="store.isFocus(s.id)" [class.is-dim]="isDim(s.id)" [class.is-near]="isNear(s.id)"
+                 (mouseenter)="hover.set(s.id)" (mouseleave)="hover.set(null)"
+                 (focusin)="hover.set(s.id)" (focusout)="hover.set(null)" (click)="pinned.set(s.id)">
+          <span class="ov-kind">{{ store.kind(s).label }}</span>
+          <h3 class="ov-name">{{ s.label }}</h3>
+          <p class="rel">Utilisé par : {{ names(s.id, 'uses', 'in') || 'aucune page' }}</p>
+          <p class="rel">Appelle : {{ names(s.id, 'calls', 'out') || "aucun groupe d'endpoints" }}</p>
+          @if (names(s.id, 'invokes', 'in'); as steps) { <p class="rel">Invoqué par les étapes : {{ steps }}</p> }
+          <div class="ov-chips">
+            <button type="button" class="ov-link" [attr.aria-pressed]="pinned() === s.id" (click)="togglePin(s.id); $event.stopPropagation()">
+              {{ pinned() === s.id ? 'Ne plus garder en avant' : 'Garder ses liens en avant' }}
+            </button>
+            <app-ov-lots [node]="s.id" />
+          </div>
+        </article>
+      } @empty {
+        <p class="ov-muted">Aucun service décrit pour l'instant.</p>
+      }
+    </section>
+
+    <!-- ── Groupes d'endpoints ─────────────────────────────────────────── -->
+    <section class="col" aria-labelledby="ov-col-groups">
+      <h2 class="ov-h2" id="ov-col-groups">Groupes d'endpoints <span class="n">{{ store.n(groups().length) }}</span></h2>
+      @for (g of groups(); track g.id) {
+        <article class="ov-card k-blue" [id]="store.domId(g.id)" tabindex="-1"
+                 [class.is-focus]="store.isFocus(g.id)" [class.is-dim]="isDim(g.id)" [class.is-near]="isNear(g.id)"
+                 (mouseenter)="hover.set(g.id)" (mouseleave)="hover.set(null)"
+                 (focusin)="hover.set(g.id)" (focusout)="hover.set(null)" (click)="pinned.set(g.id)">
+          <span class="ov-kind">{{ store.kind(g).label }}</span>
+          <h3 class="ov-name">{{ g.label }}</h3>
+          @if (g.detail) { <span class="ov-detail">{{ g.detail }}</span> }
+          <p class="rel">Appelé par : {{ names(g.id, 'calls', 'in') || 'aucun service' }}</p>
+          <div class="ov-chips">
+            <button type="button" class="ov-link" [attr.aria-expanded]="isOpen(g.id)" (click)="toggleOpen(g.id)">
+              <span aria-hidden="true">{{ isOpen(g.id) ? '▾' : '▸' }}</span>
+              {{ store.countLabel(g) || 'Routes' }}
+            </button>
+            <app-ov-lots [node]="g.id" />
+          </div>
+
+          @if (isOpen(g.id)) {
+            <ul class="endpoints">
+              @for (e of endpoints(g); track e.id) {
+                <li [id]="store.domId(e.id)" tabindex="-1" [class.is-focus]="store.isFocus(e.id)">
+                  <span class="ov-mono route">{{ e.label }}</span>
+                  @if (e.public) {
+                    <span class="badge public">public — sans connexion</span>
+                  }
+                  @if (e.roles && e.roles.length > 0) {
+                    <span class="badge">rôles : {{ e.roles.join(', ') }}</span>
+                  }
+                  @if (e.detail) { <span class="ov-detail">{{ e.detail }}</span> }
+                  @for (m of store.linked(e.id, 'reads', 'out'); track m.id) {
+                    <button type="button" class="ov-link" (click)="store.goNode(m)">
+                      Modèle {{ m.label }} <span aria-hidden="true">→</span>
+                    </button>
+                  }
+                </li>
+              } @empty {
+                <li class="ov-muted">Aucune route dans ce groupe.</li>
+              }
+            </ul>
+          }
+        </article>
+      } @empty {
+        <p class="ov-muted">Aucun groupe d'endpoints décrit pour l'instant.</p>
+      }
+    </section>
+
+  </div>
+}

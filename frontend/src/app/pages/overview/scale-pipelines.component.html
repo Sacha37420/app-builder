@@ -1,0 +1,78 @@
+@if (allPages().length === 0) {
+  <p class="ov-card ov-empty">Aucune page décrite pour l'instant : un pipeline appartient toujours à une page.</p>
+} @else {
+
+  <label class="picker">
+    <span>Page</span>
+    <select (change)="pick($any($event.target).value)">
+      <option value="" [selected]="selected() === ''">Toutes les pages</option>
+      @for (p of allPages(); track p.id) {
+        <option [value]="p.id" [selected]="selected() === p.id">{{ p.label }}</option>
+      }
+    </select>
+  </label>
+
+  @for (page of pages(); track page.id) {
+    <section class="page" [attr.aria-label]="'Page ' + page.label">
+      <h2 class="ov-h2">
+        <span class="ov-kind k-green">Page</span>
+        <button type="button" class="ov-link" (click)="store.goNode(page)"
+                [attr.aria-label]="'Page ' + page.label + ' : voir dans l\'architecture'">{{ page.label }}</button>
+        @if (page.detail) { <span class="ov-mono route">{{ page.detail }}</span> }
+      </h2>
+
+      @for (pl of pipelines(page); track pl.id) {
+        <article class="ov-card k-green" [id]="store.domId(pl.id)" tabindex="-1" [class.is-focus]="store.isFocus(pl.id)">
+          <span class="ov-kind">{{ store.kind(pl).label }}</span>
+          <h3 class="ov-name">{{ pl.label }}</h3>
+          @if (pl.detail) { <span class="ov-detail">{{ pl.detail }}</span> }
+          <span class="ov-chips"><app-ov-lots [node]="pl.id" /></span>
+
+          <p class="trigger">
+            <strong>Déclenché par :</strong>
+            @for (i of store.linked(pl.id, 'triggers', 'in'); track i.id) {
+              <span class="k-amber" [id]="store.domId(i.id)" tabindex="-1" [class.is-focus]="store.isFocus(i.id)">
+                <span class="ov-kind">{{ store.kind(i).label }}</span>
+                {{ i.label }}@if (i.detail) { ({{ interactionType(i.detail) }}) }
+              </span>
+            } @empty {
+              <span class="none">aucune interaction désignée</span>
+            }
+          </p>
+
+          <ol class="steps">
+            @for (st of steps(pl); track st.id; let rank = $index) {
+              <li [id]="store.domId(st.id)" tabindex="-1" [class.is-focus]="store.isFocus(st.id)">
+                <span class="num" aria-hidden="true">{{ rank + 1 }}</span>
+                <span class="step-body">
+                  <span class="step-name">{{ st.label }}</span>
+                  @if (st.detail) { <span class="none">{{ stepType(st.detail) }}</span> }
+                  @for (sv of store.linked(st.id, 'invokes', 'out'); track sv.id) {
+                    <button type="button" class="ov-link" (click)="store.goNode(sv)">
+                      Service {{ sv.label }} <span aria-hidden="true">→</span>
+                    </button>
+                  }
+                </span>
+              </li>
+            } @empty {
+              <li class="none">Aucune étape décrite.</li>
+            }
+          </ol>
+        </article>
+      } @empty {
+        <p class="ov-muted">Aucun pipeline sur cette page pour l'instant.</p>
+      }
+
+      @if (interactions(page).length > 0) {
+        <p class="ov-muted">
+          Interactions de la page :
+          @for (i of interactions(page); track i.id; let last = $last) {
+            {{ i.label }}@if (i.detail) { ({{ interactionType(i.detail) }}) }{{ last ? '' : ', ' }}
+          }
+        </p>
+      }
+    </section>
+  } @empty {
+    <p class="ov-card ov-empty">Aucune page ne correspond à ce filtre.</p>
+  }
+}

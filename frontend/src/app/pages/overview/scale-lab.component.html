@@ -1,0 +1,69 @@
+<!-- Flèche de la chaîne : le libellé du lien, puis le trait. -->
+<ng-template #arrow let-label>
+  <div class="arrow">
+    @if (label) { <span class="arrow-label">{{ label }}</span> }
+    <svg viewBox="0 0 40 12" aria-hidden="true" focusable="false">
+      <path d="M1 6h36M31 1l6 5-6 5" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  </div>
+</ng-template>
+
+<ng-template #inner let-n>
+  <span class="ov-kind">{{ store.kind(n).label }}</span>
+  <span class="ov-name">{{ n.label }}</span>
+  @if (n.detail) { <span class="ov-detail ov-mono">{{ n.detail }}</span> }
+  @if (store.countLabel(n)) { <span class="count">{{ store.countLabel(n) }}</span> }
+</ng-template>
+
+<!-- Une carte qui ouvre une échelle est un bouton ; les autres sont de simples repères. -->
+<ng-template #card let-n>
+  @if (n.opens) {
+    <button type="button" [class]="'ov-card node ' + store.kind(n).cat" [id]="store.domId(n.id)"
+            [class.is-focus]="store.isFocus(n.id)" (click)="store.enter(n)">
+      <ng-container *ngTemplateOutlet="inner; context: { $implicit: n }" />
+      <span class="enter">Entrer : {{ store.scaleLabel(n.opens) }} <span aria-hidden="true">→</span></span>
+    </button>
+  } @else {
+    <div [class]="'ov-card node ' + store.kind(n).cat" [id]="store.domId(n.id)" tabindex="-1"
+         [class.is-focus]="store.isFocus(n.id)">
+      <ng-container *ngTemplateOutlet="inner; context: { $implicit: n }" />
+    </div>
+  }
+</ng-template>
+
+<h2 class="ov-h2">Le chemin d'une personne jusqu'à vos données</h2>
+<div class="chain">
+  @for (hop of layout().trunk; track hop.node.id) {
+    @if (hop.label !== null) {
+      <ng-container *ngTemplateOutlet="arrow; context: { $implicit: hop.label }" />
+    }
+    <ng-container *ngTemplateOutlet="card; context: { $implicit: hop.node }" />
+  }
+  @if (layout().branches.length > 0) {
+    <div class="branches">
+      @for (hop of layout().branches; track hop.node.id) {
+        <div class="branch">
+          <ng-container *ngTemplateOutlet="arrow; context: { $implicit: hop.label }" />
+          <ng-container *ngTemplateOutlet="card; context: { $implicit: hop.node }" />
+        </div>
+      }
+    </div>
+  }
+</div>
+
+<h2 class="ov-h2 rules-title">Règles métier</h2>
+@if (rules().length > 0) {
+  <ul class="rules">
+    @for (r of rules(); track r.id) {
+      <li class="ov-card k-amber" [id]="store.domId(r.id)" tabindex="-1" [class.is-focus]="store.isFocus(r.id)">
+        <span class="ov-kind">{{ store.kind(r).label }}</span>
+        <span class="ov-name">{{ r.label }}</span>
+        @if (r.detail) { <span class="ov-detail">{{ r.detail }}</span> }
+        <span class="ov-chips"><app-ov-lots [node]="r.id" /></span>
+      </li>
+    }
+  </ul>
+} @else {
+  <p class="ov-muted">Aucune règle métier décrite pour l'instant.</p>
+}

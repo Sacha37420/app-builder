@@ -95,10 +95,10 @@ python manage.py test
 **Tâches :**
 - [x] API du graphe (`GET /api/apps/<id>/graph/`, `api/graphe.py`) : cinq échelles — dans le lab (groupes → Keycloak → interface → API → base / storage / email), architecture, données, pipelines, feuille de route — chaque nœud remontant à l'échelle au-dessus par `parent`
 - [x] Lots de la feuille de route générée reliés aux éléments de la spec qu'ils construisent (liens `builds`)
-- [ ] Page du frontend : vue d'ensemble, vue des lots, navigation continue entre échelles
-- [ ] Identité Foyer respectée (tokens, 900 px, cibles de 44 px)
+- [x] Page « Vue d'ensemble » (`/overview`) : cinq échelles, fil d'Ariane, entrée dans un nœud, « Remonter », position dans l'URL (le retour arrière remonte d'une échelle), étiquettes « Lot N » sur chaque élément
+- [x] Identité Foyer respectée (tokens, 900 px, cibles de 44 px)
 **Tests à passer avant de clore le lot :**
 - [x] `python manage.py test api.tests.VueEnsembleTests` passe (l'API rend le graphe d'une spec : nœuds et liens cohérents avec la spec)
-- [ ] `npm run build` du frontend sans erreur ; aucune couleur en dur dans les composants ajoutés (`grep` sur les valeurs hexadécimales)
+- [x] `npm run build` du frontend sans erreur ; aucune couleur en dur dans les composants ajoutés (`grep` sur les valeurs hexadécimales)
 - [ ] Test de cloisonnement vert après déploiement
-**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : 158 tests, OK, dont `VueEnsembleTests` (6) et `GrapheReglesTests` (2). Backend seulement : la page du frontend reste à écrire.
+**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : 158 tests, OK, dont `VueEnsembleTests` (6) et `GrapheReglesTests` (2). Arbre final : `npm run build` sans erreur (avertissements de budget de style sur cinq feuilles antérieures), `grep` de couleurs en dur vide sur `pages/overview/`. Interface non essayée en navigateur ; test de cloisonnement à lancer après déploiement : le lot passera « livré » à la mise en service.

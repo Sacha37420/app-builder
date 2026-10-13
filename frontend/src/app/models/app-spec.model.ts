@@ -357,3 +357,54 @@ export interface Livrables {
   lots_md: string;                  // '' quand la spec est vide
   cahier_des_charges_md: string;
 }
+
+// ── Graphe de la spec, à toutes les échelles (`GET /api/apps/<id>/graph/`) ───
+// Formes définies par `backend/api/graphe.py` : rien n'est recalculé côté interface.
+
+export type GraphScaleId = 'overview' | 'architecture' | 'data' | 'pipelines' | 'roadmap';
+
+export interface GraphScale {
+  id: GraphScaleId;
+  label: string;
+}
+
+export type GraphNodeKind =
+  | 'groups' | 'keycloak' | 'frontend' | 'api' | 'database' | 'storage' | 'email' | 'business_rule'
+  | 'endpoint_group' | 'endpoint' | 'service' | 'page'
+  | 'data_model'
+  | 'interaction' | 'pipeline' | 'step'
+  | 'lot';
+
+export interface GraphNode {
+  id: string;
+  kind: GraphNodeKind;
+  scale: GraphScaleId;
+  label: string;
+  parent: string | null;            // id du nœud plus large dont celui-ci descend
+  detail: string;
+  count?: number;
+  opens?: GraphScaleId;             // échelle où l'on entre en cliquant
+  fields?: { name: string; type: string }[];   // `data_model`
+  public?: boolean;                 // `endpoint` : appelable sans connexion
+  roles?: string[];                 // `endpoint`
+  order?: number;                   // `step` (rang à partir de 0), `lot` (numéro)
+  family?: LotFamily;               // `lot`
+  tokens?: number;                  // `lot`
+}
+
+export type GraphLinkKind =
+  | 'flow' | 'contains' | 'uses' | 'calls' | 'reads' | 'relation' | 'triggers' | 'next' | 'invokes' | 'builds';
+
+export interface GraphLink {
+  source: string;
+  target: string;
+  kind: GraphLinkKind;
+  label: string;
+}
+
+export interface SpecGraph {
+  spec: { id: number; name: string; updated_at: string };
+  scales: GraphScale[];
+  nodes: GraphNode[];
+  links: GraphLink[];
+}

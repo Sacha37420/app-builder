@@ -1,0 +1,52 @@
+// Échelle « Pipelines » : une section par page, une frise numérotée par pipeline.
+:host { display: block; min-width: 0; }
+
+.picker {
+  display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+  max-width: 100%; font-size: var(--text-sm); font-weight: 600;
+  select {
+    min-height: 44px; max-width: 100%; padding: 0 var(--space-3);
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-family: inherit; font-size: var(--text-sm);
+  }
+}
+
+.page { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-4); min-width: 0; }
+.page h2 { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); margin: 0; }
+.page h2 .ov-kind { margin: 0; }
+.route, .none { color: var(--text-mute); font-weight: 400; }
+
+h3 { font-size: var(--text-base); font-weight: 600; }
+
+.trigger {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-2);
+  .ov-kind { margin: 0; }
+  > span { border-radius: var(--radius-sm); }
+}
+
+// Frise : les étapes se suivent de gauche à droite et passent à la ligne ;
+// de haut en bas sous 900 px. Le numéro porte l'ordre, pas la position.
+.steps {
+  list-style: none; display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3);
+  li {
+    display: flex; align-items: flex-start; gap: var(--space-2);
+    flex: 1 1 200px; min-width: 0; max-width: 320px;
+    padding: var(--space-2); background: var(--bg);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+  }
+}
+.num {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: var(--space-5); height: var(--space-5);
+  background: var(--accent); color: var(--accent-on);
+  border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: 600;
+}
+.step-body { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.step-name { font-weight: 600; }
+
+@media (max-width: 899px) {
+  .steps { flex-direction: column; }
+  .steps li { flex: 0 0 auto; max-width: none; }
+}

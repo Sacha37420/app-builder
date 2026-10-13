@@ -1,0 +1,15 @@
+// Échelle « Feuille de route » : les lots, dans l'ordre.
+:host { display: block; min-width: 0; }
+
+.note { margin-bottom: var(--space-3); }
+.lots { list-style: none; display: flex; flex-direction: column; gap: var(--space-2); }
+.head {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+}
+.tokens { color: var(--text-mute); }
+.sub {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs); font-weight: 600; color: var(--text-mute);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}

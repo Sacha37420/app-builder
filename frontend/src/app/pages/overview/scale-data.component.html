@@ -1,0 +1,52 @@
+@if (models().length === 0) {
+  <p class="ov-card ov-empty">Aucun modèle décrit ici pour l'instant.</p>
+} @else {
+  <div class="models">
+    @for (m of models(); track m.id) {
+      <article class="ov-card k-cyan" [id]="store.domId(m.id)" tabindex="-1" [class.is-focus]="store.isFocus(m.id)">
+        <span class="ov-kind">{{ store.kind(m).label }}</span>
+        <h2 class="ov-name">{{ m.label }}</h2>
+        @if (m.detail) { <span class="ov-detail">{{ m.detail }}</span> }
+        <span class="ov-chips"><app-ov-lots [node]="m.id" /></span>
+
+        <h3 class="sub">Champs — {{ store.countLabel(m) || 'aucun' }}</h3>
+        <ul class="fields">
+          @for (f of m.fields ?? []; track $index) {
+            <li>
+              <span class="ov-mono">{{ f.name }}</span>
+              <span class="type" [class.file]="f.type === 'storage_file'">{{ typeLabel(f.type) }}</span>
+            </li>
+          } @empty {
+            <li class="none">Aucun champ décrit.</li>
+          }
+        </ul>
+
+        @if (store.links(m.id, 'relation', 'out').length + store.links(m.id, 'relation', 'in').length > 0) {
+          <h3 class="sub">Relations</h3>
+          <ul class="relations">
+            @for (l of store.links(m.id, 'relation', 'out'); track $index) {
+              @if (store.node(l.target); as other) {
+                <li>
+                  <span><span aria-hidden="true">→</span> pointe vers</span>
+                  <button type="button" class="ov-link" (click)="store.goNode(other)">{{ other.label }}</button>
+                  <span class="ov-mono">{{ l.label }}</span>
+                </li>
+              }
+            }
+            @for (l of store.links(m.id, 'relation', 'in'); track $index) {
+              @if (store.node(l.source); as other) {
+                <li>
+                  <span><span aria-hidden="true">←</span> référencé par</span>
+                  <button type="button" class="ov-link" (click)="store.goNode(other)">{{ other.label }}</button>
+                  <span class="ov-mono">{{ l.label }}</span>
+                </li>
+              }
+            }
+          </ul>
+        }
+
+        @if (readers(m.id); as r) { <p class="readers">Lu par : {{ r }}</p> }
+      </article>
+    }
+  </div>
+}

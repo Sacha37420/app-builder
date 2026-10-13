@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import {
   AppSpec, ChatMessage, AiProvider, AgentPatch, PersistedChatMessage, PatchApplication, PatchMode, LabView, Livrables,
-  ModelCatalogue, ChatContext,
+  ModelCatalogue, ChatContext, SpecGraph,
 } from '../models/app-spec.model';
 
 interface ChatResponse {
@@ -63,6 +63,11 @@ export class BuilderApiService {
   /** Ce qui serait remis au lab pour la spec enregistrée : cahier des charges et lots. */
   getLivrables(id: number): Observable<Livrables> {
     return this.http.get<Livrables>(`${this.base}/api/apps/${id}/livrables/`);
+  }
+
+  /** La spec enregistrée en graphe, à toutes les échelles (du lab à l'étape de pipeline). */
+  getGraph(id: number): Observable<SpecGraph> {
+    return this.http.get<SpecGraph>(`${this.base}/api/apps/${id}/graph/`);
   }
 
   deleteApp(id: number): Observable<void> {

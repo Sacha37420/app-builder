@@ -1,0 +1,35 @@
+<p class="ov-muted note">
+  L'app est construite lot par lot, dans cet ordre. Le Lot 1 (socle) vient du gabarit du lab.
+</p>
+
+@if (lots().length === 0) {
+  <p class="ov-card ov-empty">Aucun lot pour l'instant : la spécification est vide.</p>
+} @else {
+  <ol class="lots">
+    @for (lot of lots(); track lot.id) {
+      <li class="ov-card k-purple" [id]="store.domId(lot.id)" tabindex="-1" [class.is-focus]="store.isFocus(lot.id)">
+        <div class="head">
+          <h2 class="ov-name">{{ lot.label }}</h2>
+          @if (lot.tokens !== undefined) {
+            <span class="tokens ov-mono">{{ store.n(lot.tokens) }} jetons</span>
+          }
+        </div>
+        @if (lot.detail) { <p class="ov-detail">{{ lot.detail }}</p> }
+
+        @if (store.linked(lot.id, 'builds', 'out'); as built) {
+          @if (built.length > 0) {
+            <h3 class="sub">Ce lot construit</h3>
+            <div class="ov-chips">
+              @for (el of built; track el.id) {
+                <button type="button" [class]="'ov-chip ' + store.kind(el).cat" (click)="store.goNode(el)"
+                        [attr.aria-label]="store.kind(el).label + ' ' + el.label + ' : voir dans ' + store.scaleLabel(el.scale)">
+                  <span>{{ store.kind(el).label }} · {{ el.label }}</span>
+                </button>
+              }
+            </div>
+          }
+        }
+      </li>
+    }
+  </ol>
+}
