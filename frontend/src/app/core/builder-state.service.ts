@@ -90,12 +90,12 @@ export class BuilderStateService {
   constructor() {
     // La spec ouverte survit à un rechargement et s'ouvre par lien direct (`?spec=<id>`,
     // posé par lab-admin) : avant, toute arrivée par l'adresse retombait sur une app vide.
+    // On n'efface PAS quand rien n'est ouvert : à chaque chargement l'app démarre vide, puis repart
+    // vers Keycloak — effacer ici perdrait la spec avant le retour. Seul resetSpec() l'oublie.
     effect(() => {
       const id = this.savedId();
-      try {
-        if (id === null) sessionStorage.removeItem(OPEN_SPEC_KEY);
-        else sessionStorage.setItem(OPEN_SPEC_KEY, String(id));
-      } catch { /* stockage indisponible : on perd seulement le confort */ }
+      if (id === null) return;
+      try { sessionStorage.setItem(OPEN_SPEC_KEY, String(id)); } catch { /* confort seulement */ }
     });
     const wanted = openSpecId();
     if (wanted !== null) {
@@ -192,6 +192,7 @@ export class BuilderStateService {
   }
 
   resetSpec(): void {
+    try { sessionStorage.removeItem(OPEN_SPEC_KEY); } catch { /* confort seulement */ }
     this.spec.set({ ...EMPTY_SPEC });
     this.savedId.set(null);
     this.isDirty.set(false);
