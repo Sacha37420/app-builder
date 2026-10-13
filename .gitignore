@@ -23,3 +23,6 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Écrit par le cadriciel (create-app-client.sh), jamais par un push
+.keycloak-client-opts
