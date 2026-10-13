@@ -122,6 +122,20 @@
                 </label>
               </div>
 
+              <!-- Route publique : une décision, pas un oubli -->
+              @if (!ep.auth_required) {
+                <div class="public-warning" role="note">
+                  <strong>Route publique : décision à justifier</strong>
+                  <span>Sans authentification, cette route répond à n'importe qui sur Internet. La justification est reportée dans la feuille de route du projet.</span>
+                  <label class="public-reason">
+                    <span>Justification</span>
+                    <input type="text" [value]="ep.public_reason || ''"
+                           (input)="setPublicReason(selectedGroup.id!, ep.id!, $event)"
+                           placeholder="Pourquoi cette route doit répondre sans connexion…" />
+                  </label>
+                </div>
+              }
+
               <!-- Rôles requis -->
               <div class="section-block">
                 <div class="section-title">🔒 Rôles requis (groupes Keycloak)</div>

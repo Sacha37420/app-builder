@@ -6,10 +6,15 @@ export type OperationType = 'list' | 'create' | 'retrieve' | 'update' | 'partial
 export type PageLayout = 'list' | 'detail' | 'form' | 'dashboard' | 'mixed';
 export type PipelineStepType = 'trigger' | 'service_call' | 'transform' | 'state_update' | 'navigate' | 'error';
 export type EndpointStepType = 'auth_check' | 'validate' | 'db_query' | 'db_write' | 'serialize' | 'transform' | 'error' | 'custom';
-export type FieldType = 'string' | 'text' | 'int' | 'decimal' | 'bool' | 'datetime' | 'json' | 'file';
+// `storage_file` : fichier d'utilisateur déposé dans le service `storage` du lab — le
+// modèle n'en garde que le chemin. `file` est l'ancien type : encore lisible sur une
+// spec ancienne, refusé à l'écriture par le serveur pour tout nouveau champ.
+export type FieldType = 'string' | 'text' | 'int' | 'decimal' | 'bool' | 'datetime' | 'json' | 'storage_file' | 'file';
 export type RelType = 'FK' | 'M2M' | 'O2O';
 export type AiProvider = 'claude' | 'mistral';
 export type AppType = 'django-angular' | 'django' | 'spring-angular' | 'spring' | 'angular';
+/** Types que le moteur du lab sait créer (les autres ne restent que lisibles). */
+export const CONSTRUCTIBLE_APP_TYPES: readonly AppType[] = ['django-angular', 'django', 'angular'];
 
 // ── Phase 1 : Modèles de données ──────────────────────────────────────────────
 
@@ -65,6 +70,8 @@ export interface Endpoint {
   operation: OperationType;
   linked_model_name: string;   // nom d'un DataModel
   auth_required: boolean;
+  /** Justification d'une route sans authentification (`auth_required: false`), sinon ''. */
+  public_reason: string;
   required_roles: string[];
   request_schema: Record<string, string> | null;   // {field: type}
   response_schema: Record<string, string> | null;
@@ -141,9 +148,16 @@ export interface Page {
 
 // ── Spec complète ─────────────────────────────────────────────────────────────
 
+export interface BusinessRule {
+  title: string;        // obligatoire, non vide (400 sinon)
+  description: string;
+}
+
 export interface AppSpec {
   id?: number;
   name: string;
+  /** Nom du projet dans le lab (dossier, adresse `/<nom>`, client Keycloak) ; '' tant qu'il n'est pas choisi. */
+  project_name: string;
   description: string;
   app_type: AppType;
   owner_email?: string;
@@ -151,6 +165,8 @@ export interface AppSpec {
   // survit à un effacement de l'historique de chat (contrairement à ce qui n'est
   // dit qu'en conversation).
   required_groups: string[];
+  business_rules: BusinessRule[];
+  uses_email: boolean;
   chat_history?: PersistedChatMessage[];
   created_at?: string;
   updated_at?: string;
@@ -197,7 +213,12 @@ export interface AgentPatchPage {
 }
 
 export interface AgentPatch {
-  set_meta?: { name?: string; description?: string; required_groups?: string[] };
+  set_meta?: {
+    name?: string; project_name?: string; description?: string;
+    required_groups?: string[]; uses_email?: boolean;
+  };
+  business_rules?: BusinessRule[];
+  remove_business_rules?: string[];
   data_models?: Omit<DataModel, 'id'>[];
   endpoint_groups?: Array<Omit<EndpointGroup, 'id'> & { endpoints: Omit<Endpoint, 'id'>[] }>;
   services?: AgentPatchService[];
@@ -220,6 +241,48 @@ export interface PatchApplication {
 
 export interface ChatMessage extends PersistedChatMessage {}
 
+// ── La spécification vue du lab : GET /api/apps/<id>/lab/ ─────────────────────
+
+export type BlockerCode =
+  | 'project_name' | 'app_type' | 'required_groups' | 'empty'
+  | 'file_field' | 'orphan_reference' | 'context_budget';
+
+export interface Blocker {
+  code: BlockerCode;
+  message: string;      // s'affiche tel quel
+}
+
+export interface LabFootprint {
+  project_name: string;
+  project_name_valid: boolean;
+  app_type: string;
+  constructible: boolean;
+  containers: { name: string; role: string }[];
+  paths: { frontend: string | null; api: string | null };
+  keycloak: { client_id: string; required_groups: string[]; locks: string[] };
+  database: { instance: string; database: string; schema: string; tables: number } | null;
+  storage: { used: boolean; fields: string[]; legacy_file_fields: string[]; rule: string };
+  email: { used: boolean; rule: string };
+  public_routes: { method: string; path: string; group: string; reason: string }[];
+  deployment: string;
+}
+
+export interface LabView {
+  ready: boolean;
+  blockers: Blocker[];
+  footprint: LabFootprint;
+}
+
+/** Forme d'un nom de projet du lab (règle 1 de `check-app-name.sh`) ; `null` si elle est respectée. */
+export function projectNameError(name: string): string | null {
+  if (!/^[a-z][a-z0-9-]{1,38}[a-z0-9]$/.test(name)) {
+    return 'Le nom de projet fait 3 à 40 caractères : minuscules, chiffres et tirets, '
+      + 'commence par une lettre et ne finit pas par un tiret.';
+  }
+  if (name.includes('--')) return 'Le nom de projet ne contient pas deux tirets de suite.';
+  return null;
+}
+
 // ── Helpers de génération de code ─────────────────────────────────────────────
 
 export const DJANGO_FIELD_MAP: Record<FieldType, string> = {
@@ -230,7 +293,9 @@ export const DJANGO_FIELD_MAP: Record<FieldType, string> = {
   bool:     'models.BooleanField(default=False)',
   datetime: 'models.DateTimeField()',
   json:     'models.JSONField(default=dict)',
-  file:     'models.FileField(upload_to="uploads/")',
+  // Un fichier d'utilisateur vit dans le service storage du lab : le modèle garde le chemin.
+  storage_file: 'models.CharField(max_length=500)  # chemin dans le service storage du lab',
+  file:         'models.CharField(max_length=500)  # chemin dans le service storage du lab',
 };
 
 export const TS_FIELD_MAP: Record<FieldType, string> = {
@@ -241,5 +306,6 @@ export const TS_FIELD_MAP: Record<FieldType, string> = {
   bool:     'boolean',
   datetime: 'string',
   json:     'unknown',
-  file:     'string',
+  storage_file: 'string',
+  file:         'string',
 };

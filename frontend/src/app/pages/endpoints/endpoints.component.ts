@@ -70,7 +70,11 @@ export class EndpointsPageComponent {
     this.state.updateEndpoint(gId, epId, { linked_model_name: this.val(e) });
   }
   setAuthRequired(gId: number, epId: number, e: Event): void {
+    // Recocher vide `public_reason` : c'est `updateEndpoint` qui le fait.
     this.state.updateEndpoint(gId, epId, { auth_required: this.checked(e) });
+  }
+  setPublicReason(gId: number, epId: number, e: Event): void {
+    this.state.updateEndpoint(gId, epId, { public_reason: this.val(e) });
   }
 
   // ── Rôles requis ─────────────────────────────────────────────────────────────

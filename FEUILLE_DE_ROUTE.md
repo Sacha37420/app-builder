@@ -52,22 +52,24 @@ python manage.py test
 - [ ] `python manage.py test api.tests.ChatTests` reste vert
 **Vérifié le :**
 
-## Lot 4 — Spécification alignée sur le cadriciel   ·   statut : à faire
+## Lot 4 — Spécification alignée sur le cadriciel   ·   statut : en cours
 **Objectif :** toute spécification décrit une app que le moteur du lab sait créer et déployer, sans rien y contredire.
 **Tâches :**
-- [ ] Types d'app limités à ceux de `create_app` (`django`, `django-angular`, `angular`), `django-angular` par défaut ; une spec d'un autre type reste lisible mais n'est pas « prête »
-- [ ] Nom de projet (slug) saisi et validé selon les règles de `check-app-name.sh`, distinct du titre
-- [ ] `required_groups` obligatoire pour qu'une spec soit « prête »
-- [ ] Type `file` remplacé par une référence à l'API `storage` ; email par `send_mail`
-- [ ] Route publique (`auth_required: false`) : décision explicite, reportée dans la feuille de route générée
-- [ ] Champ structuré pour les règles métier et contraintes (aujourd'hui seulement dans la conversation)
-- [ ] Prompt IA mis à jour : moteur du lab, règles du gabarit, Foyer, plus de contradiction sur `file`
-- [ ] Page « Infra » : ce que l'app occupera dans le lab (conteneurs, chemins `/<app>` et `/<app>-api`, client Keycloak et groupes, base, storage, email)
-- [ ] Garder les colonnes lues par lab-admin (`test_tables_lues_par_lab_admin`)
+- [x] Types d'app limités à ceux de `create_app` (`django`, `django-angular`, `angular`), `django-angular` par défaut ; une spec d'un autre type reste lisible et enregistrable telle quelle, mais n'est pas « prête » et on n'y revient pas
+- [x] Nom de projet (`project_name`) saisi et validé selon la règle de forme de `check-app-name.sh`, distinct du titre (l'unicité et les noms réservés restent l'affaire du moteur)
+- [x] `required_groups` obligatoire pour qu'une spec soit « prête »
+- [x] Type `file` remplacé par `storage_file` (chemin d'un fichier du service `storage`) : `file` n'entre plus, ni par l'éditeur ni par un patch ; un ancien champ `file` bloque la remise jusqu'à conversion. Email : `uses_email`, envoi par `send_mail`
+- [x] Route publique (`auth_required: false`) : justification `public_reason`, reportée dans la feuille de route générée
+- [x] Champ structuré pour les règles métier (`business_rules`, fusionnées par titre dans les patchs)
+- [x] Prompt IA mis à jour : moteur du lab, règles du gabarit, Foyer, plus de contradiction sur `file`
+- [x] Page « Lab & infra » : fiche du projet, « Prête pour le lab ? » et empreinte (`GET /api/apps/<id>/lab/` : conteneurs, chemins `/<app>` et `/<app>-api`, client Keycloak et groupes, base, storage, email, routes publiques)
+- [x] Garder les colonnes lues par lab-admin (`test_tables_lues_par_lab_admin`) : migration `0009` par ajout de colonnes seulement
 **Tests à passer avant de clore le lot :**
-- [ ] `python manage.py test api.tests.ConformiteCadricielTests` passe (type refusé hors liste, slug invalide refusé, spec sans groupe non « prête », champ `file` refusé)
-- [ ] `python manage.py test api.tests.SpecificationTests.test_tables_lues_par_lab_admin` reste vert
-**Vérifié le :**
+- [x] `python manage.py test api.tests.ConformiteCadricielTests` passe (type refusé hors liste, slug invalide refusé, spec sans groupe non « prête », champ `file` refusé)
+- [x] `python manage.py test api.tests.SpecificationTests.test_tables_lues_par_lab_admin` reste vert
+- [x] `python manage.py test api.tests.MigrationCadricielTests` passe (les données d'avant la migration survivent)
+- [x] `npm run build` du frontend sans erreur
+**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` (PostgreSQL jetable) : suite complète verte, dont `ConformiteCadricielTests` (15), `ConformiteReglesTests` (4), `MigrationCadricielTests` (1) et `test_tables_lues_par_lab_admin` ; `npm run build` sans erreur (avertissements de budget de style antérieurs). Tests verts hors déploiement, interface non essayée en navigateur : le lot passera « livré » à la mise en service.
 
 ## Lot 5 — Cahier des charges, feuille de route et remise au lab   ·   statut : à faire
 **Objectif :** à partir d'une spec « prête », l'utilisateur obtient le cahier des charges et la `FEUILLE_DE_ROUTE.md` de son app au format du lab, et lab-admin peut les lire pour lancer la construction.

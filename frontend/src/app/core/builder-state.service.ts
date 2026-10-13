@@ -1,5 +1,5 @@
 import { Injectable, signal, inject } from '@angular/core';
-import { Subject, of, throwError } from 'rxjs';
+import { EMPTY, Subject, of, throwError } from 'rxjs';
 import { debounceTime, filter, finalize, map, switchMap, tap, catchError } from 'rxjs/operators';
 import { Observable } from 'rxjs';
 import {
@@ -7,6 +7,7 @@ import {
   EndpointGroup, Endpoint, FrontendService, Page,
   Interaction, Pipeline, PipelineStep, PageComponent,
   AgentPatch, PersistedChatMessage, PatchApplication, PatchMode,
+  BusinessRule, LabView,
 } from '../models/app-spec.model';
 import { BuilderApiService } from './builder-api.service';
 
@@ -14,14 +15,47 @@ export type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error';
 
 const EMPTY_SPEC: AppSpec = {
   name: 'Mon Application',
+  project_name: '',
   description: '',
   app_type: 'django-angular',
   required_groups: [],
+  business_rules: [],
+  uses_email: false,
   data_models: [],
   endpoint_groups: [],
   services: [],
   pages: [],
 };
+
+/** Une spec ancienne (ou rendue par un vieux serveur) peut ne pas porter les clés du lot 4. */
+function normalize(spec: AppSpec): AppSpec {
+  return {
+    ...spec,
+    project_name: spec.project_name ?? '',
+    required_groups: spec.required_groups ?? [],
+    business_rules: spec.business_rules ?? [],
+    uses_email: spec.uses_email ?? false,
+  };
+}
+
+/** Première phrase trouvée dans le corps d'une erreur DRF (`{"champ": ["message"]}`, `{"detail": "…"}`). */
+function firstMessage(body: unknown): string {
+  if (typeof body === 'string') return body.trim();
+  if (Array.isArray(body)) {
+    for (const item of body) {
+      const found = firstMessage(item);
+      if (found) return found;
+    }
+    return '';
+  }
+  if (body && typeof body === 'object') {
+    for (const value of Object.values(body)) {
+      const found = firstMessage(value);
+      if (found) return found;
+    }
+  }
+  return '';
+}
 
 @Injectable({ providedIn: 'root' })
 export class BuilderStateService {
@@ -34,6 +68,10 @@ export class BuilderStateService {
   readonly chatHistory = signal<PersistedChatMessage[]>([]);
   /** Incrémenté à chaque loadSpec/resetSpec pour signaler un changement de contexte. */
   readonly specSessionId = signal(0);
+  /** La spec enregistrée vue du lab (GET …/lab/) ; `null` tant que rien n'est enregistré. */
+  readonly lab = signal<LabView | null>(null);
+  /** Message du serveur quand un enregistrement est refusé (400), sinon ''. */
+  readonly saveErrorDetail = signal('');
 
   private debounceTrigger = new Subject<void>();
   private patching = false;
@@ -50,10 +88,15 @@ export class BuilderStateService {
             this.savedId.set(saved.id!);
             this.isDirty.set(false);
             this.saveStatus.set('saved');
+            this.saveErrorDetail.set('');
+            this.refreshLab();
           }),
-          catchError(() => {
+          catchError(err => {
             this.saveStatus.set('error');
-            return throwError(() => new Error('autosave failed'));
+            this.noteSaveError(err);
+            // EMPTY et non une erreur : une erreur remontée ici terminait le flux,
+            // et plus aucun autosave ne partait après un premier refus du serveur.
+            return EMPTY;
           }),
         );
       }),
@@ -81,21 +124,43 @@ export class BuilderStateService {
         this.savedId.set(saved.id!);
         this.isDirty.set(false);
         this.saveStatus.set('saved');
+        this.saveErrorDetail.set('');
+        this.refreshLab();
       }),
       catchError(err => {
         this.saveStatus.set('error');
+        this.noteSaveError(err);
         return throwError(() => err);
       }),
     );
   }
 
+  private noteSaveError(err: unknown): void {
+    const e = err as { status?: number; error?: unknown } | null;
+    this.saveErrorDetail.set(e?.status === 400 ? firstMessage(e.error) : '');
+  }
+
+  /** Relit l'état « lab » de la spec enregistrée. Sans identifiant : rien à lire. */
+  refreshLab(): void {
+    const id = this.savedId();
+    if (id === null) { this.lab.set(null); return; }
+    this.api.getLab(id).subscribe({
+      // Une réponse arrivée après un changement de spec ne doit pas s'afficher.
+      next: view => { if (this.savedId() === id) this.lab.set(view); },
+      error: () => { if (this.savedId() === id) this.lab.set(null); },
+    });
+  }
+
   loadSpec(spec: AppSpec): void {
-    this.spec.set({ ...spec, required_groups: spec.required_groups ?? [] });
+    this.spec.set(normalize(spec));
     this.savedId.set(spec.id ?? null);
     this.isDirty.set(false);
     this.saveStatus.set('saved');
+    this.saveErrorDetail.set('');
     this.chatHistory.set(spec.chat_history ?? []);
     this.specSessionId.update(v => v + 1);
+    this.lab.set(null);
+    this.refreshLab();
   }
 
   resetSpec(): void {
@@ -103,6 +168,8 @@ export class BuilderStateService {
     this.savedId.set(null);
     this.isDirty.set(false);
     this.saveStatus.set('idle');
+    this.saveErrorDetail.set('');
+    this.lab.set(null);
     this.chatHistory.set([]);
     this.specSessionId.update(v => v + 1);
   }
@@ -119,6 +186,31 @@ export class BuilderStateService {
 
   updateMeta(name: string, description: string): void {
     this.mutate(s => ({ ...s, name, description }));
+  }
+
+  /** L'appelant contrôle la forme (`projectNameError`) : le serveur refuse un nom mal formé. */
+  updateProjectName(project_name: string): void {
+    this.mutate(s => ({ ...s, project_name }));
+  }
+
+  setUsesEmail(uses_email: boolean): void {
+    this.mutate(s => ({ ...s, uses_email }));
+  }
+
+  addBusinessRule(): void {
+    const rule: BusinessRule = { title: 'Nouvelle règle', description: '' };
+    this.mutate(s => ({ ...s, business_rules: [...s.business_rules, rule] }));
+  }
+
+  updateBusinessRule(idx: number, patch: Partial<BusinessRule>): void {
+    this.mutate(s => ({
+      ...s,
+      business_rules: s.business_rules.map((r, i) => i === idx ? { ...r, ...patch } : r),
+    }));
+  }
+
+  removeBusinessRule(idx: number): void {
+    this.mutate(s => ({ ...s, business_rules: s.business_rules.filter((_, i) => i !== idx) }));
   }
 
   updateAppType(app_type: AppType): void {
@@ -192,6 +284,13 @@ export class BuilderStateService {
         return { ...m, fields };
       }),
     }));
+  }
+
+  /** Passe un ancien champ `file` en référence au service storage (`storage_file`). */
+  convertFileField(modelId: number, idx: number): void {
+    const field = this.spec().data_models.find(m => m.id === modelId)?.fields[idx];
+    if (field?.type !== 'file') return;
+    this.updateField(modelId, idx, { type: 'storage_file' });
   }
 
   removeField(modelId: number, idx: number): void {
@@ -269,7 +368,7 @@ export class BuilderStateService {
     const ep: Endpoint = {
       id: this.tid(), method: 'GET', path: '/nouveau', description: '',
       order: 0, operation: 'custom', linked_model_name: '',
-      auth_required: true, required_roles: [],
+      auth_required: true, public_reason: '', required_roles: [],
       request_schema: null, response_schema: null, query_params: [],
     };
     this.mutate(s => ({
@@ -283,6 +382,9 @@ export class BuilderStateService {
   }
 
   updateEndpoint(groupId: number, epId: number, patch: Partial<Endpoint>): void {
+    // Une route qui redevient authentifiée perd sa justification de route publique,
+    // d'où qu'on la recoche (page API ou canvas).
+    if (patch.auth_required === true) patch = { ...patch, public_reason: '' };
     this.mutate(s => ({
       ...s,
       endpoint_groups: s.endpoint_groups.map(g =>
@@ -533,9 +635,11 @@ export class BuilderStateService {
     return flushed.pipe(
       switchMap(() => call(this.savedId()!)),
       tap(res => {
-        this.spec.set({ ...res.spec, required_groups: res.spec.required_groups ?? [] });
+        this.spec.set(normalize(res.spec));
         this.isDirty.set(false);
         this.saveStatus.set('saved');
+        this.saveErrorDetail.set('');
+        this.refreshLab();
       }),
       map(res => res.application),
       finalize(() => { this.patching = false; }),

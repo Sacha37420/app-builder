@@ -41,7 +41,8 @@ MODES = ('merge', 'replace')
 HISTORIQUE_MAX = 20
 
 _COLLECTIONS = ('data_models', 'endpoint_groups', 'services', 'pages')
-_CLES_SPEC = ('name', 'description', 'app_type', 'required_groups') + _COLLECTIONS
+_CLES_SPEC = ('name', 'project_name', 'description', 'app_type', 'required_groups',
+              'business_rules', 'uses_email') + _COLLECTIONS
 
 _TYPES_DE_CHAMP = {
     'string': 'string', 'str': 'string', 'char': 'string', 'varchar': 'string',
@@ -52,7 +53,11 @@ _TYPES_DE_CHAMP = {
     'bool': 'bool', 'boolean': 'bool',
     'datetime': 'datetime', 'date': 'datetime', 'timestamp': 'datetime',
     'json': 'json', 'jsonb': 'json', 'dict': 'json', 'object': 'json', 'array': 'json',
-    'file': 'file', 'image': 'file', 'upload': 'file',
+    # Un fichier d'utilisateur va dans le service `storage` du lab : le modèle
+    # n'en garde que le chemin. L'ancien type `file` n'entre plus par un patch.
+    'storage_file': 'storage_file', 'storage': 'storage_file', 'storage_path': 'storage_file',
+    'file': 'storage_file', 'image': 'storage_file', 'upload': 'storage_file',
+    'photo': 'storage_file', 'document': 'storage_file',
 }
 _OPERATIONS = {
     'list': 'list', 'index': 'list', 'getall': 'list', 'get_all': 'list',
@@ -182,6 +187,8 @@ def _endpoint(e):
         ep['linked_model_name'] = _texte(_premier(e, 'linked_model_name', 'model', 'linked_model'))
     if 'auth_required' in e:
         ep['auth_required'] = e['auth_required'] is not False
+    if 'public_reason' in e:
+        ep['public_reason'] = _texte(e['public_reason'])
     if 'required_roles' in e:
         ep['required_roles'] = _noms(e['required_roles'])
     for c in ('request_schema', 'response_schema'):
@@ -257,6 +264,13 @@ def _page(p):
     return page
 
 
+def _regle(r):
+    regle = {'title': _texte(_premier(r, 'title', 'name'))[:200]}
+    if _a(r, 'description', 'rule', 'text'):
+        regle['description'] = _texte(_premier(r, 'description', 'rule', 'text'))
+    return regle
+
+
 def normaliser(brut) -> dict:
     """Patch brut de l'IA → patch sûr. Tolère les clés alternatives, écarte les
     éléments sans nom, et ne garde d'un élément que les clés réellement fournies."""
@@ -267,10 +281,16 @@ def normaliser(brut) -> dict:
     for c in ('name', 'description'):
         if _texte(meta_brut.get(c)):
             meta[c] = _texte(meta_brut[c])
+    if _texte(meta_brut.get('project_name')):
+        meta['project_name'] = _texte(meta_brut['project_name']).lower()
+    if isinstance(meta_brut.get('uses_email'), bool):
+        meta['uses_email'] = meta_brut['uses_email']
     meta['required_groups'] = _noms(meta_brut.get('required_groups'))
     meta['remove_required_groups'] = _noms(meta_brut.get('remove_required_groups'))
     return {
         'set_meta': meta,
+        'business_rules': [r for r in map(_regle, _dicts(_premier(brut, 'business_rules', 'rules'))) if r['title']],
+        'remove_business_rules': _noms(brut.get('remove_business_rules')),
         'data_models': [m for m in map(_modele, _dicts(_premier(brut, 'data_models', 'models', 'data-models'))) if m['name']],
         'endpoint_groups': [g for g in map(_groupe, _dicts(_premier(brut, 'endpoint_groups', 'groups', 'endpoints'))) if g['name']],
         'services': [s for s in map(_service, _dicts(brut.get('services'))) if s['name']],
@@ -296,6 +316,12 @@ def resume(brut) -> str:
         parts.append('groupes requis → ' + ', '.join(meta['required_groups']))
     if meta['remove_required_groups']:
         parts.append('groupes retirés → ' + ', '.join(meta['remove_required_groups']))
+    if meta.get('project_name'):
+        parts.append(f'nom de projet → {meta["project_name"]}')
+    if p['business_rules']:
+        parts.append(f'{len(p["business_rules"])} règle(s) métier')
+    if p['remove_business_rules']:
+        parts.append(f'−{len(p["remove_business_rules"])} règle(s) métier')
     for cle, retrait, libelle in (('data_models', 'remove_models', 'modèle(s)'),
                                   ('endpoint_groups', 'remove_endpoint_groups', 'groupe(s)'),
                                   ('services', 'remove_services', 'service(s)'),
@@ -324,6 +350,10 @@ def _vers_noms(spec: dict) -> dict:
         'description': _texte(spec.get('description')),
         'app_type': _texte(spec.get('app_type')) or 'django-angular',
         'required_groups': _noms(spec.get('required_groups')),
+        'project_name': _texte(spec.get('project_name')),
+        'business_rules': [{'title': _texte(r.get('title')), 'description': _texte(r.get('description'))}
+                           for r in _dicts(spec.get('business_rules')) if _texte(r.get('title'))],
+        'uses_email': spec.get('uses_email') is True,
     }
     for c in _COLLECTIONS:
         etat[c] = deepcopy(_dicts(spec.get(c)))
@@ -430,6 +460,7 @@ def _retirer(elements, noms):
 _DEFAUT_CHAMP = {'type': 'string', 'required': True, 'unique': False}
 _DEFAUT_RELATION = {'rel_type': 'FK', 'to_model': '', 'related_name': '', 'on_delete': 'CASCADE'}
 _DEFAUT_ENDPOINT = {'description': '', 'operation': 'custom', 'linked_model_name': '', 'auth_required': True,
+                    'public_reason': '',
                     'required_roles': [], 'request_schema': None, 'response_schema': None,
                     'query_params': [], 'steps': []}
 _DEFAUT_INTERACTION = {'type': 'other', 'description': ''}
@@ -451,9 +482,17 @@ def fusionner(spec: dict, patch_brut, mode: str = 'merge') -> dict:
 
     # ── Métadonnées ───────────────────────────────────────────────────────────
     meta = patch['set_meta']
-    for c in ('name', 'description'):
+    for c in ('name', 'description', 'project_name', 'uses_email'):
         if c in meta:
             etat[c] = meta[c]
+    # Règles métier : retrouvées par leur titre, comme tout le reste par son nom.
+    etat['business_rules'] = [r for r in etat['business_rules'] if r['title'] not in patch['remove_business_rules']]
+    for apport in patch['business_rules']:
+        regle = next((r for r in etat['business_rules'] if r['title'] == apport['title']), None)
+        if regle is None:
+            regle = {'title': apport['title'], 'description': ''}
+            etat['business_rules'].append(regle)
+        regle.update(apport)
     # Union, jamais remplacement : ajouter un groupe ne fait pas disparaître
     # ceux déjà validés. Un groupe ne sort que par `remove_required_groups`.
     etat['required_groups'] = [g for g in _noms(etat['required_groups'] + meta['required_groups'])
@@ -571,6 +610,11 @@ def instantane(app: AppSpec) -> dict:
     return {c: donnees[c] for c in _CLES_SPEC}
 
 
+def spec_de(app: AppSpec) -> dict:
+    """La spec en base sous sa forme sérialisée, pour les calculs (conformité, remise)."""
+    return {**instantane(app), 'id': app.pk}
+
+
 def _aplatir(erreurs, chemin='') -> list:
     if isinstance(erreurs, dict):
         return [ligne for cle, v in erreurs.items() for ligne in _aplatir(v, f'{chemin}{cle}.')]
@@ -581,8 +625,10 @@ def _aplatir(erreurs, chemin='') -> list:
     return [f"{chemin.rstrip('.')} : {erreurs}"]
 
 
-def _enregistrer(app: AppSpec, spec: dict) -> None:
-    serialiseur = AppSpecSerializer(app, data=spec)
+def _enregistrer(app: AppSpec, spec: dict, restauration: bool = False) -> None:
+    # `restauration` : on rend un état que la spec a déjà eu (annulation) — ce
+    # qu'il contenait d'ancien (champ `file`) n'est pas une nouveauté à refuser.
+    serialiseur = AppSpecSerializer(app, data=spec, context={'restauration': restauration})
     if not serialiseur.is_valid():
         raise PatchRefuse(_aplatir(serialiseur.errors))
     serialiseur.save()
@@ -615,6 +661,6 @@ def annuler(application: PatchApplication) -> None:
             raise AnnulationImpossible('Ce patch a déjà été annulé.')
         if derniere is None or derniere.pk != application.pk:
             raise AnnulationImpossible("Seul le dernier patch appliqué peut être annulé.")
-        _enregistrer(app, application.snapshot_before)
+        _enregistrer(app, application.snapshot_before, restauration=True)
         application.undone_at = timezone.now()
         application.save(update_fields=['undone_at'])

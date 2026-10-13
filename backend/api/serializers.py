@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from . import conformite
 from .models import (
     AppSpec, DataModel, EndpointGroup, Endpoint,
     FrontendService, Page, Interaction, Pipeline,
@@ -16,7 +17,7 @@ class EndpointSerializer(serializers.ModelSerializer):
         model = Endpoint
         fields = [
             'id', 'method', 'path', 'description', 'order',
-            'operation', 'linked_model_name', 'auth_required',
+            'operation', 'linked_model_name', 'auth_required', 'public_reason',
             'required_roles', 'request_schema', 'response_schema', 'query_params', 'steps',
         ]
 
@@ -159,7 +160,8 @@ class AppSpecSerializer(serializers.ModelSerializer):
     class Meta:
         model = AppSpec
         fields = [
-            'id', 'name', 'description', 'app_type', 'owner_email', 'required_groups',
+            'id', 'name', 'project_name', 'description', 'app_type', 'owner_email', 'required_groups',
+            'business_rules', 'uses_email',
             'created_at', 'updated_at', 'chat_history',
             'data_models', 'endpoint_groups', 'services', 'pages',
         ]
@@ -170,6 +172,66 @@ class AppSpecSerializer(serializers.ModelSerializer):
         # serveur à la création (AppSpecListCreateView.perform_create). Sans
         # cela, un PATCH déposait sa spécification dans le catalogue d'un autre.
         read_only_fields = ['created_at', 'updated_at', 'chat_history', 'owner_email']
+
+    # ── Conformité au cadriciel du lab (api/conformite.py) ─────────────────────
+    # Ce qui est refusé ici ne peut plus ENTRER dans une spécification. Ce qui s'y
+    # trouvait déjà (type Spring, champ `file`) reste enregistrable tel quel, sinon
+    # une spec ancienne ne pourrait plus être modifiée ; elle n'est simplement pas
+    # « prête » tant que ce n'est pas corrigé.
+
+    def validate_project_name(self, value):
+        value = (value or '').strip()
+        if value and conformite.erreur_nom_de_projet(value):
+            raise serializers.ValidationError(conformite.erreur_nom_de_projet(value))
+        return value
+
+    def validate_app_type(self, value):
+        if value in conformite.TYPES_CONSTRUCTIBLES:
+            return value
+        if self.instance is not None and self.instance.app_type == value:
+            return value
+        raise serializers.ValidationError(
+            f'Type « {value} » refusé : le lab crée des apps '
+            + ', '.join(conformite.TYPES_CONSTRUCTIBLES) + '.')
+
+    def validate_required_groups(self, value):
+        if not isinstance(value, list) or not all(isinstance(g, str) for g in value):
+            raise serializers.ValidationError('Liste de noms de groupes attendue.')
+        vus = []
+        for g in (g.strip() for g in value):
+            if g and g not in vus:
+                vus.append(g)
+        return vus
+
+    def validate_business_rules(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError('Liste de règles attendue.')
+        regles = []
+        for r in value:
+            if not isinstance(r, dict) or not isinstance(r.get('title'), str) or not r['title'].strip():
+                raise serializers.ValidationError('Chaque règle est un objet avec un titre (`title`).')
+            description = r.get('description')
+            regles.append({'title': r['title'].strip()[:200],
+                           'description': description.strip() if isinstance(description, str) else ''})
+        return regles
+
+    def validate_data_models(self, value):
+        # `fields` est un JSON libre : on n'y contrôle que le type « fichier ».
+        deja = set()
+        if self.instance is not None and not self.context.get('restauration'):
+            deja = {(m.name, f.get('name')) for m in self.instance.data_models.all()
+                    for f in m.fields if isinstance(f, dict) and f.get('type') == conformite.TYPE_FICHIER_ANCIEN}
+        for modele in value:
+            for champ in modele.get('fields') or []:
+                if not isinstance(champ, dict) or champ.get('type') != conformite.TYPE_FICHIER_ANCIEN:
+                    continue
+                if self.context.get('restauration') or (modele.get('name'), champ.get('name')) in deja:
+                    continue
+                raise serializers.ValidationError(
+                    f"Champ « {modele.get('name')}.{champ.get('name')} » : le type « file » n'est plus accepté. "
+                    "Un fichier d'utilisateur est déposé dans le service storage du lab : utilisez le type "
+                    '« storage_file » (le modèle garde le chemin).')
+        return value
 
     # ── Helpers de résolution des IDs temporaires ──────────────────────────────
 

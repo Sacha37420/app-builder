@@ -15,7 +15,9 @@ export class ModelsPageComponent {
 
   expandedModel = signal<number | null>(null);
 
-  readonly fieldTypes: FieldType[] = ['string', 'text', 'int', 'decimal', 'bool', 'datetime', 'json', 'file'];
+  readonly fieldTypes: FieldType[] = ['string', 'text', 'int', 'decimal', 'bool', 'datetime', 'json', 'storage_file'];
+  // `file` n'est plus proposé : un champ qui le porte encore s'affiche avec un avertissement.
+  readonly fieldTypeLabels: Partial<Record<FieldType, string>> = { storage_file: 'Fichier (service storage)' };
   readonly relTypes: RelType[] = ['FK', 'M2M', 'O2O'];
   readonly onDeleteChoices = ['CASCADE', 'SET_NULL', 'PROTECT', 'DO_NOTHING'] as const;
 
@@ -36,7 +38,8 @@ export class ModelsPageComponent {
       bool:     'BooleanField(default=False)',
       datetime: 'DateTimeField()',
       json:     'JSONField(default=dict)',
-      file:     'FileField(upload_to="uploads/")',
+      storage_file: 'CharField(max_length=500)  # chemin dans le service storage du lab',
+      file:         'CharField(max_length=500)  # chemin dans le service storage du lab',
     };
     return `models.${map[type]}`;
   }

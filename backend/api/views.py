@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import generics, status
 from rest_framework.response import Response
-from . import patching
+from . import conformite, patching
 from .models import AppSpec, PatchApplication
 from .serializers import AppSpecSerializer
 
@@ -75,6 +75,7 @@ _PATCH_CONTENT_KEYS = (
     'data_models', 'models', 'data-models',
     'endpoint_groups', 'groups', 'endpoints',
     'services', 'pages',
+    'business_rules', 'rules', 'remove_business_rules',
     'remove_models', 'delete_models',
     'remove_endpoint_groups', 'delete_groups',
     'remove_services', 'delete_services',
@@ -189,7 +190,9 @@ def _generate_patch(provider: str, api_key: str, model: str | None, app_spec: di
 
 _PATCH_SCHEMA_DOC = """```json
 {
-  "set_meta": { "name": "NomApp", "description": "...", "required_groups": ["groupe1", "groupe2"] },
+  "set_meta": { "name": "Titre de l'app", "project_name": "nom-de-projet", "description": "...",
+                "required_groups": ["groupe1", "groupe2"], "uses_email": false },
+  "business_rules": [ { "title": "Stock jamais négatif", "description": "Une sortie de stock supérieure à la quantité disponible est refusée." } ],
   "data_models": [ ... ],
   "endpoint_groups": [ ... ],
   "services": [ ... ],
@@ -201,6 +204,10 @@ _PATCH_SCHEMA_DOC = """```json
 - N'inclus **que les éléments nouveaux ou modifiés** — jamais ce qui existe déjà à l'identique dans le contexte fourni.
 - Chaque tableau peut être vide `[]` si rien de nouveau dans cette catégorie.
 - `set_meta.required_groups` : les groupes Keycloak à ajouter — fusionnés avec l'existant, pas besoin de repréciser les groupes déjà validés.
+- `set_meta.project_name` : le nom du projet dans le lab (dossier, adresse `/<nom>`, client Keycloak) — 3 à 40
+  caractères, minuscules, chiffres et tirets, commence par une lettre. Distinct du titre `name`.
+- `set_meta.uses_email` : `true` si l'app envoie des emails.
+- `business_rules` : les règles métier et contraintes validées, une par objet, retrouvées par leur `title`.
 - Pour **services** : utilise `endpoint_group_names` (noms, pas IDs).
 - Pour **pages** : utilise `service_names` (noms, pas IDs).
 
@@ -219,7 +226,8 @@ _PATCH_SCHEMA_DOC = """```json
   - dans un modèle : `"remove_fields": ["champ"]`, `"remove_relationships": ["relation"]` ;
   - dans un groupe : `"remove_endpoints": ["GET /api/chemin/"]` ;
   - dans une page : `"remove_interactions": ["Nom"]`, `"remove_pipelines": ["Nom"]` ;
-  - dans `set_meta` : `"remove_required_groups": ["groupe"]`.
+  - dans `set_meta` : `"remove_required_groups": ["groupe"]` ;
+  - à la racine : `"remove_business_rules": ["Titre de la règle"]`.
 - **Renommer** un modèle, un groupe, un service ou une page : envoie-le sous son nouveau `name` avec
   `"rename_from": "AncienNom"`. Ne le recrée jamais sous un autre nom (cela ferait un doublon). Les
   références vers l'ancien nom suivent automatiquement.
@@ -230,7 +238,8 @@ _PATCH_SCHEMA_DOC = """```json
 
 ### Structure exacte des éléments
 
-**data_models** (types de champs : string/text/int/decimal/bool/datetime/json — **n'utilise jamais `file`**, voir règles de stockage) :
+**data_models** (types de champs : string/text/int/decimal/bool/datetime/json/storage_file — **jamais `file`** :
+un fichier d'utilisateur est un champ `storage_file`, voir « Règles du lab ») :
 ```json
 {
   "name": "Produit", "description": "...", "order": 0,
@@ -253,7 +262,7 @@ _PATCH_SCHEMA_DOC = """```json
     {
       "method": "GET", "path": "/api/produits/", "description": "Liste tous les produits",
       "operation": "list", "linked_model_name": "Produit", "order": 0,
-      "auth_required": true, "required_roles": [],
+      "auth_required": true, "public_reason": "", "required_roles": [],
       "request_schema": null, "response_schema": null, "query_params": [],
       "steps": [
         { "label": "Vérifier JWT", "type": "auth_check", "description": "Vérifie que le token Keycloak est valide et extrait email + groups" },
@@ -265,6 +274,7 @@ _PATCH_SCHEMA_DOC = """```json
 }
 ```
 Types de steps backend : `auth_check | validate | db_query | db_write | serialize | transform | error | custom`
+Une route sans authentification (`"auth_required": false`) porte obligatoirement sa justification dans `public_reason`.
 
 **services** :
 ```json
@@ -316,7 +326,12 @@ son besoin en français courant et obtenir une architecture complète sans conna
 
 ## Contexte technique du système
 
-L'application sera déployée dans un lab utilisant **Keycloak** comme fournisseur d'identité (SSO).
+L'application sera créée et déployée par le **moteur du lab** (lab-admin → Projets → « Lancer la
+construction ») à partir de cette spécification : il crée le dépôt, le squelette Django + Angular, le
+client Keycloak et la base, puis un agent de développement réalise la feuille de route lot par lot.
+La spécification doit donc décrire une app que ce moteur sait construire.
+
+Le lab utilise **Keycloak** comme fournisseur d'identité (SSO).
 Règles impératives à respecter dans toute spécification :
 
 - **Ne jamais modéliser `User`, `Role` ou `Permission`** — ces entités existent déjà dans Keycloak.
@@ -324,6 +339,27 @@ Règles impératives à respecter dans toute spécification :
   de table Django pour ça.
 - Les **`required_roles`** d'un endpoint sont des noms de groupes Keycloak (ex : `["admin", "editor"]`).
 - L'authentification est toujours via JWT Keycloak, jamais via session Django ni `django.contrib.auth`.
+
+## Règles du lab — la spécification ne les contredit jamais
+
+- **Type d'app** : Django + Angular (par défaut), Django seul (API sans interface) ou Angular seul
+  (interface sans API propre). Rien d'autre : pas de Spring, pas d'autre base que PostgreSQL.
+- **Nom de projet** (`set_meta.project_name`) : demande-le tôt. C'est l'adresse de l'app (`/<nom>` et
+  `/<nom>-api`), son dossier et son client Keycloak — minuscules, chiffres et tirets, 3 à 40 caractères.
+- **Fichiers des utilisateurs** (photos, documents, pièces jointes) : ils sont déposés dans le service
+  **storage** du lab par son API. Le modèle n'en garde que le chemin : champ de type `storage_file`.
+  **Jamais** de `FileField`, de volume média ni de fichier en base — n'utilise jamais le type `file`.
+- **Email** : envoyé par `send_mail` de Django ; le compte d'envoi se règle dans lab-admin. Si l'app
+  envoie des emails, pose `set_meta.uses_email: true` ; ne modélise ni serveur SMTP ni table de comptes.
+- **Route publique** : toute route d'API est derrière l'authentification. Une route sans jeton
+  (`auth_required: false`) est une **décision** : demande confirmation, puis écris pourquoi dans
+  `public_reason`. Elle sera reportée telle quelle dans la feuille de route.
+- **Interface** : identité « Foyer » du lab (navigation verticale, thème clair/sombre). Ne spécifie ni
+  couleurs ni bibliothèque de composants : décris les pages, leurs composants et leurs interactions.
+- **Règles métier** : toute contrainte validée (« le stock ne peut pas être négatif », « une commande
+  payée ne se modifie plus ») va dans `business_rules`, pas seulement dans la conversation.
+- **Tests** : chaque endpoint sera testé (membre accepté, non-membre refusé, rôle requis respecté) ;
+  précise donc toujours les rôles et qui a le droit de voir ou modifier les données de qui.
 
 ## Cloisonnement — règles de sécurité non négociables
 
@@ -367,10 +403,11 @@ Adapte ton vocabulaire au niveau de l'utilisateur :
 ### Phase 1 — Modèles de données
 Demande et fais préciser toutes les entités métier :
 - Nom de chaque entité (singulier, PascalCase — ex : `Produit`, `Commande`)
-- Pour chaque entité : ses champs (nom, type parmi string/text/int/decimal/bool/datetime/json/file,
-  requis ou non, unicité, valeur par défaut si applicable)
+- Pour chaque entité : ses champs (nom, type parmi string/text/int/decimal/bool/datetime/json/storage_file,
+  requis ou non, unicité, valeur par défaut si applicable) — `storage_file` pour tout fichier d'utilisateur
 - Relations entre entités (ForeignKey, ManyToMany, OneToOne) avec le sens et le `related_name`
-- Règles métier importantes (ex : stock ne peut pas être négatif)
+- Règles métier importantes (ex : stock ne peut pas être négatif) → `business_rules`
+- À qui appartient chaque donnée : un utilisateur ne voit-il que les siennes, ou tout le groupe voit tout ?
 
 ⚠ Signale les incohérences : une relation M2M entre A et B sans table intermédiaire peut cacher
 un troisième modèle.
@@ -383,7 +420,7 @@ Pour chaque endpoint identifié :
 - Méthode + chemin (ex : `POST /api/produits/`)
 - Opération Django REST : list / create / retrieve / update / partial_update / delete / custom
 - Modèle manipulé (lien vers Phase 1)
-- Authentification requise ? (par défaut oui)
+- Authentification requise ? (par défaut oui ; « non » est une décision à justifier dans `public_reason`)
 - **Rôles requis** : demander systématiquement "Cet endpoint est-il accessible à tous les utilisateurs
   connectés, ou réservé à certains rôles ?" — si des rôles sont nécessaires, les lister dans `required_roles`
 - Corps de la requête : quels champs, quels types ?
@@ -475,8 +512,9 @@ Le patch que tu produiras ensuite, dans cet échange séparé, devra suivre cett
 
 **Mémoire durable :** l'utilisateur peut effacer l'historique de cette conversation à tout moment —
 seule la spécification structurée (le patch, une fois appliqué) survit alors. Toute information à
-retenir durablement, en particulier les **groupes Keycloak requis** (`set_meta.required_groups`) et
-toute contrainte métier importante, doit être répercutée dans le patch — jamais laissée seulement
+retenir durablement, en particulier les **groupes Keycloak requis** (`set_meta.required_groups`), le
+**nom de projet** (`set_meta.project_name`) et toute contrainte métier (`business_rules`), doit être
+répercutée dans le patch — jamais laissée seulement
 dans le texte de la conversation.
 
 ---
@@ -767,3 +805,18 @@ class AppSpecPatchUndoView(APIView):
         application.refresh_from_db()
         return Response({'spec': AppSpecSerializer(application.app).data,
                          'application': _application(application)})
+
+
+class AppSpecLabView(APIView):
+    """GET /api/apps/<id>/lab/ — la spécification vue du lab : est-elle prête à
+    être construite, sinon pourquoi, et ce qu'elle occupera une fois créée."""
+
+    def get(self, request, pk):
+        try:
+            app = AppSpec.objects.get(pk=pk, owner_email=request.user.email)
+        except AppSpec.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        spec = patching.spec_de(app)
+        blocages = conformite.blocages(spec)
+        return Response({'ready': not blocages, 'blockers': blocages,
+                         'footprint': conformite.empreinte(spec)})

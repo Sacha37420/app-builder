@@ -4,6 +4,7 @@ from .views import (
     AppSpecListCreateView, AppSpecDetailView,
     AppSpecChatHistoryView,
     AppSpecPatchView, AppSpecPatchHistoryView, AppSpecPatchUndoView,
+    AppSpecLabView,
     AIChatView,
 )
 
@@ -15,5 +16,6 @@ urlpatterns = [
     path('apps/<int:pk>/patch/',     AppSpecPatchView.as_view()),
     path('apps/<int:pk>/patches/',   AppSpecPatchHistoryView.as_view()),
     path('apps/<int:pk>/patches/<int:application_pk>/undo/', AppSpecPatchUndoView.as_view()),
+    path('apps/<int:pk>/lab/',       AppSpecLabView.as_view()),
     path('chat/',                    AIChatView.as_view()),
 ]

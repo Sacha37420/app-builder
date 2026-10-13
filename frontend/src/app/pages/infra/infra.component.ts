@@ -1,5 +1,6 @@
 import { Component, inject, computed } from '@angular/core';
 import { BuilderStateService } from '../../core/builder-state.service';
+import { LabPanelComponent } from './lab-panel.component';
 import { DataModel, ModelField, ModelRelationship, FieldType } from '../../models/app-spec.model';
 
 const SQL_TYPE: Record<FieldType, (f: ModelField) => string> = {
@@ -10,7 +11,9 @@ const SQL_TYPE: Record<FieldType, (f: ModelField) => string> = {
   bool:     _ => 'BOOLEAN',
   datetime: _ => 'TIMESTAMPTZ',
   json:     _ => 'JSONB',
-  file:     _ => 'VARCHAR(255)',
+  // Fichier d'utilisateur : la colonne ne garde que le chemin dans le service storage.
+  storage_file: _ => 'VARCHAR(500)',
+  file:         _ => 'VARCHAR(500)',
 };
 
 export interface SqlColumn {
@@ -90,7 +93,7 @@ function buildTable(model: DataModel, allModels: DataModel[]): SqlTable {
 @Component({
   selector: 'app-infra-page',
   standalone: true,
-  imports: [],
+  imports: [LabPanelComponent],
   templateUrl: './infra.component.html',
   styleUrl: './infra.component.scss',
 })

@@ -1,0 +1,255 @@
+<section class="lab-panel" aria-labelledby="lab-panel-title">
+
+  <h1 class="lab-title" id="lab-panel-title">Lab &amp; infra</h1>
+  <p class="lab-intro">
+    Ce que le moteur du lab a besoin de savoir pour créer ce projet, ce qui l'en empêche encore,
+    et ce que l'app occupera une fois créée.
+  </p>
+
+  <div class="lab-grid">
+
+    <!-- ── Fiche du projet ─────────────────────────────────────────── -->
+    <article class="lab-card lab-card-wide">
+      <h2 class="lab-card-title">Fiche du projet</h2>
+
+      <div class="form-grid">
+        <label class="field">
+          <span class="field-label">Titre</span>
+          <input type="text" [value]="state.spec().name" (input)="setTitle($event)"
+                 placeholder="Titre lisible de l'application" />
+        </label>
+
+        <label class="field">
+          <span class="field-label">Nom de projet</span>
+          <input type="text" class="mono" autocomplete="off" autocapitalize="none" spellcheck="false"
+                 [value]="projectNameDraft() ?? state.spec().project_name"
+                 [class.invalid]="projectNameProblem()"
+                 [attr.aria-invalid]="projectNameProblem() ? 'true' : null"
+                 aria-describedby="project-name-help"
+                 (input)="setProjectName($event)"
+                 placeholder="ma-boutique" />
+          <span class="field-help" id="project-name-help">
+            Adresse de l'app (<code>/nom</code>), dossier et client Keycloak : 3 à 40 caractères,
+            minuscules, chiffres et tirets, commence par une lettre.
+          </span>
+          @if (projectNameProblem(); as problem) {
+            <span class="field-error" role="alert">{{ problem }} Cette saisie n'est pas enregistrée.</span>
+          }
+        </label>
+
+        <label class="field field-full">
+          <span class="field-label">Description</span>
+          <textarea rows="3" [value]="state.spec().description" (input)="setDescription($event)"
+                    placeholder="À quoi sert l'application, pour qui…"></textarea>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Type d'app</span>
+          <select [value]="state.spec().app_type" (change)="setAppType($event)">
+            @for (t of constructibleTypes; track t) {
+              <option [value]="t" [selected]="t === state.spec().app_type">{{ typeLabel(t) }}</option>
+            }
+            @if (legacyType(); as old) {
+              <option [value]="old" selected disabled>{{ typeLabel(old) }} — non constructible par le lab</option>
+            }
+          </select>
+          @if (legacyType()) {
+            <span class="field-error">
+              Ce type n'est plus accepté : une fois changé, il ne pourra pas être rétabli.
+            </span>
+          }
+        </label>
+
+        <label class="check">
+          <input type="checkbox" [checked]="state.spec().uses_email" (change)="setUsesEmail($event)" />
+          <span>L'app envoie des emails</span>
+        </label>
+      </div>
+
+      <!-- Groupes requis -->
+      <div class="sub-block">
+        <h3 class="sub-title">Groupes requis</h3>
+        <div class="chips">
+          @for (g of state.spec().required_groups; track g) {
+            <span class="chip">
+              {{ g }}
+              <button type="button" class="chip-remove" [attr.aria-label]="'Retirer le groupe ' + g"
+                      (click)="state.removeRequiredGroup(g)">×</button>
+            </span>
+          }
+          @if (state.spec().required_groups.length === 0) {
+            <span class="chips-empty">Aucun groupe : l'app serait ouverte à tout compte du lab.</span>
+          }
+        </div>
+        <div class="add-row">
+          <input #groupInput type="text" aria-label="Nom du groupe à ajouter"
+                 placeholder="Nom du groupe (Entrée)" autocapitalize="none"
+                 (keydown)="onGroupKeydown($event, groupInput)" />
+          <button type="button" class="btn" (click)="addGroup(groupInput)">Ajouter</button>
+        </div>
+      </div>
+
+      <!-- Règles métier -->
+      <div class="sub-block">
+        <div class="sub-head">
+          <h3 class="sub-title">Règles métier</h3>
+          <button type="button" class="btn" (click)="state.addBusinessRule()">+ Règle</button>
+        </div>
+        @if (state.spec().business_rules.length === 0) {
+          <p class="muted">Aucune règle : toute contrainte validée (« le stock ne peut pas être négatif ») se note ici.</p>
+        }
+        <ul class="rules">
+          @for (rule of state.spec().business_rules; track $index) {
+            <li class="rule">
+              <div class="rule-fields">
+                <input type="text" [value]="rule.title" [attr.aria-label]="'Titre de la règle ' + ($index + 1)"
+                       [class.invalid]="emptyRuleTitles().has($index)"
+                       (input)="setRuleTitle($index, $event)" placeholder="Titre de la règle" />
+                @if (emptyRuleTitles().has($index)) {
+                  <span class="field-error" role="alert">Le titre est obligatoire : cette saisie n'est pas enregistrée.</span>
+                }
+                <textarea rows="2" [value]="rule.description"
+                          [attr.aria-label]="'Description de la règle ' + ($index + 1)"
+                          (input)="setRuleDescription($index, $event)"
+                          placeholder="Ce que la règle impose, et dans quel cas…"></textarea>
+              </div>
+              <button type="button" class="btn btn-danger" [attr.aria-label]="'Supprimer la règle ' + ($index + 1)"
+                      (click)="removeRule($index)">✕</button>
+            </li>
+          }
+        </ul>
+      </div>
+    </article>
+
+    <!-- ── Prête pour le lab ? ─────────────────────────────────────── -->
+    <article class="lab-card" aria-live="polite">
+      <h2 class="lab-card-title">Prête pour le lab ?</h2>
+
+      @if (state.saveErrorDetail(); as detail) {
+        <div class="banner banner-danger" role="alert">
+          <strong>Enregistrement refusé par le serveur</strong>
+          <span>{{ detail }}</span>
+        </div>
+      }
+
+      @if (state.lab(); as lab) {
+        @if (lab.ready) {
+          <div class="banner banner-success">
+            <strong>Prête</strong>
+            <span>Le moteur du lab sait créer cette app à partir de la spécification enregistrée.</span>
+          </div>
+        } @else {
+          <div class="banner banner-warning">
+            <strong>Pas encore prête — {{ lab.blockers.length }} point(s) à régler</strong>
+          </div>
+          <ul class="blockers">
+            @for (b of lab.blockers; track b.code) {
+              <li>{{ b.message }}</li>
+            }
+          </ul>
+        }
+        @if (state.isDirty()) {
+          <p class="muted">Des modifications ne sont pas encore enregistrées : cet état décrit la dernière version enregistrée.</p>
+        }
+      } @else {
+        <p class="muted">Enregistrez la spécification pour voir son état.</p>
+      }
+    </article>
+
+    <!-- ── Empreinte dans le lab ───────────────────────────────────── -->
+    @if (state.lab(); as lab) {
+      <article class="lab-card">
+        <h2 class="lab-card-title">Empreinte dans le lab</h2>
+
+        <dl class="footprint">
+          <dt>Conteneurs</dt>
+          <dd>
+            @for (c of lab.footprint.containers; track c.name) {
+              <div><code>{{ c.name }}</code> <span class="muted-inline">— {{ c.role }}</span></div>
+            } @empty {
+              <span class="muted-inline">Aucun : type d'app non constructible.</span>
+            }
+          </dd>
+
+          <dt>Adresses</dt>
+          <dd>
+            @if (lab.footprint.paths.frontend) { <div>Interface : <code>{{ lab.footprint.paths.frontend }}</code></div> }
+            @if (lab.footprint.paths.api) { <div>API : <code>{{ lab.footprint.paths.api }}</code></div> }
+            @if (!lab.footprint.paths.frontend && !lab.footprint.paths.api) { <span class="muted-inline">Aucune.</span> }
+          </dd>
+
+          <dt>Keycloak</dt>
+          <dd>
+            <div>Client : <code>{{ lab.footprint.keycloak.client_id }}</code></div>
+            <div>
+              Groupes :
+              @for (g of lab.footprint.keycloak.required_groups; track g) {
+                <span class="tag">{{ g }}</span>
+              } @empty {
+                <span class="warn-inline">aucun</span>
+              }
+            </div>
+            <ol class="locks">
+              @for (lock of lab.footprint.keycloak.locks; track $index) { <li>{{ lock }}</li> }
+            </ol>
+          </dd>
+
+          <dt>Base</dt>
+          <dd>
+            @if (lab.footprint.database; as db) {
+              <div>Instance <code>{{ db.instance }}</code>, {{ db.database }}</div>
+              <div>Schéma <code>{{ db.schema }}</code> — {{ db.tables }} table(s)</div>
+            } @else {
+              <span class="muted-inline">Pas de base.</span>
+            }
+          </dd>
+
+          <dt>Storage</dt>
+          <dd>
+            <div>{{ lab.footprint.storage.used ? 'Utilisé' : 'Non utilisé' }}</div>
+            @if (lab.footprint.storage.fields.length > 0) {
+              <div>
+                Champs :
+                @for (f of lab.footprint.storage.fields; track f) { <code>{{ f }}</code> }
+              </div>
+            }
+            @if (lab.footprint.storage.legacy_file_fields.length > 0) {
+              <div class="warn-inline">
+                Anciens champs « file » à convertir (page Modèles) :
+                @for (f of lab.footprint.storage.legacy_file_fields; track f) { <code>{{ f }}</code> }
+              </div>
+            }
+            <div class="rule-text">{{ lab.footprint.storage.rule }}</div>
+          </dd>
+
+          <dt>Email</dt>
+          <dd>
+            <div>{{ lab.footprint.email.used ? "L'app envoie des emails" : "L'app n'envoie pas d'email" }}</div>
+            <div class="rule-text">{{ lab.footprint.email.rule }}</div>
+          </dd>
+
+          <dt>Routes publiques</dt>
+          <dd>
+            @for (r of lab.footprint.public_routes; track $index) {
+              <div class="route">
+                <code>{{ r.method }} {{ r.path }}</code>
+                <span class="muted-inline">({{ r.group }})</span>
+                @if (r.reason) {
+                  <span>— {{ r.reason }}</span>
+                } @else {
+                  <span class="warn-inline">— sans justification</span>
+                }
+              </div>
+            } @empty {
+              <span class="muted-inline">Aucune : toute route demande une connexion.</span>
+            }
+          </dd>
+
+          <dt>Déploiement</dt>
+          <dd>{{ lab.footprint.deployment }}</dd>
+        </dl>
+      </article>
+    }
+
+  </div>
+</section>

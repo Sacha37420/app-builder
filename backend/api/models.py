@@ -2,15 +2,21 @@ from django.db import models
 
 
 class AppSpec(models.Model):
+    # Les trois premiers sont ceux que le moteur du lab sait créer (`create_app`).
+    # Les deux types Spring ne sont plus proposés : une spécification ancienne qui
+    # en porte un reste lisible, mais n'est pas « prête » (api/conformite.py).
     APP_TYPE_CHOICES = [
         ('django-angular', 'Django + Angular'),
         ('django',         'Django seul'),
+        ('angular',        'Angular seul'),
         ('spring-angular', 'Spring + Angular'),
         ('spring',         'Spring seul'),
-        ('angular',        'Angular seul'),
     ]
 
     name = models.CharField(max_length=200)
+    # Nom du projet dans le lab (dossier, chemins /<nom> et /<nom>-api, client
+    # Keycloak, schéma SQL) — distinct du titre. Vide tant qu'il n'est pas choisi.
+    project_name = models.CharField(max_length=40, blank=True, default='')
     description = models.TextField(blank=True)
     app_type = models.CharField(max_length=30, choices=APP_TYPE_CHOICES, default='django-angular')
     owner_email = models.EmailField(max_length=255, blank=True)
@@ -18,6 +24,11 @@ class AppSpec(models.Model):
     # cf. CLAUDE.md « Sécurité — cloisonnement des applications »). Champ structuré
     # plutôt qu'une mention dans le chat : il doit survivre à un effacement du chat.
     required_groups = models.JSONField(default=list)
+    # Règles métier et contraintes : [{title, description}]. Structurées pour
+    # survivre à un effacement de la conversation et entrer dans le cahier des charges.
+    business_rules = models.JSONField(default=list)
+    # L'app envoie des emails (par `send_mail` de Django, compte réglé dans lab-admin).
+    uses_email = models.BooleanField(default=False)
     # Historique de conversation IA (persisté via AppSpecChatHistoryView).
     # Présent en base depuis la migration 0003 — la colonne est NOT NULL,
     # donc le champ doit rester déclaré ici sinon tout INSERT échoue.
@@ -39,6 +50,8 @@ class DataModel(models.Model):
     name = models.CharField(max_length=200)          # ex: "Produit"
     description = models.TextField(blank=True)
     # [{name, type, required, unique, max_length, default, help_text}]
+    # Types : voir api/conformite.py (`storage_file` = fichier déposé dans le service
+    # `storage` du lab, dont on ne garde que le chemin ; `file` n'est plus accepté).
     fields = models.JSONField(default=list)
     # [{name, rel_type (FK/M2M/O2O), to_model, related_name, on_delete}]
     relationships = models.JSONField(default=list)
@@ -87,6 +100,9 @@ class Endpoint(models.Model):
     operation = models.CharField(max_length=20, choices=OPERATION_CHOICES, default='custom')
     linked_model_name = models.CharField(max_length=200, blank=True)  # nom d'un DataModel
     auth_required = models.BooleanField(default=True)
+    # Route publique (`auth_required` faux) : pourquoi elle l'est. Une route sans
+    # authentification est une décision, reportée dans la feuille de route générée.
+    public_reason = models.TextField(blank=True, default='')
     required_roles = models.JSONField(default=list)        # ex: ["admin", "editor"]
     request_schema = models.JSONField(null=True, blank=True)   # {field: type}
     response_schema = models.JSONField(null=True, blank=True)  # {field: type}

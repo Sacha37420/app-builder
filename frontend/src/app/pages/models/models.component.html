@@ -66,10 +66,22 @@
                              placeholder="nom_champ" />
                     </td>
                     <td>
-                      <select [value]="field.type"
+                      <select [value]="field.type" aria-label="Type du champ"
                               (change)="setFieldType(model.id!, $index, $event)">
-                        @for (t of fieldTypes; track t) { <option [value]="t" [selected]="t === field.type">{{ t }}</option> }
+                        @for (t of fieldTypes; track t) { <option [value]="t" [selected]="t === field.type">{{ fieldTypeLabels[t] || t }}</option> }
+                        @if (field.type === 'file') {
+                          <option value="file" selected disabled>file — ancien type</option>
+                        }
                       </select>
+                      @if (field.type === 'file') {
+                        <div class="file-warning" role="note">
+                          <span>Type « file » refusé par le lab : un fichier d'utilisateur va dans le service storage.</span>
+                          <button type="button" class="btn-convert"
+                                  (click)="state.convertFileField(model.id!, $index)">
+                            Convertir en référence storage
+                          </button>
+                        </div>
+                      }
                     </td>
                     <td class="center">
                       <input type="checkbox" [checked]="field.required"

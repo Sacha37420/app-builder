@@ -43,7 +43,7 @@ export class AppComponent {
     { path: '/pages-config', label: '③ Pages',      abbr: 'Pa' },
     { path: '/pipelines',    label: '④ Pipelines',  abbr: 'Pi' },
     { path: '/preview',      label: 'Code',         abbr: 'Cd' },
-    { path: '/infra',        label: 'Infra',        abbr: 'In' },
+    { path: '/infra',        label: 'Lab & infra',  abbr: 'La' },
   ];
 
   @ViewChild('closeBtn') private closeBtnRef?: ElementRef<HTMLButtonElement>;

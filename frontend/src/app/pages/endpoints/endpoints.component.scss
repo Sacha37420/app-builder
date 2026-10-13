@@ -261,3 +261,23 @@
   font-size: 0.82rem; flex-shrink: 0;
   &:hover { color: var(--danger); }
 }
+
+// ── Route publique (auth_required: false) : avertissement + justification ─────
+.public-warning {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--warning-tint); border: 1px solid var(--warning);
+  border-radius: var(--radius-sm); color: var(--text); font-size: var(--text-sm);
+
+  .public-reason {
+    display: flex; flex-direction: column; gap: var(--space-1);
+    span { font-size: var(--text-xs); color: var(--text-mute); text-transform: uppercase; letter-spacing: 0.04em; }
+    input {
+      min-height: 44px; width: 100%; box-sizing: border-box;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text);
+      padding: var(--space-2) var(--space-3); font-size: var(--text-sm);
+      &:focus { outline: none; border-color: var(--warning); }
+    }
+  }
+}
