@@ -21,7 +21,7 @@ python manage.py test
 - [x] Test de cloisonnement `frontend/e2e/cloisonnement.spec.ts`
 **Vérifié le :** 2026-10-12 — commit `795cab6` déployé par le moteur, tests backend « ok » (lu dans l'état du projet le 2026-10-13, non relancés à la main). Cloisonnement : 3/3 verts le 2026-10-11 d'après le commit `f89fbb0`, « non-lancé » sur le déploiement du 2026-10-12.
 
-## Lot 2 — Patchs IA fiables   ·   statut : en cours
+## Lot 2 — Patchs IA fiables   ·   statut : livré
 **Objectif :** un patch proposé par l'IA ne fait jamais perdre un élément que l'utilisateur n'a pas demandé de retirer, et tout patch appliqué est traçable et annulable.
 **Tâches :**
 - [x] Appliquer le patch côté serveur (`POST /api/apps/<id>/patch/`) : une seule implémentation, testable, atomique
@@ -36,9 +36,9 @@ python manage.py test
 - [x] `python manage.py test api.tests.PatchSuppressionTests` passe (suppression et renommage sans doublon)
 - [x] `python manage.py test api.tests.PatchReferencesTests` passe (référence orpheline refusée, spec inchangée)
 - [x] `python manage.py test api.tests.PatchHistoriqueTests` passe (état appliqué persistant, annulation rend la spec d'avant)
-**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` (PostgreSQL jetable, code du commit `42a60d8`) : 79 tests, OK, dont les quatre classes ci-dessus. Tests verts hors déploiement : le lot passera « livré » à la mise en service. Le blocage du déploiement (`.keycloak-client-opts` suivi par git) est levé par `42a60d8`.
+**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` (PostgreSQL jetable, code du commit `42a60d8`) : 79 tests, OK, dont les quatre classes ci-dessus. Tests verts hors déploiement : le lot passera « livré » à la mise en service. Le blocage du déploiement (`.keycloak-client-opts` suivi par git) est levé par `42a60d8`. **Mis en service le 2026-10-13** : image du commit `57f79e5` construite pendant que l'ancienne tournait, `scripts/app-test.sh app-builder` vert sur cette image, migrations `0008` et `0009` jouées (les deux spécifications existantes intactes), test de cloisonnement 3/3 après déploiement. Vu en navigateur réel (compte `e2edev`) : jauge de contexte, pages « Vue d'ensemble », « Livrables » et « Lab & infra », puis la remise jusqu'au corps envoyé au moteur depuis lab-admin. Non vu : thème sombre ; création réelle d'un projet (demande un compte GitHub humain).
 
-## Lot 3 — Mesure du contexte   ·   statut : en cours
+## Lot 3 — Mesure du contexte   ·   statut : livré
 **Objectif :** l'utilisateur voit à tout moment la place qu'occupent sa spec et sa conversation par rapport à ce que le modèle choisi peut traiter, et l'app n'envoie jamais une requête vouée à l'échec.
 **Tâches :**
 - [x] Table des modèles (fenêtre, sortie maximale) côté serveur (`api/budget.py`) ; liste servie par `GET /api/models/` et non plus codée en dur dans le frontend
@@ -51,9 +51,9 @@ python manage.py test
 - [x] `python manage.py test api.tests.BudgetContexteTests` passe (estimation croissante avec la spec, seuil par modèle, refus avant appel, historique tronqué sans perdre le dernier message)
 - [x] `python manage.py test api.tests.ChatTests` reste vert
 - [x] Frontend : liste des modèles lue sur l'API, jauge, `chat_history` plus envoyé ; `npm run build` sans erreur
-**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : suite complète verte, dont `BudgetContexteTests` (13) et `ChatTests` (8, inchangés). `npm run build` sans erreur ; jauge non essayée en navigateur. Fenêtres Mistral posées prudemment (32 000 pour `small` et `codestral`) faute de pouvoir les vérifier hors ligne. Tests verts hors déploiement.
+**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : suite complète verte, dont `BudgetContexteTests` (13) et `ChatTests` (8, inchangés). `npm run build` sans erreur ; jauge non essayée en navigateur. Fenêtres Mistral posées prudemment (32 000 pour `small` et `codestral`) faute de pouvoir les vérifier hors ligne. Tests verts hors déploiement. **Mis en service le 2026-10-13** : image du commit `57f79e5` construite pendant que l'ancienne tournait, `scripts/app-test.sh app-builder` vert sur cette image, migrations `0008` et `0009` jouées (les deux spécifications existantes intactes), test de cloisonnement 3/3 après déploiement. Vu en navigateur réel (compte `e2edev`) : jauge de contexte, pages « Vue d'ensemble », « Livrables » et « Lab & infra », puis la remise jusqu'au corps envoyé au moteur depuis lab-admin. Non vu : thème sombre ; création réelle d'un projet (demande un compte GitHub humain).
 
-## Lot 4 — Spécification alignée sur le cadriciel   ·   statut : en cours
+## Lot 4 — Spécification alignée sur le cadriciel   ·   statut : livré
 **Objectif :** toute spécification décrit une app que le moteur du lab sait créer et déployer, sans rien y contredire.
 **Tâches :**
 - [x] Types d'app limités à ceux de `create_app` (`django`, `django-angular`, `angular`), `django-angular` par défaut ; une spec d'un autre type reste lisible et enregistrable telle quelle, mais n'est pas « prête » et on n'y revient pas
@@ -70,9 +70,9 @@ python manage.py test
 - [x] `python manage.py test api.tests.SpecificationTests.test_tables_lues_par_lab_admin` reste vert
 - [x] `python manage.py test api.tests.MigrationCadricielTests` passe (les données d'avant la migration survivent)
 - [x] `npm run build` du frontend sans erreur
-**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` (PostgreSQL jetable) : suite complète verte, dont `ConformiteCadricielTests` (15), `ConformiteReglesTests` (4), `MigrationCadricielTests` (1) et `test_tables_lues_par_lab_admin` ; `npm run build` sans erreur (avertissements de budget de style antérieurs). Tests verts hors déploiement, interface non essayée en navigateur : le lot passera « livré » à la mise en service.
+**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` (PostgreSQL jetable) : suite complète verte, dont `ConformiteCadricielTests` (15), `ConformiteReglesTests` (4), `MigrationCadricielTests` (1) et `test_tables_lues_par_lab_admin` ; `npm run build` sans erreur (avertissements de budget de style antérieurs). Tests verts hors déploiement, interface non essayée en navigateur : le lot passera « livré » à la mise en service. **Mis en service le 2026-10-13** : image du commit `57f79e5` construite pendant que l'ancienne tournait, `scripts/app-test.sh app-builder` vert sur cette image, migrations `0008` et `0009` jouées (les deux spécifications existantes intactes), test de cloisonnement 3/3 après déploiement. Vu en navigateur réel (compte `e2edev`) : jauge de contexte, pages « Vue d'ensemble », « Livrables » et « Lab & infra », puis la remise jusqu'au corps envoyé au moteur depuis lab-admin. Non vu : thème sombre ; création réelle d'un projet (demande un compte GitHub humain).
 
-## Lot 5 — Cahier des charges, feuille de route et remise au lab   ·   statut : en cours
+## Lot 5 — Cahier des charges, feuille de route et remise au lab   ·   statut : livré
 **Objectif :** à partir d'une spec « prête », l'utilisateur obtient le cahier des charges et les lots de la feuille de route de son app au format du lab, et lab-admin les lit pour lancer la construction.
 **Tâches :**
 - [x] Génération côté serveur du cahier des charges (Markdown) depuis la spec — déterministe, sans IA (`api/remise.py`)
@@ -88,9 +88,9 @@ python manage.py test
 - [x] `python manage.py test api.tests.CahierDesChargesTests` passe (groupes, règles métier, routes publiques et stockage y figurent ; export d'autrui impossible)
 - [x] `python manage.py test api.tests.RemiseAuLabTests` passe (jeton `lab-admin` accepté sur les seules routes de remise et refusé ailleurs, `admin-cli` refusé partout, jeton d'un autre client refusé, specs d'autrui invisibles, aucune écriture, 409 si non prête)
 - [x] `npm run build` du frontend sans erreur après le remplacement de la page « Code »
-**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : 137 tests, OK, dont les trois classes ci-dessus (37 tests). Page « Livrables » : `npm run build` sans erreur, plus aucun générateur de code dans le frontend (`grep`). Tests verts hors déploiement, interface non essayée en navigateur : le lot passera « livré » à la mise en service.
+**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : 137 tests, OK, dont les trois classes ci-dessus (37 tests). Page « Livrables » : `npm run build` sans erreur, plus aucun générateur de code dans le frontend (`grep`). Tests verts hors déploiement, interface non essayée en navigateur : le lot passera « livré » à la mise en service. **Mis en service le 2026-10-13** : image du commit `57f79e5` construite pendant que l'ancienne tournait, `scripts/app-test.sh app-builder` vert sur cette image, migrations `0008` et `0009` jouées (les deux spécifications existantes intactes), test de cloisonnement 3/3 après déploiement. Vu en navigateur réel (compte `e2edev`) : jauge de contexte, pages « Vue d'ensemble », « Livrables » et « Lab & infra », puis la remise jusqu'au corps envoyé au moteur depuis lab-admin. Non vu : thème sombre ; création réelle d'un projet (demande un compte GitHub humain).
 
-## Lot 6 — Représentation graphique à toutes les échelles   ·   statut : en cours
+## Lot 6 — Représentation graphique à toutes les échelles   ·   statut : livré
 **Objectif :** la personne qui commande l'app la voit du plus large (sa place dans le lab) au plus fin (une étape de pipeline), en naviguant d'une échelle à l'autre.
 **Tâches :**
 - [x] API du graphe (`GET /api/apps/<id>/graph/`, `api/graphe.py`) : cinq échelles — dans le lab (groupes → Keycloak → interface → API → base / storage / email), architecture, données, pipelines, feuille de route — chaque nœud remontant à l'échelle au-dessus par `parent`
@@ -100,5 +100,5 @@ python manage.py test
 **Tests à passer avant de clore le lot :**
 - [x] `python manage.py test api.tests.VueEnsembleTests` passe (l'API rend le graphe d'une spec : nœuds et liens cohérents avec la spec)
 - [x] `npm run build` du frontend sans erreur ; aucune couleur en dur dans les composants ajoutés (`grep` sur les valeurs hexadécimales)
-- [ ] Test de cloisonnement vert après déploiement
-**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : 158 tests, OK, dont `VueEnsembleTests` (6) et `GrapheReglesTests` (2). Arbre final : `npm run build` sans erreur (avertissements de budget de style sur cinq feuilles antérieures), `grep` de couleurs en dur vide sur `pages/overview/`. Interface non essayée en navigateur ; test de cloisonnement à lancer après déploiement : le lot passera « livré » à la mise en service.
+- [x] Test de cloisonnement vert après déploiement
+**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : 158 tests, OK, dont `VueEnsembleTests` (6) et `GrapheReglesTests` (2). Arbre final : `npm run build` sans erreur (avertissements de budget de style sur cinq feuilles antérieures), `grep` de couleurs en dur vide sur `pages/overview/`. Interface non essayée en navigateur ; test de cloisonnement à lancer après déploiement : le lot passera « livré » à la mise en service. **Mis en service le 2026-10-13** : image du commit `57f79e5` construite pendant que l'ancienne tournait, `scripts/app-test.sh app-builder` vert sur cette image, migrations `0008` et `0009` jouées (les deux spécifications existantes intactes), test de cloisonnement 3/3 après déploiement. Vu en navigateur réel (compte `e2edev`) : jauge de contexte, pages « Vue d'ensemble », « Livrables » et « Lab & infra », puis la remise jusqu'au corps envoyé au moteur depuis lab-admin. Non vu : thème sombre ; création réelle d'un projet (demande un compte GitHub humain).
