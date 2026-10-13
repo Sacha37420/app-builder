@@ -1,7 +1,17 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { AppSpec, ChatMessage, AiProvider, AgentPatch, PersistedChatMessage } from '../models/app-spec.model';
+import {
+  AppSpec, ChatMessage, AiProvider, AgentPatch, PersistedChatMessage, PatchApplication, PatchMode,
+} from '../models/app-spec.model';
+
+interface ChatResponse {
+  content: string;
+  provider: string;
+  spec_patch: AgentPatch | null;
+  patch_summary: string | null;
+  choices: { multiple: boolean; items: string[] } | null;
+}
 
 interface EnvWindow {
   __env?: { apiUrl?: string };
@@ -41,9 +51,9 @@ export class BuilderApiService {
     provider: AiProvider,
     apiKey: string,
     model: string,
-  ): Observable<{ content: string; provider: string; spec_patch: AgentPatch | null; choices: { multiple: boolean; items: string[] } | null }> {
+  ): Observable<ChatResponse> {
     const cleanMessages = messages.map(m => ({ role: m.role, content: m.content }));
-    return this.http.post<{ content: string; provider: string; spec_patch: AgentPatch | null; choices: { multiple: boolean; items: string[] } | null }>(
+    return this.http.post<ChatResponse>(
       `${this.base}/api/chat/`,
       { messages: cleanMessages, app_spec: appSpec, provider, api_key: apiKey, model },
     );
@@ -51,5 +61,17 @@ export class BuilderApiService {
 
   saveChatHistory(id: number, history: PersistedChatMessage[]): Observable<{ ok: boolean }> {
     return this.http.patch<{ ok: boolean }>(`${this.base}/api/apps/${id}/chat/`, { chat_history: history });
+  }
+
+  applyPatch(id: number, patch: AgentPatch, mode: PatchMode): Observable<{ spec: AppSpec; application: PatchApplication }> {
+    return this.http.post<{ spec: AppSpec; application: PatchApplication }>(
+      `${this.base}/api/apps/${id}/patch/`, { patch, mode },
+    );
+  }
+
+  undoPatch(id: number, applicationId: number): Observable<{ spec: AppSpec; application: PatchApplication }> {
+    return this.http.post<{ spec: AppSpec; application: PatchApplication }>(
+      `${this.base}/api/apps/${id}/patches/${applicationId}/undo/`, {},
+    );
   }
 }

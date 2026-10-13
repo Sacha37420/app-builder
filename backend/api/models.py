@@ -172,3 +172,19 @@ class Pipeline(models.Model):
     class Meta:
         db_table = 'pipelines'
         ordering = ['order', 'name']
+
+
+class PatchApplication(models.Model):
+    """Un patch IA appliqué à une spécification, avec la spec d'avant pour
+    pouvoir l'annuler (voir api/patching.py)."""
+    app = models.ForeignKey(AppSpec, related_name='patch_applications', on_delete=models.CASCADE)
+    mode = models.CharField(max_length=10)             # merge | replace
+    patch = models.JSONField()
+    summary = models.TextField(blank=True)
+    snapshot_before = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    undone_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'patch_applications'
+        ordering = ['-id']

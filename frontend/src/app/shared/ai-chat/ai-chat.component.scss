@@ -368,6 +368,15 @@
   color: var(--success); font-size: 0.78rem; font-weight: 500;
 }
 
+.btn-undo {
+  margin-top: 0.4rem; min-height: 44px; padding: 0 12px; border-radius: 5px; cursor: pointer;
+  font-size: 0.77rem; font-weight: 600; transition: all 0.12s;
+  background: transparent; border: 1px solid var(--border); color: var(--text-mute);
+  &:hover:not(:disabled) { background: var(--overlay-hover); color: var(--text); }
+}
+
+.btn-merge:disabled, .btn-replace:disabled, .btn-undo:disabled { opacity: 0.5; cursor: default; }
+
 // ── Typing dots ───────────────────────────────────────────────────────────────
 .typing-dots {
   display: flex;

@@ -5,7 +5,8 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import generics, status
 from rest_framework.response import Response
-from .models import AppSpec
+from . import patching
+from .models import AppSpec, PatchApplication
 from .serializers import AppSpecSerializer
 
 # ── Extraction du patch JSON depuis la réponse IA ─────────────────────────────
@@ -81,12 +82,23 @@ _PATCH_CONTENT_KEYS = (
 )
 
 
+
 def _patch_has_content(patch: dict) -> bool:
     return any(patch.get(key) for key in _PATCH_CONTENT_KEYS)
 
 
 _PATCH_MAX_ATTEMPTS = 3
 _PATCH_MAX_TOKENS = 8192
+
+
+class ReponseTronquee(Exception):
+    """Le fournisseur a coupé sa réponse à la limite de longueur demandée."""
+
+
+_AVIS_TRONCATURE = (
+    "\n\n⚠️ Réponse coupée : la limite de longueur du modèle a été atteinte. "
+    "Demandez la suite, ou avancez par étapes plus petites."
+)
 
 
 def _generate_patch(provider: str, api_key: str, model: str | None, app_spec: dict,
@@ -109,6 +121,11 @@ def _generate_patch(provider: str, api_key: str, model: str | None, app_spec: di
     for attempt in range(1, _PATCH_MAX_ATTEMPTS + 1):
         try:
             raw = call_once(api_key, system_prompt, patch_messages, model, _PATCH_MAX_TOKENS)
+        except ReponseTronquee:
+            # Redemander la même chose donnerait la même coupure : on s'arrête.
+            print(f'[PATCH] tentative {attempt}/{_PATCH_MAX_ATTEMPTS} — réponse tronquée, abandon')
+            return None, ('patch trop volumineux pour une seule réponse — demandez-le en plusieurs fois, '
+                          'une partie de la spécification à la fois')
         except Exception as exc:
             last_error = f'appel API échoué ({exc})'
             print(f'[PATCH] tentative {attempt}/{_PATCH_MAX_ATTEMPTS} échouée — {last_error}')
@@ -142,6 +159,23 @@ def _generate_patch(provider: str, api_key: str, model: str | None, app_spec: di
             ]
             continue
 
+        # Essai à blanc sur la spec reçue : un patch incohérent (référence vers
+        # un élément absent, renommage impossible) est renvoyé au modèle avec
+        # la raison, plutôt que proposé à l'utilisateur pour être refusé ensuite.
+        try:
+            patching.fusionner(app_spec, patch)
+        except patching.PatchRefuse as refus:
+            last_error = 'patch incohérent avec la spécification (' + ' ; '.join(refus.erreurs) + ')'
+            print(f'[PATCH] tentative {attempt}/{_PATCH_MAX_ATTEMPTS} échouée — {last_error}')
+            patch_messages += [
+                {'role': 'assistant', 'content': raw},
+                {'role': 'user', 'content': (
+                    f'{last_error}. Corrige le patch (ajoute les éléments manquants ou retire les '
+                    'références fautives) et renvoie-le complet, brut et seul.'
+                )},
+            ]
+            continue
+
         print(f"[PATCH] OK (tentative {attempt}/{_PATCH_MAX_ATTEMPTS}) — models={len(patch.get('data_models') or [])} "
               f"groups={len(patch.get('endpoint_groups') or [])} "
               f"services={len(patch.get('services') or [])} "
@@ -169,6 +203,30 @@ _PATCH_SCHEMA_DOC = """```json
 - `set_meta.required_groups` : les groupes Keycloak à ajouter — fusionnés avec l'existant, pas besoin de repréciser les groupes déjà validés.
 - Pour **services** : utilise `endpoint_group_names` (noms, pas IDs).
 - Pour **pages** : utilise `service_names` (noms, pas IDs).
+
+**Comment le patch est fusionné — à respecter à la lettre :**
+- Un élément est retrouvé **par son nom** (un endpoint par `method` + `path`). Même nom ⇒ il est complété ;
+  nom inconnu ⇒ il est créé.
+- **Ce que tu ne cites pas reste en place.** Pour ajouter un champ à un modèle, un endpoint à un groupe,
+  une interaction ou un pipeline à une page, envoie l'élément parent avec **seulement** ce qui est nouveau
+  ou modifié : ses voisins ne bougent pas. Une clé absente garde sa valeur.
+- Exceptions — ces listes sont **complètes** quand tu les envoies (elles remplacent l'existant), et
+  inchangées quand tu les omets : `endpoint_group_names`, `service_names`, `components`, et les `steps`
+  d'un endpoint ou d'un pipeline.
+- **Rien n'est supprimé sans demande explicite :**
+  - à la racine : `"remove_models": ["Nom"]`, `"remove_endpoint_groups": [...]`, `"remove_services": [...]`,
+    `"remove_pages": [...]` ;
+  - dans un modèle : `"remove_fields": ["champ"]`, `"remove_relationships": ["relation"]` ;
+  - dans un groupe : `"remove_endpoints": ["GET /api/chemin/"]` ;
+  - dans une page : `"remove_interactions": ["Nom"]`, `"remove_pipelines": ["Nom"]` ;
+  - dans `set_meta` : `"remove_required_groups": ["groupe"]`.
+- **Renommer** un modèle, un groupe, un service ou une page : envoie-le sous son nouveau `name` avec
+  `"rename_from": "AncienNom"`. Ne le recrée jamais sous un autre nom (cela ferait un doublon). Les
+  références vers l'ancien nom suivent automatiquement.
+- **Toute référence doit exister** dans la spec ou dans le même patch : `linked_model_name`, `to_model`,
+  `linked_model` d'un composant, `endpoint_group_names`, `service_names`, `service_name` d'une étape, et
+  `trigger_interaction` (une interaction de la même page). Si tu supprimes un élément, corrige ou supprime
+  dans le même patch ce qui le référençait. Un patch incohérent est refusé en entier.
 
 ### Structure exacte des éléments
 
@@ -475,6 +533,8 @@ def _call_claude_once(api_key: str, system_prompt: str, messages: list,
         system=system_prompt,
         messages=messages,
     )
+    if resp.stop_reason == 'max_tokens':
+        raise ReponseTronquee()
     return ''.join(block.text for block in resp.content if block.type == 'text')
 
 
@@ -492,7 +552,10 @@ def _call_mistral_once(api_key: str, system_prompt: str, messages: list,
         timeout=(10, 60),
     )
     resp.raise_for_status()
-    return resp.json()['choices'][0]['message']['content']
+    choix = resp.json()['choices'][0]
+    if choix.get('finish_reason') == 'length':
+        raise ReponseTronquee()
+    return choix['message']['content']
 
 
 # ── Vues ───────────────────────────────────────────────────────────────────────
@@ -557,7 +620,8 @@ class AIChatView(APIView):
         except Exception as exc:
             return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
-    def _finish(self, provider, content, choices, patch_ready, api_key, model, app_spec, messages):
+    def _finish(self, provider, content, choices, patch_ready, api_key, model, app_spec, messages,
+                tronquee=False):
         """Commun aux deux providers : extrait le marqueur PATCH_READY et déclenche,
         le cas échéant, le second échange dédié qui produit le patch JSON."""
         patch, patch_error = (None, None)
@@ -568,7 +632,12 @@ class AIChatView(APIView):
                 f"\n\n⚠️ Le patch structuré n'a pas pu être généré après plusieurs tentatives "
                 f"({patch_error}). Redemandez-le si besoin."
             )
-        return Response({'content': content, 'provider': provider, 'spec_patch': patch, 'choices': choices})
+        if tronquee:
+            content += _AVIS_TRONCATURE
+        return Response({
+            'content': content, 'provider': provider, 'spec_patch': patch, 'choices': choices,
+            'patch_summary': patching.resume(patch) if patch else None,
+        })
 
     def _call_mistral(self, api_key, system_prompt, messages, model, app_spec):
         payload = {
@@ -586,6 +655,7 @@ class AIChatView(APIView):
         ) as resp:
             resp.raise_for_status()
             full_text = ''
+            tronquee = False
             for line in resp.iter_lines():
                 if not line:
                     continue
@@ -597,6 +667,8 @@ class AIChatView(APIView):
                     break
                 try:
                     chunk = json.loads(data)
+                    if chunk['choices'][0].get('finish_reason') == 'length':
+                        tronquee = True
                     delta = chunk['choices'][0]['delta'].get('content', '')
                     if delta:
                         full_text += delta
@@ -605,7 +677,8 @@ class AIChatView(APIView):
 
         content, patch_ready = _extract_patch_ready(full_text)
         content, choices     = _extract_choices(content)
-        return self._finish('mistral', content, choices, patch_ready, api_key, model, app_spec, messages)
+        return self._finish('mistral', content, choices, patch_ready, api_key, model, app_spec, messages,
+                            tronquee=tronquee)
 
     def _call_claude(self, api_key, system_prompt, messages, model, app_spec):
         import anthropic
@@ -619,9 +692,11 @@ class AIChatView(APIView):
         ) as stream:
             for text in stream.text_stream:
                 full_text += text
+            tronquee = stream.get_final_message().stop_reason == 'max_tokens'
         content, patch_ready = _extract_patch_ready(full_text)
         content, choices     = _extract_choices(content)
-        return self._finish('claude', content, choices, patch_ready, api_key, model, app_spec, messages)
+        return self._finish('claude', content, choices, patch_ready, api_key, model, app_spec, messages,
+                            tronquee=tronquee)
 
 
 class AppSpecChatHistoryView(APIView):
@@ -633,3 +708,62 @@ class AppSpecChatHistoryView(APIView):
         app.chat_history = request.data.get('chat_history', [])
         app.save(update_fields=['chat_history'])
         return Response({'ok': True})
+
+
+class AppSpecPatchView(APIView):
+    """POST /api/apps/<id>/patch/ — applique un patch IA à la spec en base.
+
+    Tout ou rien : un patch refusé (illisible, référence vers un élément
+    absent, valeur invalide) laisse la spec intacte et dit pourquoi.
+    """
+
+    def post(self, request, pk):
+        try:
+            app = AppSpec.objects.get(pk=pk, owner_email=request.user.email)
+        except AppSpec.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        mode = request.data.get('mode', 'merge')
+        try:
+            application = patching.appliquer(app, request.data.get('patch'), mode)
+        except patching.PatchRefuse as refus:
+            return Response({'error': 'Patch refusé — la spécification n\'a pas été modifiée.',
+                             'details': refus.erreurs}, status=status.HTTP_400_BAD_REQUEST)
+        app.refresh_from_db()
+        return Response({'spec': AppSpecSerializer(app).data, 'application': _application(application)})
+
+
+def _application(a: PatchApplication) -> dict:
+    return {'id': a.pk, 'mode': a.mode, 'summary': a.summary,
+            'created_at': a.created_at, 'undone_at': a.undone_at}
+
+
+class AppSpecPatchHistoryView(APIView):
+    """GET /api/apps/<id>/patches/ — patchs appliqués, du plus récent au plus ancien."""
+
+    def get(self, request, pk):
+        try:
+            app = AppSpec.objects.get(pk=pk, owner_email=request.user.email)
+        except AppSpec.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response([_application(a) for a in app.patch_applications.all()])
+
+
+class AppSpecPatchUndoView(APIView):
+    """POST /api/apps/<id>/patches/<n>/undo/ — rend la spec d'avant le dernier patch."""
+
+    def post(self, request, pk, application_pk):
+        try:
+            application = PatchApplication.objects.get(
+                pk=application_pk, app_id=pk, app__owner_email=request.user.email)
+        except PatchApplication.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        try:
+            patching.annuler(application)
+        except patching.AnnulationImpossible as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_409_CONFLICT)
+        except patching.PatchRefuse as refus:
+            return Response({'error': 'Annulation impossible.', 'details': refus.erreurs},
+                            status=status.HTTP_400_BAD_REQUEST)
+        application.refresh_from_db()
+        return Response({'spec': AppSpecSerializer(application.app).data,
+                         'application': _application(application)})

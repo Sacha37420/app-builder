@@ -217,23 +217,26 @@
         <div class="msg-content" [innerHTML]="formatContent(msg.content)"></div>
 
         @if (msg.role === 'assistant' && msg.spec_patch) {
-          <div class="patch-panel" [class.applied]="msg.applied !== 'none'">
-            @if (msg.applied === 'none') {
+          <div class="patch-panel" [class.applied]="isApplied(msg)">
+            @if (!isApplied(msg)) {
               <div class="patch-header">
                 <span class="patch-icon">&#128196;</span>
-                <span class="patch-summary">Propositions : {{ patchSummary(msg.spec_patch) }}</span>
+                <span class="patch-summary">Propositions : {{ patchSummary(msg) }}</span>
               </div>
               <div class="patch-actions">
-                <button class="btn-merge"   (click)="merge($index)">&#43; Fusionner dans le spec</button>
-                <button class="btn-replace" (click)="replace($index)">&#8635; Remplacer le spec</button>
+                <button class="btn-merge"   (click)="merge($index)"   [disabled]="patchBusy()">&#43; Fusionner dans le spec</button>
+                <button class="btn-replace" (click)="replace($index)" [disabled]="patchBusy()">&#8635; Remplacer le spec</button>
               </div>
               <p class="patch-hint">
-                <em>Fusionner</em> ajoute aux éléments existants.
+                <em>Fusionner</em> complète les éléments existants sans rien retirer d'autre que ce qui est demandé.
                 <em>Remplacer</em> repart de zéro.
               </p>
             }
-            @if (msg.applied === 'merged')   { <div class="patch-applied">&#10003; Fusionné dans le spec</div> }
-            @if (msg.applied === 'replaced') { <div class="patch-applied">&#10003; Spec remplacé</div> }
+            @if (msg.applied === 'merged')   { <div class="patch-applied">&#10003; Fusionné dans le spec — {{ patchSummary(msg) }}</div> }
+            @if (msg.applied === 'replaced') { <div class="patch-applied">&#10003; Spec remplacé — {{ patchSummary(msg) }}</div> }
+            @if (canUndo($index)) {
+              <button class="btn-undo" (click)="undo($index)" [disabled]="patchBusy()">&#8630; Annuler ce patch</button>
+            }
           </div>
         }
 

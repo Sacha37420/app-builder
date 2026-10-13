@@ -2,7 +2,7 @@ import { Component, inject, signal, effect, ViewChild, ElementRef, AfterViewChec
 import { FormsModule } from '@angular/forms';
 import { BuilderApiService } from '../../core/builder-api.service';
 import { BuilderStateService } from '../../core/builder-state.service';
-import { ChatMessage, AiProvider, AgentPatch, PersistedChatMessage } from '../../models/app-spec.model';
+import { AiProvider, PatchMode, PersistedChatMessage } from '../../models/app-spec.model';
 
 type AppliedState = 'none' | 'merged' | 'replaced';
 
@@ -60,6 +60,7 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
   messages    = signal<DisplayMessage[]>([]);
   inputText   = signal('');
   loading     = signal(false);
+  patchBusy   = signal(false);
   error       = signal('');
   showSettings  = signal(false);
   showTutorial  = signal(false);
@@ -177,6 +178,7 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
           const updated: DisplayMessage[] = [...this.messages(), {
             role: 'assistant', content: res.content,
             spec_patch: res.spec_patch ?? null,
+            patch_summary: res.patch_summary ?? null,
             choices:    res.choices    ?? null,
             applied: 'none',
           }];
@@ -192,23 +194,67 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
       });
   }
 
-  merge(msgIndex: number): void {
-    const msg = this.messages()[msgIndex];
-    if (!msg?.spec_patch) return;
-    this.state.mergeFromAgent(msg.spec_patch);
-    this.messages.update(msgs =>
-      msgs.map((m, i) => i === msgIndex ? { ...m, applied: 'merged' as AppliedState } : m));
-  }
+  merge(msgIndex: number): void { this.applyPatch(msgIndex, 'merge'); }
 
   replace(msgIndex: number): void {
-    const msg = this.messages()[msgIndex];
-    if (!msg?.spec_patch) return;
-    this.state.replaceFromAgent(msg.spec_patch);
-    this.messages.update(msgs =>
-      msgs.map((m, i) => i === msgIndex ? { ...m, applied: 'replaced' as AppliedState } : m));
+    if (!confirm('Remplacer toute la spécification par cette proposition ? (annulable juste après)')) return;
+    this.applyPatch(msgIndex, 'replace');
   }
 
-  patchSummary(patch: AgentPatch): string { return this.state.patchSummary(patch); }
+  private applyPatch(msgIndex: number, mode: PatchMode): void {
+    const msg = this.messages()[msgIndex];
+    if (!msg?.spec_patch || this.patchBusy()) return;
+    this.patchBusy.set(true);
+    this.error.set('');
+    this.state.applyAgentPatch(msg.spec_patch, mode).subscribe({
+      next: application => {
+        this.markPatch(msgIndex, mode === 'merge' ? 'merged' : 'replaced', application.id);
+        this.patchBusy.set(false);
+      },
+      error: err => this.patchFailed(err),
+    });
+  }
+
+  undo(msgIndex: number): void {
+    const id = this.messages()[msgIndex]?.application_id;
+    if (id == null || this.patchBusy()) return;
+    if (!confirm('Annuler ce patch ? La spécification revient à son état d\'avant ; ce que vous avez modifié depuis est perdu.')) return;
+    this.patchBusy.set(true);
+    this.error.set('');
+    this.state.undoAgentPatch(id).subscribe({
+      next: () => { this.markPatch(msgIndex, 'none', null); this.patchBusy.set(false); },
+      error: err => this.patchFailed(err),
+    });
+  }
+
+  /** L'état « appliqué » est enregistré avec la conversation : il survit à un rechargement. */
+  private markPatch(msgIndex: number, applied: AppliedState, applicationId: number | null): void {
+    const updated = this.messages().map((m, i) =>
+      i === msgIndex ? { ...m, applied, application_id: applicationId } : m);
+    this.messages.set(updated);
+    this._persistChat(updated);
+  }
+
+  private patchFailed(err: { error?: { error?: string; details?: string[] }; message?: string }): void {
+    const details = err.error?.details?.length ? ' ' + err.error.details.join(' ; ') : '';
+    this.error.set(`${err.error?.error ?? err.message ?? 'Erreur inconnue'}${details}`);
+    this.patchBusy.set(false);
+    this.shouldScroll = true;
+  }
+
+  isApplied(msg: DisplayMessage): boolean { return msg.applied === 'merged' || msg.applied === 'replaced'; }
+
+  /** Seul le dernier patch appliqué s'annule : c'est le seul qui porte le bouton. */
+  canUndo(msgIndex: number): boolean {
+    const msgs = this.messages();
+    if (msgs[msgIndex]?.application_id == null || !this.isApplied(msgs[msgIndex])) return false;
+    return !msgs.some((m, i) => i !== msgIndex && this.isApplied(m) && (m.application_id ?? 0) > msgs[msgIndex].application_id!);
+  }
+
+  /** Résumé calculé par le serveur ; les messages d'avant ce calcul n'en ont pas. */
+  patchSummary(msg: DisplayMessage): string {
+    return msg.patch_summary ?? 'modifications de la spécification';
+  }
 
   onKeydown(event: KeyboardEvent): void {
     if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); this.send(); }

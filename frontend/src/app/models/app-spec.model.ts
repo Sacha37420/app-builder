@@ -166,7 +166,10 @@ export interface PersistedChatMessage {
   role: 'user' | 'assistant';
   content: string;
   spec_patch?: AgentPatch | null;
+  patch_summary?: string | null;
   applied?: string;
+  // Identifiant de l'application côté serveur : c'est lui qui permet d'annuler.
+  application_id?: number | null;
   choices?: { multiple: boolean; items: string[] } | null;
 }
 
@@ -203,6 +206,16 @@ export interface AgentPatch {
   remove_endpoint_groups?: string[];
   remove_services?: string[];
   remove_pages?: string[];
+}
+
+export type PatchMode = 'merge' | 'replace';
+
+export interface PatchApplication {
+  id: number;
+  mode: PatchMode;
+  summary: string;
+  created_at: string;
+  undone_at: string | null;
 }
 
 export interface ChatMessage extends PersistedChatMessage {}

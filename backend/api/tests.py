@@ -10,7 +10,9 @@ Trois familles :
      son auteur (`owner_email`) ;
   3. les règles métier — résolution des identifiants temporaires du frontend,
      remplacement complet à l'enregistrement, protocole du chat IA (blocs
-     CHOICES, sentinelle PATCH_READY, second échange dédié au patch JSON).
+     CHOICES, sentinelle PATCH_READY, second échange dédié au patch JSON) ;
+  4. l'application des patchs IA côté serveur (api/patching.py) — fusion par
+     élément, suppressions et renommages, références, historique et annulation.
 
 Aucun appel sortant : Anthropic et Mistral sont simulés.
 """
@@ -25,9 +27,9 @@ from django.db import connection
 from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework.test import APIClient
 
-from api import views
+from api import patching, views
 from api.authentication import KeycloakJWTAuthentication
-from api.models import AppSpec, EndpointGroup, FrontendService, Page
+from api.models import AppSpec, EndpointGroup, FrontendService, Page, PatchApplication
 
 CLIENT_ID = 'app-builder'
 _RSA = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -503,10 +505,42 @@ class GenerationDuPatchTests(SimpleTestCase):
         self.assertIsNone(patch)
         self.assertIn('vide ou sans clé reconnue', erreur)
 
+    def test_une_reponse_tronquee_n_est_pas_redemandee(self):
+        # La même demande donnerait la même coupure : un seul appel, et un
+        # message qui dit quoi faire.
+        (patch, erreur), appels = self._generer([views.ReponseTronquee(), self.BON])
+        self.assertIsNone(patch)
+        self.assertIn('trop volumineux', erreur)
+        self.assertEqual(appels.call_count, 1)
+
+    def test_un_patch_incoherent_est_renvoye_au_modele_avec_la_raison(self):
+        orphelin = '{"endpoint_groups": [{"name": "G", "endpoints": [{"method": "GET", "path": "/x/", "linked_model_name": "Fantome"}]}]}'
+        (patch, erreur), appels = self._generer([orphelin, self.BON])
+        self.assertIsNone(erreur)
+        self.assertEqual(patch['data_models'][0]['name'], 'Produit')
+        correction = appels.call_args_list[-1].args[2][-1]['content']
+        self.assertIn('Fantome', correction)
+        self.assertIn('incohérent', correction)
+
+    def test_la_coupure_du_fournisseur_est_reconnue(self):
+        client = mock.Mock()
+        client.messages.create.return_value = mock.Mock(content=[], stop_reason='max_tokens')
+        with mock.patch('anthropic.Anthropic', return_value=client), self.assertRaises(views.ReponseTronquee):
+            views._call_claude_once('cle', 'sys', [], None, 10)
+        reponse = mock.Mock()
+        reponse.json.return_value = {'choices': [{'finish_reason': 'length', 'message': {'content': '{'}}]}
+        with mock.patch.object(views.http_requests, 'post', return_value=reponse), \
+                self.assertRaises(views.ReponseTronquee):
+            views._call_mistral_once('cle', 'sys', [], None, 10)
+
 
 class _FluxClaude:
-    def __init__(self, texte):
+    def __init__(self, texte, stop_reason='end_turn'):
         self.text_stream = iter([texte[:5], texte[5:]])
+        self.stop_reason = stop_reason
+
+    def get_final_message(self):
+        return mock.Mock(stop_reason=self.stop_reason)
 
     def __enter__(self):
         return self
@@ -515,10 +549,11 @@ class _FluxClaude:
         return False
 
 
-def _client_claude(texte, patch_brut='{}'):
+def _client_claude(texte, patch_brut='{}', stop_flux='end_turn', stop_patch='end_turn'):
     client = mock.Mock()
-    client.messages.stream.return_value = _FluxClaude(texte)
-    client.messages.create.return_value = mock.Mock(content=[mock.Mock(type='text', text=patch_brut)])
+    client.messages.stream.return_value = _FluxClaude(texte, stop_flux)
+    client.messages.create.return_value = mock.Mock(
+        content=[mock.Mock(type='text', text=patch_brut)], stop_reason=stop_patch)
     return client
 
 
@@ -582,6 +617,20 @@ class ChatTests(Base):
         self.assertIn("n'a pas pu être généré", resp.json()['content'])
         self.assertEqual(client.messages.create.call_count, 3)
 
+    def test_reponse_coupee_signalee_a_l_utilisateur(self):
+        with mock.patch('anthropic.Anthropic', return_value=_client_claude('Voici le début', stop_flux='max_tokens')):
+            donnees = self.alice.post('/api/chat/', self.corps, format='json').json()
+        self.assertIn('Réponse coupée', donnees['content'])
+        with mock.patch('anthropic.Anthropic', return_value=_client_claude('Complet.')):
+            donnees = self.alice.post('/api/chat/', self.corps, format='json').json()
+        self.assertNotIn('Réponse coupée', donnees['content'])
+
+    def test_le_patch_est_rendu_avec_son_resume(self):
+        client = _client_claude('Voici.\nPATCH_READY', '{"data_models": [{"name": "Produit"}], "remove_pages": ["Liste"]}')
+        with mock.patch('anthropic.Anthropic', return_value=client):
+            donnees = self.alice.post('/api/chat/', self.corps, format='json').json()
+        self.assertEqual(donnees['patch_summary'], '1 modèle(s) · −1 page(s)')
+
     def test_mistral_flux_reassemble_avec_la_cle_de_l_utilisateur(self):
         lignes = [b'', b': commentaire', b'data: {"choices": [{"delta": {"content": "Bon"}}]}',
                   b'data: pas du json', b'data: {"choices": [{"delta": {}}]}',
@@ -604,3 +653,356 @@ class ChatTests(Base):
             resp = self.alice.post('/api/chat/', self.corps, format='json')
         self.assertEqual(resp.status_code, 502)
         self.assertEqual(resp.json(), {'error': 'clé refusée'})
+
+
+# ═══ 4. Patchs IA appliqués côté serveur ══════════════════════════════════════
+
+class _PatchBase(Base):
+
+    def setUp(self):
+        super().setUp()
+        self.alice = self.client_de('alice')
+        self.spec = self.alice.post('/api/apps/', _spec_complete(), format='json').json()
+        self.url = f"/api/apps/{self.spec['id']}/patch/"
+
+    def patcher(self, patch, mode='merge', attendu=200):
+        resp = self.alice.post(self.url, {'patch': patch, 'mode': mode}, format='json')
+        self.assertEqual(resp.status_code, attendu, resp.content)
+        return resp.json()['spec'] if attendu == 200 else resp.json()
+
+    def relire(self):
+        return self.alice.get(f"/api/apps/{self.spec['id']}/").json()
+
+    @staticmethod
+    def nomme(elements, nom):
+        return next(e for e in elements if e['name'] == nom)
+
+
+class PatchFusionTests(_PatchBase):
+
+    def test_ajouter_un_endpoint_a_un_groupe_garde_les_autres(self):
+        spec = self.patcher({'endpoint_groups': [{'name': 'Produits', 'endpoints': [
+            {'method': 'post', 'path': '/api/produits/', 'operation': 'create', 'linked_model_name': 'Produit',
+             'steps': [{'label': 'Valider', 'type': 'validate', 'description': 'nom requis'}]}]}]})
+        endpoints = {(e['method'], e['path']): e for e in self.nomme(spec['endpoint_groups'], 'Produits')['endpoints']}
+        self.assertEqual(set(endpoints), {('GET', '/api/produits/'), ('POST', '/api/produits/')})
+        # Les étapes de traitement : celles de l'existant restent, celles du patch sont gardées.
+        self.assertEqual(endpoints[('GET', '/api/produits/')]['steps'], [{'label': 'Requête', 'type': 'db_query'}])
+        self.assertEqual(endpoints[('POST', '/api/produits/')]['steps'],
+                         [{'label': 'Valider', 'type': 'validate', 'description': 'nom requis'}])
+        self.assertEqual(self.relire()['endpoint_groups'], spec['endpoint_groups'])
+
+    def test_modifier_un_endpoint_ne_touche_que_les_cles_envoyees(self):
+        spec = self.patcher({'endpoint_groups': [{'name': 'Produits', 'endpoints': [
+            {'method': 'GET', 'path': '/api/produits/', 'required_roles': ['manager']}]}]})
+        endpoint, = self.nomme(spec['endpoint_groups'], 'Produits')['endpoints']
+        self.assertEqual(endpoint['required_roles'], ['manager'])
+        self.assertEqual(endpoint['operation'], 'list')
+        self.assertEqual(endpoint['steps'], [{'label': 'Requête', 'type': 'db_query'}])
+
+    def test_patch_de_page_sans_service_names_garde_ses_liens_et_ses_voisins(self):
+        spec = self.patcher({'pages': [{'name': 'Liste',
+                                        'interactions': [{'name': 'Cliquer', 'type': 'click'}],
+                                        'pipelines': [{'name': 'Ouverture', 'trigger_interaction': 'Cliquer',
+                                                       'steps': [{'label': 'aller', 'type': 'navigate'}]}]}]})
+        page = self.nomme(spec['pages'], 'Liste')
+        self.assertEqual(page['service_ids'], [self.nomme(spec['services'], 'ProduitService')['id']])
+        self.assertEqual(page['layout'], 'kanban')
+        self.assertEqual([i['name'] for i in page['interactions']], ['Glisser', 'Cliquer'])
+        self.assertEqual([p['name'] for p in page['pipelines']], ['Chargement', 'Ouverture'])
+        self.assertEqual(self.nomme(page['pipelines'], 'Chargement')['steps'], [{'label': 'init', 'type': 'trigger'}])
+
+    def test_ajouter_un_champ_garde_les_autres_et_leurs_reglages(self):
+        self.patcher({'data_models': [{'name': 'Produit', 'fields': [
+            {'name': 'nom', 'type': 'string', 'max_length': 80, 'unique': True}]}]})
+        spec = self.patcher({'data_models': [{'name': 'Produit', 'fields': [
+            {'name': 'prix', 'type': 'float'}, {'name': 'nom', 'required': False}]}]})
+        champs = {c['name']: c for c in self.nomme(spec['data_models'], 'Produit')['fields']}
+        self.assertEqual(list(champs), ['nom', 'prix'])
+        self.assertEqual(champs['nom'], {'name': 'nom', 'type': 'string', 'max_length': 80,
+                                         'unique': True, 'required': False})
+        self.assertEqual(champs['prix'], {'name': 'prix', 'type': 'decimal', 'required': True, 'unique': False})
+
+    def test_une_liste_de_liens_envoyee_remplace_absente_ne_change_rien(self):
+        spec = self.patcher({'services': [{'name': 'ToutService', 'endpoint_group_names': ['Commandes']},
+                                          {'name': 'ProduitService', 'order': 5}]})
+        groupes = {g['name']: g['id'] for g in spec['endpoint_groups']}
+        self.assertEqual(self.nomme(spec['services'], 'ToutService')['endpoint_group_ids'], [groupes['Commandes']])
+        self.assertEqual(self.nomme(spec['services'], 'ProduitService')['endpoint_group_ids'], [groupes['Produits']])
+
+    def test_elements_nouveaux_crees_et_relies_par_nom(self):
+        spec = self.patcher({
+            'data_models': [{'name': 'Client', 'fields': [{'name': 'nom', 'type': 'string'}],
+                             'relationships': [{'name': 'favori', 'rel_type': 'foreign_key', 'to_model': 'Produit'}]}],
+            'endpoint_groups': [{'name': 'Clients', 'endpoints': [
+                {'method': 'GET', 'path': '/api/clients/', 'linked_model_name': 'Client'}]}],
+            'services': [{'name': 'ClientService', 'endpoint_group_names': ['Clients']}],
+            'pages': [{'name': 'Fiche client', 'service_names': ['ClientService', 'ProduitService'],
+                       'components': [{'type': 'card', 'linked_model': 'Client', 'fields': ['nom']}]}],
+        })
+        relation, = self.nomme(spec['data_models'], 'Client')['relationships']
+        self.assertEqual(relation, {'name': 'favori', 'rel_type': 'FK', 'to_model': 'Produit',
+                                    'related_name': '', 'on_delete': 'CASCADE'})
+        service = self.nomme(spec['services'], 'ClientService')
+        self.assertEqual(service['endpoint_group_ids'], [self.nomme(spec['endpoint_groups'], 'Clients')['id']])
+        page = self.nomme(spec['pages'], 'Fiche client')
+        self.assertEqual(page['route'], '/fiche-client')
+        self.assertCountEqual(page['service_ids'],
+                              [service['id'], self.nomme(spec['services'], 'ProduitService')['id']])
+        self.assertEqual(len(spec['pages']), 2)
+
+    def test_groupes_requis_ajoutes_sans_perdre_les_anciens_retires_sur_demande(self):
+        spec = self.patcher({'set_meta': {'required_groups': ['amis']}})
+        self.assertEqual(spec['required_groups'], ['famille', 'amis'])
+        self.assertEqual(spec['name'], 'Boutique')
+        spec = self.patcher({'set_meta': {'name': 'Boutique v2', 'remove_required_groups': ['famille']}})
+        self.assertEqual((spec['name'], spec['required_groups']), ('Boutique v2', ['amis']))
+
+    def test_remplacer_repart_d_une_spec_vide_en_gardant_les_groupes(self):
+        spec = self.patcher({'data_models': [{'name': 'Client'}]}, mode='replace')
+        self.assertEqual([m['name'] for m in spec['data_models']], ['Client'])
+        self.assertEqual((spec['endpoint_groups'], spec['services'], spec['pages']), ([], [], []))
+        self.assertEqual(spec['required_groups'], ['famille'])
+
+    def test_patch_refuse_la_spec_n_est_pas_touchee(self):
+        avant = self.relire()
+        for patch, mode in (('pas un objet', 'merge'), ({'data_models': [{'name': 'X'}]}, 'ecraser'),
+                            ({'pages': [{'name': 'Liste', 'layout': 'x' * 30}]}, 'merge'),
+                            ({'endpoint_groups': [{'name': 'Produits', 'endpoints': [
+                                {'method': 'GET', 'path': '/' + 'x' * 600}]}]}, 'merge')):
+            with self.subTest(patch=patch, mode=mode):
+                refus = self.patcher(patch, mode=mode, attendu=400)
+                self.assertTrue(refus['details'])
+                self.assertEqual(self.relire(), avant)
+        self.assertEqual(PatchApplication.objects.count(), 0)
+
+    def test_la_spec_d_autrui_ne_se_patche_pas(self):
+        bob = self.client_de('bob')
+        resp = bob.post(self.url, {'patch': {'remove_models': ['Produit']}}, format='json')
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(len(self.relire()['data_models']), 1)
+        self.assertEqual(APIClient().post(self.url, {'patch': {}}, format='json').status_code, 403)
+
+    def test_la_fusion_ne_modifie_pas_la_spec_recue(self):
+        avant = self.relire()
+        copie = json.loads(json.dumps(avant))
+        patching.fusionner(avant, {'remove_pages': ['Liste'], 'data_models': [{'name': 'Produit', 'remove_fields': ['nom']}]})
+        self.assertEqual(avant, copie)
+
+
+class PatchSuppressionTests(_PatchBase):
+
+    def test_suppressions_ciblees(self):
+        self.patcher({'data_models': [{'name': 'Produit', 'fields': [{'name': 'prix', 'type': 'decimal'}]}],
+                      'pages': [{'name': 'Liste', 'interactions': [{'name': 'Cliquer', 'type': 'click'}]}]})
+        spec = self.patcher({
+            'data_models': [{'name': 'Produit', 'remove_fields': ['nom']}],
+            'endpoint_groups': [{'name': 'Produits', 'remove_endpoints': ['GET /api/produits/']}],
+            'pages': [{'name': 'Liste', 'remove_interactions': ['Cliquer'], 'remove_pipelines': ['Chargement']}],
+        })
+        self.assertEqual([c['name'] for c in spec['data_models'][0]['fields']], ['prix'])
+        self.assertEqual(self.nomme(spec['endpoint_groups'], 'Produits')['endpoints'], [])
+        page = self.nomme(spec['pages'], 'Liste')
+        self.assertEqual([i['name'] for i in page['interactions']], ['Glisser'])
+        self.assertEqual(page['pipelines'], [])
+
+    def test_supprimer_un_groupe_ou_un_service_defait_ses_liens(self):
+        spec = self.patcher({'remove_endpoint_groups': ['Commandes'], 'remove_services': ['ProduitService']})
+        self.assertEqual([g['name'] for g in spec['endpoint_groups']], ['Produits'])
+        tout, = spec['services']
+        self.assertEqual(tout['endpoint_group_ids'], [spec['endpoint_groups'][0]['id']])
+        self.assertEqual(spec['pages'][0]['service_ids'], [])
+
+    def test_supprimer_un_element_absent_est_sans_effet(self):
+        avant = self.relire()
+        spec = self.patcher({'remove_models': ['Fantome'], 'remove_pages': ['Nulle part']})
+        self.assertEqual([m['name'] for m in spec['data_models']], [m['name'] for m in avant['data_models']])
+        self.assertEqual(len(spec['pages']), 1)
+
+    def test_renommer_un_modele_sans_doublon_et_les_references_suivent(self):
+        self.patcher({
+            'data_models': [{'name': 'Stock', 'relationships': [{'name': 'produit', 'to_model': 'Produit'}]}],
+            'endpoint_groups': [{'name': 'Produits', 'endpoints': [
+                {'method': 'GET', 'path': '/api/produits/', 'linked_model_name': 'Produit'}]}],
+            'pages': [{'name': 'Liste', 'components': [{'type': 'table', 'linked_model': 'Produit'}]}],
+        })
+        spec = self.patcher({'data_models': [{'name': 'Article', 'rename_from': 'Produit',
+                                              'description': 'Ce qui se vend'}]})
+        self.assertCountEqual([m['name'] for m in spec['data_models']], ['Article', 'Stock'])
+        article = self.nomme(spec['data_models'], 'Article')
+        self.assertEqual((article['description'], [c['name'] for c in article['fields']]), ('Ce qui se vend', ['nom']))
+        self.assertEqual(self.nomme(spec['data_models'], 'Stock')['relationships'][0]['to_model'], 'Article')
+        self.assertEqual(self.nomme(spec['endpoint_groups'], 'Produits')['endpoints'][0]['linked_model_name'], 'Article')
+        self.assertEqual(spec['pages'][0]['components'][0]['linked_model'], 'Article')
+
+    def test_renommer_un_groupe_un_service_une_page_garde_les_liens(self):
+        spec = self.patcher({
+            'endpoint_groups': [{'name': 'Catalogue', 'rename_from': 'Produits'}],
+            'services': [{'name': 'CatalogueService', 'rename_from': 'ProduitService'}],
+            'pages': [{'name': 'Catalogue', 'rename_from': 'Liste'}],
+        })
+        self.assertCountEqual([g['name'] for g in spec['endpoint_groups']], ['Catalogue', 'Commandes'])
+        self.assertEqual(len(self.nomme(spec['endpoint_groups'], 'Catalogue')['endpoints']), 1)
+        service = self.nomme(spec['services'], 'CatalogueService')
+        self.assertEqual(service['endpoint_group_ids'], [self.nomme(spec['endpoint_groups'], 'Catalogue')['id']])
+        self.assertEqual(len(spec['services']), 2)
+        page, = spec['pages']
+        self.assertEqual((page['name'], page['service_ids'], page['route']), ('Catalogue', [service['id']], '/produits'))
+
+    def test_renommer_vers_un_nom_pris_est_refuse(self):
+        refus = self.patcher({'endpoint_groups': [{'name': 'Commandes', 'rename_from': 'Produits'}]}, attendu=400)
+        self.assertIn('déjà pris', refus['details'][0])
+        self.assertEqual(len(self.relire()['endpoint_groups']), 2)
+
+    def test_renommer_deux_fois_ne_cree_pas_de_doublon(self):
+        patch = {'data_models': [{'name': 'Article', 'rename_from': 'Produit'}]}
+        self.patcher(patch)
+        spec = self.patcher(patch)
+        self.assertEqual([m['name'] for m in spec['data_models']], ['Article'])
+
+
+class PatchReferencesTests(_PatchBase):
+
+    def test_reference_vers_un_element_absent_refusee_spec_inchangee(self):
+        avant = self.relire()
+        cas = {
+            'modèle « Fantome »': {'endpoint_groups': [{'name': 'Produits', 'endpoints': [
+                {'method': 'POST', 'path': '/api/x/', 'linked_model_name': 'Fantome'}]}]},
+            'modèle « Ailleurs »': {'data_models': [{'name': 'Produit', 'relationships': [
+                {'name': 'lien', 'to_model': 'Ailleurs'}]}]},
+            "groupe d'endpoints « Inconnu »": {'services': [{'name': 'ProduitService',
+                                                             'endpoint_group_names': ['Produits', 'Inconnu']}]},
+            'service « AucunService »': {'pages': [{'name': 'Liste', 'service_names': ['AucunService']}]},
+            'interaction « Survol »': {'pages': [{'name': 'Liste', 'pipelines': [
+                {'name': 'Aide', 'trigger_interaction': 'Survol'}]}]},
+            'le service « Absent »': {'pages': [{'name': 'Liste', 'pipelines': [
+                {'name': 'Chargement', 'steps': [{'label': 'appel', 'type': 'service_call', 'service_name': 'Absent'}]}]}]},
+            'un composant': {'pages': [{'name': 'Liste', 'components': [{'type': 'table', 'linked_model': 'Rien'}]}]},
+        }
+        for attendu, patch in cas.items():
+            with self.subTest(attendu=attendu):
+                refus = self.patcher(patch, attendu=400)
+                self.assertIn(attendu, ' '.join(refus['details']))
+                self.assertEqual(self.relire(), avant)
+        self.assertEqual(PatchApplication.objects.count(), 0)
+
+    def test_supprimer_un_element_encore_reference_est_refuse(self):
+        self.patcher({'endpoint_groups': [{'name': 'Produits', 'endpoints': [
+            {'method': 'GET', 'path': '/api/produits/', 'linked_model_name': 'Produit'}]}]})
+        refus = self.patcher({'remove_models': ['Produit']}, attendu=400)
+        self.assertIn('GET /api/produits/', refus['details'][0])
+        refus = self.patcher({'pages': [{'name': 'Liste', 'remove_interactions': ['Glisser']}]}, attendu=400)
+        self.assertIn('Glisser', refus['details'][0])
+        # Le même retrait passe quand le patch corrige ce qui le référençait.
+        spec = self.patcher({'remove_models': ['Produit'], 'endpoint_groups': [{'name': 'Produits', 'endpoints': [
+            {'method': 'GET', 'path': '/api/produits/', 'linked_model_name': ''}]}]})
+        self.assertEqual(spec['data_models'], [])
+
+    def test_reference_satisfaite_dans_le_meme_patch_acceptee(self):
+        spec = self.patcher({
+            'pages': [{'name': 'Panier', 'service_names': ['PanierService'],
+                       'interactions': [{'name': 'Valider', 'type': 'form'}],
+                       'pipelines': [{'name': 'Commande', 'trigger_interaction': 'Valider', 'steps': [
+                           {'label': 'envoi', 'type': 'service_call', 'service_name': 'PanierService'}]}]}],
+            'services': [{'name': 'PanierService', 'endpoint_group_names': ['Panier']}],
+            'endpoint_groups': [{'name': 'Panier', 'endpoints': [
+                {'method': 'POST', 'path': '/api/panier/', 'linked_model_name': 'Ligne'}]}],
+            'data_models': [{'name': 'Ligne'}],
+        })
+        self.assertEqual(self.nomme(spec['pages'], 'Panier')['service_ids'],
+                         [self.nomme(spec['services'], 'PanierService')['id']])
+
+    def test_une_incoherence_deja_presente_ne_bloque_pas_les_patchs_suivants(self):
+        # Une spec éditée à la main peut déjà porter une référence morte :
+        # seul ce que le patch ajoute d'incohérent le fait refuser.
+        spec = self.relire()
+        self.nomme(spec['endpoint_groups'], 'Produits')['endpoints'][0]['linked_model_name'] = 'Disparu'
+        self.assertEqual(self.alice.put(f"/api/apps/{spec['id']}/", spec, format='json').status_code, 200)
+        apres = self.patcher({'data_models': [{'name': 'Client'}]})
+        self.assertEqual(len(apres['data_models']), 2)
+
+
+class PatchHistoriqueTests(_PatchBase):
+
+    def setUp(self):
+        super().setUp()
+        self.historique = f"/api/apps/{self.spec['id']}/patches/"
+
+    def appliquer(self, patch):
+        resp = self.alice.post(self.url, {'patch': patch}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        return resp.json()['application']
+
+    def test_chaque_application_est_enregistree_et_relisible(self):
+        premiere = self.appliquer({'data_models': [{'name': 'Client'}]})
+        seconde = self.appliquer({'remove_models': ['Client']})
+        self.assertEqual((premiere['mode'], premiere['summary'], premiere['undone_at']),
+                         ('merge', '1 modèle(s)', None))
+        liste = self.alice.get(self.historique).json()
+        self.assertEqual([a['id'] for a in liste], [seconde['id'], premiere['id']])
+        self.assertEqual(liste[0]['summary'], '−1 modèle(s)')
+        self.assertNotIn('snapshot_before', liste[0])
+        self.assertEqual(PatchApplication.objects.get(pk=premiere['id']).patch, {'data_models': [{'name': 'Client'}]})
+
+    def test_annuler_rend_la_spec_d_avant(self):
+        avant = self.relire()
+        application = self.appliquer({
+            'remove_services': ['ToutService'], 'set_meta': {'name': 'Autre', 'required_groups': ['amis']},
+            'endpoint_groups': [{'name': 'Produits', 'remove_endpoints': ['GET /api/produits/']}],
+            'pages': [{'name': 'Liste', 'layout': 'list', 'remove_pipelines': ['Chargement']}]})
+        resp = self.alice.post(f"{self.historique}{application['id']}/undo/")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIsNotNone(resp.json()['application']['undone_at'])
+        rendue = resp.json()['spec']
+
+        def sans_identifiants(spec):
+            texte = json.dumps({c: spec[c] for c in ('name', 'description', 'app_type', 'required_groups',
+                                                     'data_models', 'endpoint_groups', 'services', 'pages')})
+            spec = json.loads(texte)
+            groupes = {g['id']: g['name'] for g in spec['endpoint_groups']}
+            services = {s['id']: s['name'] for s in spec['services']}
+            for s in spec['services']:
+                s['endpoint_group_ids'] = sorted(groupes[i] for i in s['endpoint_group_ids'])
+            for p in spec['pages']:
+                p['service_ids'] = sorted(services[i] for i in p['service_ids'])
+
+            def retirer(v):
+                if isinstance(v, dict):
+                    return {k: retirer(x) for k, x in v.items() if k != 'id'}
+                return [retirer(x) for x in v] if isinstance(v, list) else v
+            return retirer(spec)
+
+        self.assertEqual(sans_identifiants(rendue), sans_identifiants(avant))
+        self.assertEqual(sans_identifiants(self.relire()), sans_identifiants(avant))
+
+    def test_seul_le_dernier_patch_en_vigueur_s_annule_et_une_seule_fois(self):
+        premiere = self.appliquer({'data_models': [{'name': 'Client'}]})
+        seconde = self.appliquer({'data_models': [{'name': 'Facture'}]})
+        resp = self.alice.post(f"{self.historique}{premiere['id']}/undo/")
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(len(self.relire()['data_models']), 3)
+        self.assertEqual(self.alice.post(f"{self.historique}{seconde['id']}/undo/").status_code, 200)
+        self.assertEqual(self.alice.post(f"{self.historique}{seconde['id']}/undo/").status_code, 409)
+        # Le précédent redevient le dernier en vigueur.
+        self.assertEqual(self.alice.post(f"{self.historique}{premiere['id']}/undo/").status_code, 200)
+        self.assertEqual([m['name'] for m in self.relire()['data_models']], ['Produit'])
+
+    def test_l_historique_d_autrui_est_ferme(self):
+        application = self.appliquer({'data_models': [{'name': 'Client'}]})
+        bob = self.client_de('bob')
+        self.assertEqual(bob.get(self.historique).status_code, 404)
+        self.assertEqual(bob.post(f"{self.historique}{application['id']}/undo/").status_code, 404)
+        sienne = bob.post('/api/apps/', {'name': 'À Bob'}, format='json').json()
+        # L'identifiant d'un patch d'Alice sous la spec de Bob ne mène nulle part.
+        self.assertEqual(bob.post(f"/api/apps/{sienne['id']}/patches/{application['id']}/undo/").status_code, 404)
+        self.assertEqual(len(self.relire()['data_models']), 2)
+
+    def test_l_historique_est_borne(self):
+        with mock.patch.object(patching, 'HISTORIQUE_MAX', 3):
+            ids = [self.appliquer({'data_models': [{'name': f'M{i}'}]})['id'] for i in range(5)]
+        self.assertEqual([a['id'] for a in self.alice.get(self.historique).json()], ids[:1:-1])
+
+    def test_supprimer_la_spec_supprime_son_historique(self):
+        self.appliquer({'data_models': [{'name': 'Client'}]})
+        self.alice.delete(f"/api/apps/{self.spec['id']}/")
+        self.assertEqual(PatchApplication.objects.count(), 0)
