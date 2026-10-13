@@ -283,29 +283,44 @@ export function projectNameError(name: string): string | null {
   return null;
 }
 
-// ── Helpers de génération de code ─────────────────────────────────────────────
+// ── Les livrables : GET /api/apps/<id>/livrables/ ─────────────────────────────
+// Ce qui serait remis au lab pour construire l'app : cahier des charges et lots
+// de la feuille de route, générés par le serveur (jamais par le navigateur).
 
-export const DJANGO_FIELD_MAP: Record<FieldType, string> = {
-  string:   'models.CharField(max_length={len})',
-  text:     'models.TextField()',
-  int:      'models.IntegerField()',
-  decimal:  'models.DecimalField(max_digits=10, decimal_places=2)',
-  bool:     'models.BooleanField(default=False)',
-  datetime: 'models.DateTimeField()',
-  json:     'models.JSONField(default=dict)',
-  // Un fichier d'utilisateur vit dans le service storage du lab : le modèle garde le chemin.
-  storage_file: 'models.CharField(max_length=500)  # chemin dans le service storage du lab',
-  file:         'models.CharField(max_length=500)  # chemin dans le service storage du lab',
-};
+export type LotFamily = 'modeles' | 'api' | 'regles' | 'services' | 'pages' | 'pipelines' | 'recette';
+export type LotElementKind = 'data_model' | 'endpoint_group' | 'business_rule' | 'service' | 'page' | 'pipeline';
 
-export const TS_FIELD_MAP: Record<FieldType, string> = {
-  string:   'string',
-  text:     'string',
-  int:      'number',
-  decimal:  'number',
-  bool:     'boolean',
-  datetime: 'string',
-  json:     'unknown',
-  storage_file: 'string',
-  file:         'string',
-};
+export interface LotElement {
+  kind: LotElementKind;
+  name: string;
+  page?: string;        // seulement pour un `pipeline` : la page qui le porte
+}
+
+export interface GeneratedLot {
+  number: number;
+  family: LotFamily;
+  title: string;
+  objective: string;
+  tasks: string[];
+  tests: string[];
+  tokens: number;       // poids estimé du lot, en jetons
+  elements: LotElement[];
+}
+
+export interface LivrablesContext {
+  cahier_tokens: number;
+  largest_lot_tokens: number;
+  lot_budget_tokens: number;
+}
+
+export interface Livrables {
+  spec: { id: number; name: string; updated_at: string };
+  ready: boolean;
+  blockers: Blocker[];
+  create: { name: string; type: string; required_groups: string[] };
+  counts: { data_models: number; endpoints: number; pages: number; lots: number };
+  context: LivrablesContext;
+  lots: GeneratedLot[];
+  lots_md: string;                  // '' quand la spec est vide
+  cahier_des_charges_md: string;
+}

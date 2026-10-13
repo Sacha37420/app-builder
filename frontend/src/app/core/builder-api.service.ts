@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import {
-  AppSpec, ChatMessage, AiProvider, AgentPatch, PersistedChatMessage, PatchApplication, PatchMode, LabView,
+  AppSpec, ChatMessage, AiProvider, AgentPatch, PersistedChatMessage, PatchApplication, PatchMode, LabView, Livrables,
 } from '../models/app-spec.model';
 
 interface ChatResponse {
@@ -44,6 +44,11 @@ export class BuilderApiService {
   /** La spec enregistrée vue du lab : prête ou non, blocages, empreinte. */
   getLab(id: number): Observable<LabView> {
     return this.http.get<LabView>(`${this.base}/api/apps/${id}/lab/`);
+  }
+
+  /** Ce qui serait remis au lab pour la spec enregistrée : cahier des charges et lots. */
+  getLivrables(id: number): Observable<Livrables> {
+    return this.http.get<Livrables>(`${this.base}/api/apps/${id}/livrables/`);
   }
 
   deleteApp(id: number): Observable<void> {

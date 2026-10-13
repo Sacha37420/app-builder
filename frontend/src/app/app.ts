@@ -42,7 +42,7 @@ export class AppComponent {
     { path: '/endpoints',    label: '② API',        abbr: 'Ap' },
     { path: '/pages-config', label: '③ Pages',      abbr: 'Pa' },
     { path: '/pipelines',    label: '④ Pipelines',  abbr: 'Pi' },
-    { path: '/preview',      label: 'Code',         abbr: 'Cd' },
+    { path: '/preview',      label: 'Livrables',    abbr: 'Li' },
     { path: '/infra',        label: 'Lab & infra',  abbr: 'La' },
   ];
 

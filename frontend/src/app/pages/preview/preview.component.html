@@ -1,67 +1,190 @@
-<div class="preview-page">
+<div class="livrables-page">
 
-  <!-- ── Score de complétude ──────────────────────────────────────────── -->
-  <div class="completeness-bar">
-    @for (ph of completionScore; track ph.phase) {
-      <div class="phase-score">
-        <span class="phase-label">{{ ph.phase }}</span>
-        <div class="score-bar">
-          <div class="score-fill" [style.width.%]="(ph.score / ph.total) * 100"></div>
-        </div>
-        <span class="score-num">{{ ph.score }}/{{ ph.total }}</span>
+  <h1 class="page-title">Livrables</h1>
+  <p class="page-intro">
+    Ce qui sera remis au lab pour construire l'app : le cahier des charges et la feuille de route,
+    générés par le serveur à partir de la spécification enregistrée.
+  </p>
+
+  @if (state.savedId() === null) {
+    <!-- ── Rien d'enregistré ─────────────────────────────────────────── -->
+    <div class="card empty">
+      <p>Enregistrez la spécification pour générer ses livrables.</p>
+    </div>
+  } @else {
+
+    @if (failed()) {
+      <div class="banner banner-danger" role="alert">
+        <strong>Livrables indisponibles</strong>
+        <span>Le serveur n'a pas répondu, ou la spécification est introuvable.</span>
+        <button type="button" class="btn" (click)="reload()">Réessayer</button>
       </div>
     }
-  </div>
 
-  <!-- ── Onglets fichiers ──────────────────────────────────────────────── -->
-  <div class="tab-bar">
-    @for (tab of tabs; track tab.id) {
-      <button class="tab-btn" [class.active]="activeTab() === tab.id" (click)="setTab(tab.id)">
-        {{ tab.label }}
-      </button>
+    @if (loading() && !livrables()) {
+      <p class="muted" role="status">Chargement des livrables…</p>
     }
-  </div>
 
-  <!-- ── Sélecteur contextuel ─────────────────────────────────────────── -->
-  @if (activeTab() === 'service_ts') {
-    <div class="context-selector">
-      <span>Service :</span>
-      @for (svc of state.spec().services; track svc.id) {
-        <button class="selector-btn" [class.active]="selectedServiceId() === svc.id"
-                (click)="selectedServiceId.set(svc.id!)">
-          {{ svc.name }}
-        </button>
-      }
-      @if (state.spec().services.length === 0) {
-        <span class="no-items">Aucun service défini</span>
-      }
-    </div>
+    @if (livrables(); as l) {
+
+      <div class="grid">
+
+        <!-- ── État ──────────────────────────────────────────────────── -->
+        <section class="card" aria-labelledby="liv-etat" aria-live="polite">
+          <h2 class="card-title" id="liv-etat">État</h2>
+
+          @if (l.ready) {
+            <div class="banner banner-success">
+              <strong>Prête</strong>
+              <span>La construction peut être lancée depuis lab-admin → Projets → Mes spécifications.</span>
+            </div>
+          } @else {
+            <div class="banner banner-warning">
+              <strong>Pas encore prête — {{ l.blockers.length }} point(s) à régler</strong>
+              <span>Les textes ci-dessous ne sont qu'une prévisualisation.</span>
+            </div>
+            <ul class="blockers">
+              @for (b of l.blockers; track $index) {
+                <li>{{ b.message }}</li>
+              }
+            </ul>
+            <a class="btn link-btn" routerLink="/infra">Régler dans « Lab &amp; infra »</a>
+          }
+
+          <dl class="facts">
+            <dt>Nom de projet</dt>
+            <dd>
+              @if (l.create.name) { <code>{{ l.create.name }}</code> }
+              @else { <span class="warn-inline">non choisi</span> }
+            </dd>
+            <dt>Type</dt>
+            <dd>{{ typeLabel(l.create.type) }}</dd>
+            <dt>Groupes requis</dt>
+            <dd>
+              @for (g of l.create.required_groups; track g) {
+                <span class="tag">{{ g }}</span>
+              } @empty {
+                <span class="warn-inline">aucun</span>
+              }
+            </dd>
+            <dt>Contenu</dt>
+            <dd>
+              {{ l.counts.data_models }} modèle(s), {{ l.counts.endpoints }} route(s),
+              {{ l.counts.pages }} page(s), {{ l.counts.lots }} lot(s)
+            </dd>
+          </dl>
+
+          <p class="muted">
+            État du {{ l.spec.updated_at | date:'dd/MM/yyyy HH:mm:ss' }}
+            @if (unsaved()) {
+              — <strong class="warn-inline">des modifications sont en attente d'enregistrement</strong>
+            }
+            @if (loading()) { <span role="status">— actualisation…</span> }
+          </p>
+        </section>
+
+        <!-- ── Contexte ──────────────────────────────────────────────── -->
+        <section class="card" aria-labelledby="liv-contexte">
+          <h2 class="card-title" id="liv-contexte">Contexte</h2>
+
+          <div class="gauge">
+            <div class="gauge-text" id="liv-jauge-lot">
+              Plus gros lot : <strong>{{ n(l.context.largest_lot_tokens) }}</strong> jetons
+              sur un plafond de {{ n(l.context.lot_budget_tokens) }}
+              ({{ lotPercent() }} %)
+            </div>
+            <div class="bar" [class.over]="lotOver()" role="meter" aria-labelledby="liv-jauge-lot"
+                 aria-valuemin="0" [attr.aria-valuemax]="l.context.lot_budget_tokens"
+                 [attr.aria-valuenow]="l.context.largest_lot_tokens">
+              <div class="bar-fill" [style.width.%]="lotPercent() > 100 ? 100 : lotPercent()"></div>
+            </div>
+            @if (lotOver()) {
+              <p class="gauge-alert" role="alert">
+                ⚠ Dépassement : ce lot ne tient pas dans le plafond, il doit être allégé ou découpé.
+              </p>
+            }
+          </div>
+
+          <div class="gauge">
+            <div class="gauge-text">
+              Cahier des charges : <strong>{{ n(l.context.cahier_tokens) }}</strong> jetons
+              <span class="muted-inline">(pas de plafond)</span>
+            </div>
+          </div>
+
+          <p class="muted">Estimation locale, volontairement haute.</p>
+        </section>
+
+      </div>
+
+      <!-- ── Feuille de route ────────────────────────────────────────── -->
+      <section class="card" aria-labelledby="liv-lots">
+        <h2 class="card-title" id="liv-lots">Feuille de route</h2>
+        <p class="muted">Le Lot 1 (socle) et la commande de test viennent du gabarit du lab.</p>
+
+        @for (lot of l.lots; track lot.number) {
+          <details class="lot">
+            <summary>
+              <span class="lot-name">Lot {{ lot.number }} — {{ lot.title }}</span>
+              <span class="lot-tokens">{{ n(lot.tokens) }} jetons</span>
+            </summary>
+            <div class="lot-body">
+              @if (lot.objective) { <p class="lot-objective">{{ lot.objective }}</p> }
+              @if (lot.elements.length > 0) {
+                <div class="lot-elements">
+                  @for (el of lot.elements; track $index) {
+                    <span class="tag">{{ el.name }}@if (el.page) { ({{ el.page }}) }</span>
+                  }
+                </div>
+              }
+              <h3 class="sub-title">Tâches</h3>
+              <ul>
+                @for (t of lot.tasks; track $index) { <li>{{ t }}</li> }
+                @empty { <li class="muted-inline">Aucune.</li> }
+              </ul>
+              <h3 class="sub-title">Tests à passer</h3>
+              <ul>
+                @for (t of lot.tests; track $index) { <li>{{ t }}</li> }
+                @empty { <li class="muted-inline">Aucun.</li> }
+              </ul>
+            </div>
+          </details>
+        } @empty {
+          <p class="muted">Aucun lot : la spécification est vide.</p>
+        }
+      </section>
+
+      <!-- ── Textes remis ────────────────────────────────────────────── -->
+      <section class="card" aria-labelledby="liv-textes">
+        <h2 class="card-title" id="liv-textes">Textes remis au lab</h2>
+
+        <div class="tabs" role="tablist" aria-label="Document affiché">
+          @for (d of docs; track d.id) {
+            <button type="button" class="tab" role="tab" [id]="'liv-tab-' + d.id"
+                    [class.active]="activeDoc() === d.id"
+                    [attr.aria-selected]="activeDoc() === d.id"
+                    aria-controls="liv-doc"
+                    (click)="activeDoc.set(d.id)">{{ d.label }}</button>
+          }
+        </div>
+
+        <div class="doc" id="liv-doc" role="tabpanel" [attr.aria-labelledby]="'liv-tab-' + activeDoc()">
+          <div class="doc-actions">
+            <button type="button" class="btn" [disabled]="!docText()" (click)="copyDoc()">
+              {{ copied() === activeDoc() ? 'Copié' : 'Copier' }}
+            </button>
+            <button type="button" class="btn" [disabled]="!docText()" (click)="downloadDoc()">
+              Télécharger <span class="file-name">{{ docMeta().file }}</span>
+            </button>
+            <span class="visually-hidden" role="status">{{ copied() === activeDoc() ? 'Copié dans le presse-papiers' : '' }}</span>
+          </div>
+          @if (docText()) {
+            <pre tabindex="0">{{ docText() }}</pre>
+          } @else {
+            <p class="muted">Ce document est vide : la spécification ne contient encore aucun lot.</p>
+          }
+        </div>
+      </section>
+    }
   }
-
-  @if (activeTab() === 'component_ts') {
-    <div class="context-selector">
-      <span>Page :</span>
-      @for (page of state.spec().pages; track page.id) {
-        <button class="selector-btn" [class.active]="selectedPageId() === page.id"
-                (click)="selectedPageId.set(page.id!)">
-          {{ page.name }}
-        </button>
-      }
-      @if (state.spec().pages.length === 0) {
-        <span class="no-items">Aucune page définie</span>
-      }
-    </div>
-  }
-
-  <!-- ── Bandeau fichier + copie ──────────────────────────────────────── -->
-  <div class="file-header">
-    <span class="file-path">{{ currentFile }}</span>
-    <button class="btn-copy" (click)="copyCode()">Copier</button>
-  </div>
-
-  <!-- ── Bloc de code ─────────────────────────────────────────────────── -->
-  <div class="code-block">
-    <pre><code>{{ code }}</code></pre>
-  </div>
-
 </div>

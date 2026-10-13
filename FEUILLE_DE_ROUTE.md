@@ -80,14 +80,14 @@ python manage.py test
 - [x] Mesure du contexte des lots : un lot ne dépasse pas 20 000 jetons estimés, la feuille de route 40 lots ; sinon la spec n'est pas « prête » (`context_budget`)
 - [x] API de remise réservée au lab, en lecture seule : `GET /api/handoff/specs/`, `…/specs/<id>/`, `…/specs/<id>/kit/` — ouvertes au client de l'app et à ceux de `KEYCLOAK_HANDOFF_CLIENTS` (en service : `lab-admin`), qui n'entrent nulle part ailleurs ; clients intégrés du realm toujours refusés ; specs de l'appelant seulement ; jamais la conversation ni une clé
 - [x] `GET /api/apps/<id>/livrables/` pour l'éditeur : mêmes textes, lot par lot, même quand la spec n'est pas prête
-- [ ] Générateurs de code de l'aperçu retirés (vues sans filtre de propriétaire, rôles ignorés) : la page « Code » devient « Livrables » (cahier des charges, feuille de route, blocages)
+- [x] Générateurs de code de l'aperçu retirés (vues sans filtre de propriétaire, rôles ignorés) : la page « Code » devient « Livrables » (cahier des charges, feuille de route, blocages)
 - Le « prompt à lancer côté lab-admin » prévu à l'origine n'est plus un livrable : le côté lab-admin est fait par le lab lui-même, qui consomme l'API de remise
 **Tests à passer avant de clore le lot :**
 - [x] `python manage.py test api.tests.FeuilleDeRouteGenereeTests` passe (la graine satisfait les règles du moteur ; greffée sur le gabarit elle passe l'expression de `validate-app.sh` ; chaque lot a au moins un test nommé ; un texte saisi ne peut pas casser le format ; budget de contexte)
 - [x] `python manage.py test api.tests.CahierDesChargesTests` passe (groupes, règles métier, routes publiques et stockage y figurent ; export d'autrui impossible)
 - [x] `python manage.py test api.tests.RemiseAuLabTests` passe (jeton `lab-admin` accepté sur les seules routes de remise et refusé ailleurs, `admin-cli` refusé partout, jeton d'un autre client refusé, specs d'autrui invisibles, aucune écriture, 409 si non prête)
-- [ ] `npm run build` du frontend sans erreur après le remplacement de la page « Code »
-**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : 137 tests, OK, dont les trois classes ci-dessus (37 tests). Tests verts hors déploiement ; reste la page « Livrables » du frontend.
+- [x] `npm run build` du frontend sans erreur après le remplacement de la page « Code »
+**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : 137 tests, OK, dont les trois classes ci-dessus (37 tests). Page « Livrables » : `npm run build` sans erreur, plus aucun générateur de code dans le frontend (`grep`). Tests verts hors déploiement, interface non essayée en navigateur : le lot passera « livré » à la mise en service.
 
 ## Lot 6 — Représentation graphique à toutes les échelles   ·   statut : à faire
 **Objectif :** la personne qui commande l'app la voit du plus large (sa place dans le lab) au plus fin (une étape de pipeline), en naviguant d'une échelle à l'autre.
