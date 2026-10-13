@@ -6,7 +6,7 @@ from .views import (
     AppSpecChatHistoryView,
     AppSpecPatchView, AppSpecPatchHistoryView, AppSpecPatchUndoView,
     AppSpecLabView,
-    AIChatView,
+    AIChatView, ChatEstimateView, ModelsView,
 )
 
 urlpatterns = [
@@ -22,5 +22,7 @@ urlpatterns = [
     path('handoff/specs/',                   HandoffSpecListView.as_view()),
     path('handoff/specs/<int:pk>/',          HandoffSpecDetailView.as_view()),
     path('handoff/specs/<int:pk>/kit/',      HandoffKitView.as_view()),
+    path('models/',                  ModelsView.as_view()),
+    path('chat/estimate/',           ChatEstimateView.as_view()),
     path('chat/',                    AIChatView.as_view()),
 ]

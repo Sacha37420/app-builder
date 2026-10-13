@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import generics, status
 from rest_framework.response import Response
-from . import conformite, patching
+from . import budget, conformite, patching
 from .models import AppSpec, PatchApplication
 from .serializers import AppSpecSerializer
 
@@ -118,6 +118,10 @@ def _generate_patch(provider: str, api_key: str, model: str | None, app_spec: di
     ]
     call_once = _call_claude_once if provider == 'claude' else _call_mistral_once
     last_error = 'réponse vide'
+    mesure = budget.mesurer(budget.modele(provider, model), system_prompt, '', patch_messages, _PATCH_MAX_TOKENS)
+    if not mesure['fits']:
+        return None, ('la spécification et la conversation dépassent ce que ce modèle peut traiter pour produire '
+                      'un patch — choisissez un modèle à plus grande fenêtre ou effacez la conversation')
 
     for attempt in range(1, _PATCH_MAX_ATTEMPTS + 1):
         try:
@@ -527,10 +531,31 @@ dans le texte de la conversation.
 """
 
 
+def _sans_vide(v):
+    if isinstance(v, dict):
+        propre = {k: _sans_vide(x) for k, x in v.items() if k not in ('id', 'order')}
+        return {k: x for k, x in propre.items() if x not in (None, '', [], {})}
+    if isinstance(v, list):
+        return [_sans_vide(x) for x in v]
+    return v
+
+
+def _spec_compacte(app_spec) -> str:
+    """La spec telle qu'elle part vers l'IA : liens par nom, sans identifiants ni
+    valeurs vides, sans indentation — et JAMAIS la conversation (`chat_history`),
+    que l'interface joignait à la spec à chaque message."""
+    if not isinstance(app_spec, dict):
+        return '{}'
+    etat = patching._vers_noms(app_spec)
+    if not app_spec.get('name'):
+        etat.pop('name', None)
+    return json.dumps(_sans_vide(etat), ensure_ascii=False)
+
+
 def _build_system_prompt(app_spec: dict) -> str:
     return (_AGENT_SYSTEM
             .replace('{SCHEMA_DOC}', _PATCH_SCHEMA_DOC)
-            .replace('{APP_SPEC}', json.dumps(app_spec, ensure_ascii=False, indent=2)))
+            .replace('{APP_SPEC}', _spec_compacte(app_spec)))
 
 
 # ── Prompt système du second échange, dédié au patch JSON brut ─────────────────
@@ -556,7 +581,7 @@ rapport à ce contexte, jamais ce qui y figure déjà à l'identique :
 def _build_patch_system_prompt(app_spec: dict) -> str:
     return (_PATCH_SYSTEM
             .replace('{SCHEMA_DOC}', _PATCH_SCHEMA_DOC)
-            .replace('{APP_SPEC}', json.dumps(app_spec, ensure_ascii=False, indent=2)))
+            .replace('{APP_SPEC}', _spec_compacte(app_spec)))
 
 
 # ── Appels API en un coup (non streamés) — utilisés pour le patch JSON ─────────
@@ -624,28 +649,77 @@ class AppSpecDetailView(generics.RetrieveUpdateDestroyAPIView):
         return AppSpec.objects.filter(owner_email=self.request.user.email)
 
 
+_CHAT_MAX_TOKENS = 4096
+
+_TROP_LONG = ("La spécification et la conversation dépassent ce que le modèle « {modele} » peut traiter "
+              "(environ {total} jetons pour {disponible} disponibles). Choisissez un modèle à plus grande "
+              "fenêtre, effacez la conversation, ou réduisez la spécification.")
+
+
+def _preparer(donnees) -> dict:
+    """Ce qui partirait vers le fournisseur pour cette demande, et ce que ça pèse."""
+    provider = budget.fournisseur(donnees.get('provider', 'claude'))
+    model = donnees.get('model')
+    model = (model.strip() or None) if isinstance(model, str) else None
+    app_spec = donnees.get('app_spec') if isinstance(donnees.get('app_spec'), dict) else {}
+    # La conversation ne voyage pas dans la spec : elle est dans `messages`.
+    app_spec = {k: v for k, v in app_spec.items() if k != 'chat_history'}
+    fiche = budget.modele(provider, model)
+    system_prompt = _build_system_prompt(app_spec)
+    tous = budget.nettoyer(donnees.get('messages'))
+    place = fiche['context_window'] - _CHAT_MAX_TOKENS - budget.MARGE_JETONS - budget.estimer_jetons(system_prompt)
+    messages, retires = budget.borner(tous, place)
+    mesure = budget.mesurer(fiche, system_prompt, _spec_compacte(app_spec), messages, _CHAT_MAX_TOKENS, retires)
+    return {'provider': provider, 'model': model, 'app_spec': app_spec, 'system_prompt': system_prompt,
+            'messages': messages, 'context': mesure}
+
+
+class ModelsView(APIView):
+    """GET /api/models/ — les modèles proposés et ce que chacun peut tenir."""
+
+    def get(self, request):
+        return Response(budget.catalogue())
+
+
+class ChatEstimateView(APIView):
+    """POST /api/chat/estimate/ — la place qu'occuperait un envoi, sans rien envoyer.
+    Même corps que /api/chat/, sans clé d'API. Aucun appel à un fournisseur."""
+
+    def post(self, request):
+        return Response({'context': _preparer(request.data)['context']})
+
+
 class AIChatView(APIView):
     """POST /api/chat/ — proxy structuré vers Mistral ou Claude."""
 
     def post(self, request):
-        provider = request.data.get('provider', 'claude')
-        api_key  = request.data.get('api_key', '').strip()
-        model    = request.data.get('model', '').strip() or None
-        messages = request.data.get('messages', [])
-        app_spec = request.data.get('app_spec', {})
+        api_key = (request.data.get('api_key') or '').strip()
+        envoi = _preparer(request.data)
+        provider, model, app_spec = envoi['provider'], envoi['model'], envoi['app_spec']
+        messages, contexte = envoi['messages'], envoi['context']
+        self._contexte = contexte
 
-        print(f"[CHAT] provider={provider} model={model} messages={len(messages)}")
-        for i, m in enumerate(messages):
-            print(f"  [{i}] {m.get('role')}: {str(m.get('content',''))[:80]!r}")
+        print(f"[CHAT] provider={provider} model={model} messages={len(messages)} "
+              f"jetons≈{contexte['estimated_tokens']}/{contexte['available_tokens']}")
 
         if not api_key:
             return Response(
                 {'error': f'Clé API {provider} manquante. Configurez-la dans les paramètres (⚙).'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if not messages:
+            return Response({'error': 'Aucun message à envoyer.', 'context': contexte},
+                            status=status.HTTP_400_BAD_REQUEST)
+        trop_long = Response(
+            {'error': _TROP_LONG.format(modele=contexte['model'], total=contexte['estimated_tokens'],
+                                        disponible=max(contexte['available_tokens'], 0)),
+             'code': 'context_too_large', 'context': contexte},
+            status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+        # Refus AVANT l'appel : une requête qui ne tient pas est perdue d'avance.
+        if not contexte['fits']:
+            return trop_long
 
-        system_prompt = _build_system_prompt(app_spec)
-
+        system_prompt = envoi['system_prompt']
         try:
             if provider == 'mistral':
                 return self._call_mistral(api_key, system_prompt, messages, model, app_spec)
@@ -656,6 +730,9 @@ class AIChatView(APIView):
                 status=status.HTTP_504_GATEWAY_TIMEOUT,
             )
         except Exception as exc:
+            if budget.est_un_depassement(exc):
+                # Notre estimation était trop basse : même réponse que le refus local.
+                return trop_long
             return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
     def _finish(self, provider, content, choices, patch_ready, api_key, model, app_spec, messages,
@@ -675,6 +752,7 @@ class AIChatView(APIView):
         return Response({
             'content': content, 'provider': provider, 'spec_patch': patch, 'choices': choices,
             'patch_summary': patching.resume(patch) if patch else None,
+            'context': getattr(self, '_contexte', None),
         })
 
     def _call_mistral(self, api_key, system_prompt, messages, model, app_spec):
