@@ -32,12 +32,11 @@ python manage.py test
 - [x] Enregistrer l'état « appliqué » de chaque patch et un instantané de la spec avant application (annulation)
 - [x] Détecter une réponse tronquée (`stop_reason`) au lieu de retenter le même appel
 **Tests à passer avant de clore le lot :**
-- [ ] `python manage.py test api.tests.PatchFusionTests` passe (ajout d'un endpoint à un groupe existant, patch de page sans `service_names`, `steps` conservés)
-- [ ] `python manage.py test api.tests.PatchSuppressionTests` passe (suppression et renommage sans doublon)
-- [ ] `python manage.py test api.tests.PatchReferencesTests` passe (référence orpheline refusée, spec inchangée)
-- [ ] `python manage.py test api.tests.PatchHistoriqueTests` passe (état appliqué persistant, annulation rend la spec d'avant)
-**Blocage (2026-10-13) :** code poussé (`de9a6c6`), déploiement refusé par le moteur à l'étape « sync » avant tout test : le dépôt suit `.keycloak-client-opts`, fichier réservé au cadriciel. Le retirer de git ferait supprimer le fichier de l'hôte au prochain checkout (il y est aujourd'hui suivi), et `validate-app.sh` refuserait alors l'app : il faut une action sur l'hôte, hors de cet espace. Les tests ci-dessus n'ont donc pas été lancés par le lab.
-**Vérifié le :**
+- [x] `python manage.py test api.tests.PatchFusionTests` passe (ajout d'un endpoint à un groupe existant, patch de page sans `service_names`, `steps` conservés)
+- [x] `python manage.py test api.tests.PatchSuppressionTests` passe (suppression et renommage sans doublon)
+- [x] `python manage.py test api.tests.PatchReferencesTests` passe (référence orpheline refusée, spec inchangée)
+- [x] `python manage.py test api.tests.PatchHistoriqueTests` passe (état appliqué persistant, annulation rend la spec d'avant)
+**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` (PostgreSQL jetable, code du commit `42a60d8`) : 79 tests, OK, dont les quatre classes ci-dessus. Tests verts hors déploiement : le lot passera « livré » à la mise en service. Le blocage du déploiement (`.keycloak-client-opts` suivi par git) est levé par `42a60d8`.
 
 ## Lot 3 — Mesure du contexte   ·   statut : à faire
 **Objectif :** l'utilisateur voit à tout moment la place qu'occupent sa spec et sa conversation par rapport à ce que le modèle choisi peut traiter, et l'app n'envoie jamais une requête vouée à l'échec.
