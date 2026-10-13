@@ -20,8 +20,9 @@ services:
     networks:
       - sso-net
       - dev-net
-    volumes:
-      - ./backend:/app
+    # Pas de montage du dossier : le code est dans l'image (COPY . . du Dockerfile).
+    # Monté, tout redémarrage mettait en service le dossier tel quel, sans passer
+    # par les tests du déploiement.
     labels:
       caddy: "${DOMAIN}"
       caddy.handle_path: "/app-builder-api/*"
