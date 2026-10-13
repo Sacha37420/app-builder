@@ -1,4 +1,4 @@
-import { Injectable, signal, inject } from '@angular/core';
+import { Injectable, effect, signal, inject } from '@angular/core';
 import { EMPTY, Subject, of, throwError } from 'rxjs';
 import { debounceTime, filter, finalize, map, switchMap, tap, catchError } from 'rxjs/operators';
 import { Observable } from 'rxjs';
@@ -57,6 +57,17 @@ function firstMessage(body: unknown): string {
   return '';
 }
 
+const OPEN_SPEC_KEY = 'app-builder.spec';
+
+/** Spec à ouvrir au démarrage : `?spec=<id>` de l'adresse, sinon celle de l'onglet avant rechargement. */
+function openSpecId(): number | null {
+  let raw: string | null = null;
+  try {
+    raw = new URLSearchParams(window.location.search).get('spec') ?? sessionStorage.getItem(OPEN_SPEC_KEY);
+  } catch { /* stockage indisponible */ }
+  return raw && /^[0-9]{1,9}$/.test(raw) ? Number(raw) : null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class BuilderStateService {
   private api = inject(BuilderApiService);
@@ -77,6 +88,23 @@ export class BuilderStateService {
   private patching = false;
 
   constructor() {
+    // La spec ouverte survit à un rechargement et s'ouvre par lien direct (`?spec=<id>`,
+    // posé par lab-admin) : avant, toute arrivée par l'adresse retombait sur une app vide.
+    effect(() => {
+      const id = this.savedId();
+      try {
+        if (id === null) sessionStorage.removeItem(OPEN_SPEC_KEY);
+        else sessionStorage.setItem(OPEN_SPEC_KEY, String(id));
+      } catch { /* stockage indisponible : on perd seulement le confort */ }
+    });
+    const wanted = openSpecId();
+    if (wanted !== null) {
+      // 404 (spec supprimée ou d'autrui) : on reste sur une app vide, sans message.
+      this.api.getApp(wanted).pipe(catchError(() => EMPTY)).subscribe(spec => {
+        if (this.savedId() === null && !this.isDirty()) this.loadSpec(spec);
+      });
+    }
+
     // Autosave : 3 s après la dernière modification, si un ID existe déjà
     this.debounceTrigger.pipe(
       debounceTime(3000),
