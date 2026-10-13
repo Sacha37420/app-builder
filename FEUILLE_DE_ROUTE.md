@@ -24,18 +24,19 @@ python manage.py test
 ## Lot 2 — Patchs IA fiables   ·   statut : en cours
 **Objectif :** un patch proposé par l'IA ne fait jamais perdre un élément que l'utilisateur n'a pas demandé de retirer, et tout patch appliqué est traçable et annulable.
 **Tâches :**
-- [ ] Appliquer le patch côté serveur (`POST /api/apps/<id>/patch/`) : une seule implémentation, testable, atomique
-- [ ] Fusion par élément et non par bloc : un patch qui cite un champ, un endpoint, une interaction ou un pipeline n'efface pas ses voisins ; une liste de liens absente du patch laisse les liens en place
-- [ ] Documenter dans le prompt les suppressions (`remove_*`) et le renommage, aujourd'hui acceptés par le code mais jamais décrits à l'IA
-- [ ] Conserver les `steps` des endpoints (perdus à la normalisation du patch)
-- [ ] Refuser avec un message les références orphelines (`linked_model_name`, `to_model`, `endpoint_group_names`, `service_names`, `trigger_interaction`) au lieu de les ignorer
-- [ ] Enregistrer l'état « appliqué » de chaque patch et un instantané de la spec avant application (annulation)
-- [ ] Détecter une réponse tronquée (`stop_reason`) au lieu de retenter le même appel
+- [x] Appliquer le patch côté serveur (`POST /api/apps/<id>/patch/`) : une seule implémentation, testable, atomique
+- [x] Fusion par élément et non par bloc : un patch qui cite un champ, un endpoint, une interaction ou un pipeline n'efface pas ses voisins ; une liste de liens absente du patch laisse les liens en place
+- [x] Documenter dans le prompt les suppressions (`remove_*`) et le renommage, aujourd'hui acceptés par le code mais jamais décrits à l'IA
+- [x] Conserver les `steps` des endpoints (perdus à la normalisation du patch)
+- [x] Refuser avec un message les références orphelines (`linked_model_name`, `to_model`, `endpoint_group_names`, `service_names`, `trigger_interaction`) au lieu de les ignorer
+- [x] Enregistrer l'état « appliqué » de chaque patch et un instantané de la spec avant application (annulation)
+- [x] Détecter une réponse tronquée (`stop_reason`) au lieu de retenter le même appel
 **Tests à passer avant de clore le lot :**
 - [ ] `python manage.py test api.tests.PatchFusionTests` passe (ajout d'un endpoint à un groupe existant, patch de page sans `service_names`, `steps` conservés)
 - [ ] `python manage.py test api.tests.PatchSuppressionTests` passe (suppression et renommage sans doublon)
 - [ ] `python manage.py test api.tests.PatchReferencesTests` passe (référence orpheline refusée, spec inchangée)
 - [ ] `python manage.py test api.tests.PatchHistoriqueTests` passe (état appliqué persistant, annulation rend la spec d'avant)
+**Blocage (2026-10-13) :** code poussé (`de9a6c6`), déploiement refusé par le moteur à l'étape « sync » avant tout test : le dépôt suit `.keycloak-client-opts`, fichier réservé au cadriciel. Le retirer de git ferait supprimer le fichier de l'hôte au prochain checkout (il y est aujourd'hui suivi), et `validate-app.sh` refuserait alors l'app : il faut une action sur l'hôte, hors de cet espace. Les tests ci-dessus n'ont donc pas été lancés par le lab.
 **Vérifié le :**
 
 ## Lot 3 — Mesure du contexte   ·   statut : à faire
@@ -44,6 +45,7 @@ python manage.py test
 - [ ] Table des modèles (fenêtre d'entrée, sortie maximale) côté serveur ; liste des modèles servie par l'API et non plus codée en dur dans le frontend
 - [ ] Estimation de la taille (prompt système + spec + historique) rendue avec chaque réponse et affichée en jauge
 - [ ] Spec envoyée sous forme compacte ; historique borné aux derniers échanges, la spec faisant mémoire
+- [ ] Ne plus envoyer à l'IA `chat_history` (et ses patchs) à l'intérieur de la spec : le frontend le joint aujourd'hui à chaque message
 - [ ] Refus explicite avant l'appel quand le budget est dépassé ; erreur « contexte trop long » du fournisseur traduite
 - [ ] Même mesure appliquée aux lots générés (lot 5) : un lot ne dépasse pas ce qu'un agent de développement peut tenir
 **Tests à passer avant de clore le lot :**
