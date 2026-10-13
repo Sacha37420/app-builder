@@ -17,7 +17,7 @@ from rest_framework import exceptions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import patching, remise
+from . import graphe, patching, remise
 from .authentication import AccesRefuse, KeycloakJWTAuthentication
 from .models import AppSpec
 
@@ -149,3 +149,17 @@ class LivrablesView(APIView):
             'lots': livrables['lots'], 'lots_md': livrables['lots_md'],
             'cahier_des_charges_md': livrables['cahier_des_charges_md'],
         })
+
+
+class GraphView(APIView):
+    """GET /api/apps/<id>/graph/ — la spécification en graphe, à toutes les échelles
+    (place dans le lab, architecture, données, pipelines, feuille de route)."""
+
+    def get(self, request, pk):
+        try:
+            app = AppSpec.objects.get(pk=pk, owner_email=request.user.email)
+        except AppSpec.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        spec = patching.spec_de(app)
+        return Response({'spec': {'id': app.pk, 'name': app.name, 'updated_at': horodatage(app.updated_at)},
+                         **graphe.graphe(spec)})

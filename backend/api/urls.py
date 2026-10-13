@@ -1,5 +1,5 @@
 from django.urls import path
-from .handoff import HandoffKitView, HandoffSpecDetailView, HandoffSpecListView, LivrablesView
+from .handoff import GraphView, HandoffKitView, HandoffSpecDetailView, HandoffSpecListView, LivrablesView
 from .views import (
     MeView,
     AppSpecListCreateView, AppSpecDetailView,
@@ -19,6 +19,7 @@ urlpatterns = [
     path('apps/<int:pk>/patches/<int:application_pk>/undo/', AppSpecPatchUndoView.as_view()),
     path('apps/<int:pk>/lab/',       AppSpecLabView.as_view()),
     path('apps/<int:pk>/livrables/', LivrablesView.as_view()),
+    path('apps/<int:pk>/graph/',     GraphView.as_view()),
     path('handoff/specs/',                   HandoffSpecListView.as_view()),
     path('handoff/specs/<int:pk>/',          HandoffSpecDetailView.as_view()),
     path('handoff/specs/<int:pk>/kit/',      HandoffKitView.as_view()),

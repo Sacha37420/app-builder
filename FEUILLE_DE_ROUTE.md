@@ -38,19 +38,20 @@ python manage.py test
 - [x] `python manage.py test api.tests.PatchHistoriqueTests` passe (état appliqué persistant, annulation rend la spec d'avant)
 **Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` (PostgreSQL jetable, code du commit `42a60d8`) : 79 tests, OK, dont les quatre classes ci-dessus. Tests verts hors déploiement : le lot passera « livré » à la mise en service. Le blocage du déploiement (`.keycloak-client-opts` suivi par git) est levé par `42a60d8`.
 
-## Lot 3 — Mesure du contexte   ·   statut : à faire
+## Lot 3 — Mesure du contexte   ·   statut : en cours
 **Objectif :** l'utilisateur voit à tout moment la place qu'occupent sa spec et sa conversation par rapport à ce que le modèle choisi peut traiter, et l'app n'envoie jamais une requête vouée à l'échec.
 **Tâches :**
-- [ ] Table des modèles (fenêtre d'entrée, sortie maximale) côté serveur ; liste des modèles servie par l'API et non plus codée en dur dans le frontend
-- [ ] Estimation de la taille (prompt système + spec + historique) rendue avec chaque réponse et affichée en jauge
-- [ ] Spec envoyée sous forme compacte ; historique borné aux derniers échanges, la spec faisant mémoire
-- [ ] Ne plus envoyer à l'IA `chat_history` (et ses patchs) à l'intérieur de la spec : le frontend le joint aujourd'hui à chaque message
-- [ ] Refus explicite avant l'appel quand le budget est dépassé ; erreur « contexte trop long » du fournisseur traduite
-- [ ] Même mesure appliquée aux lots générés (lot 5) : un lot ne dépasse pas ce qu'un agent de développement peut tenir
+- [x] Table des modèles (fenêtre, sortie maximale) côté serveur (`api/budget.py`) ; liste servie par `GET /api/models/` et non plus codée en dur dans le frontend
+- [x] Estimation locale (aucun appel réseau) du prompt système, de la spec et de l'historique, rendue avec chaque réponse du chat et par `POST /api/chat/estimate/`  ; la jauge du frontend reste à livrer
+- [x] Spec envoyée sous forme compacte (liens par nom, sans identifiants ni valeurs vides, sans indentation) ; historique borné aux messages récents qui tiennent (24 au plus), le dernier toujours envoyé, la spec faisant mémoire
+- [x] `chat_history` (et ses patchs) n'entre plus dans la spec envoyée à l'IA : écarté par le serveur (le frontend doit encore cesser de l'envoyer)
+- [x] Refus explicite avant l'appel quand le budget est dépassé (413, `context_too_large`) ; erreur « contexte trop long » du fournisseur traduite de la même façon ; le patch n'est pas demandé s'il ne tient pas
+- [x] Même estimateur appliqué aux lots générés (lot 5) : un lot ne dépasse pas 20 000 jetons estimés
 **Tests à passer avant de clore le lot :**
-- [ ] `python manage.py test api.tests.BudgetContexteTests` passe (estimation croissante avec la spec, seuil par modèle, refus avant appel, historique tronqué sans perdre le dernier message)
-- [ ] `python manage.py test api.tests.ChatTests` reste vert
-**Vérifié le :**
+- [x] `python manage.py test api.tests.BudgetContexteTests` passe (estimation croissante avec la spec, seuil par modèle, refus avant appel, historique tronqué sans perdre le dernier message)
+- [x] `python manage.py test api.tests.ChatTests` reste vert
+- [ ] Frontend : liste des modèles lue sur l'API, jauge, `chat_history` plus envoyé ; `npm run build` sans erreur
+**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : suite complète verte, dont `BudgetContexteTests` (13) et `ChatTests` (8, inchangés). Backend seulement : le frontend du lot n'est pas encore intégré. Fenêtres Mistral posées prudemment (32 000 pour `small` et `codestral`) faute de pouvoir les vérifier hors ligne. Tests verts hors déploiement.
 
 ## Lot 4 — Spécification alignée sur le cadriciel   ·   statut : en cours
 **Objectif :** toute spécification décrit une app que le moteur du lab sait créer et déployer, sans rien y contredire.
@@ -89,15 +90,15 @@ python manage.py test
 - [x] `npm run build` du frontend sans erreur après le remplacement de la page « Code »
 **Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : 137 tests, OK, dont les trois classes ci-dessus (37 tests). Page « Livrables » : `npm run build` sans erreur, plus aucun générateur de code dans le frontend (`grep`). Tests verts hors déploiement, interface non essayée en navigateur : le lot passera « livré » à la mise en service.
 
-## Lot 6 — Représentation graphique à toutes les échelles   ·   statut : à faire
+## Lot 6 — Représentation graphique à toutes les échelles   ·   statut : en cours
 **Objectif :** la personne qui commande l'app la voit du plus large (sa place dans le lab) au plus fin (une étape de pipeline), en naviguant d'une échelle à l'autre.
 **Tâches :**
-- [ ] Vue d'ensemble : groupes → Keycloak → frontend → API → base / storage
-- [ ] Vue des lots de la feuille de route générée, reliée aux éléments de la spec
-- [ ] Navigation continue entre vue d'ensemble, architecture, schéma de données et pipelines
+- [x] API du graphe (`GET /api/apps/<id>/graph/`, `api/graphe.py`) : cinq échelles — dans le lab (groupes → Keycloak → interface → API → base / storage / email), architecture, données, pipelines, feuille de route — chaque nœud remontant à l'échelle au-dessus par `parent`
+- [x] Lots de la feuille de route générée reliés aux éléments de la spec qu'ils construisent (liens `builds`)
+- [ ] Page du frontend : vue d'ensemble, vue des lots, navigation continue entre échelles
 - [ ] Identité Foyer respectée (tokens, 900 px, cibles de 44 px)
 **Tests à passer avant de clore le lot :**
-- [ ] `python manage.py test api.tests.VueEnsembleTests` passe (l'API rend le graphe d'une spec : nœuds et liens cohérents avec la spec)
+- [x] `python manage.py test api.tests.VueEnsembleTests` passe (l'API rend le graphe d'une spec : nœuds et liens cohérents avec la spec)
 - [ ] `npm run build` du frontend sans erreur ; aucune couleur en dur dans les composants ajoutés (`grep` sur les valeurs hexadécimales)
 - [ ] Test de cloisonnement vert après déploiement
-**Vérifié le :**
+**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : 158 tests, OK, dont `VueEnsembleTests` (6) et `GrapheReglesTests` (2). Backend seulement : la page du frontend reste à écrire.
