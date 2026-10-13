@@ -7,3 +7,4 @@ fois, par ce fichier.
 """
 from .socle import *  # noqa: F401,F403
 from .conformite import *  # noqa: F401,F403
+from .remise import *  # noqa: F401,F403

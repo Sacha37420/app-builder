@@ -71,20 +71,23 @@ python manage.py test
 - [x] `npm run build` du frontend sans erreur
 **Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` (PostgreSQL jetable) : suite complète verte, dont `ConformiteCadricielTests` (15), `ConformiteReglesTests` (4), `MigrationCadricielTests` (1) et `test_tables_lues_par_lab_admin` ; `npm run build` sans erreur (avertissements de budget de style antérieurs). Tests verts hors déploiement, interface non essayée en navigateur : le lot passera « livré » à la mise en service.
 
-## Lot 5 — Cahier des charges, feuille de route et remise au lab   ·   statut : à faire
-**Objectif :** à partir d'une spec « prête », l'utilisateur obtient le cahier des charges et la `FEUILLE_DE_ROUTE.md` de son app au format du lab, et lab-admin peut les lire pour lancer la construction.
+## Lot 5 — Cahier des charges, feuille de route et remise au lab   ·   statut : en cours
+**Objectif :** à partir d'une spec « prête », l'utilisateur obtient le cahier des charges et les lots de la feuille de route de son app au format du lab, et lab-admin les lit pour lancer la construction.
 **Tâches :**
-- [ ] Génération côté serveur du cahier des charges (Markdown) depuis la spec
-- [ ] Génération de `FEUILLE_DE_ROUTE.md` : lot 1 du gabarit, puis lots métier découpés (modèles, API, pages, pipelines) avec tests nommés dérivés des endpoints et des rôles
-- [ ] Paramètres de création rendus tels que `create_app` les attend (nom, type, groupes)
-- [ ] Générateurs de code de l'aperçu corrigés ou retirés (vues sans filtre de propriétaire, rôles ignorés, `FileField`)
-- [ ] API de remise réservée au lab : routes de lecture ouvertes au seul client `lab-admin` (`KEYCLOAK_TRUSTED_CLIENTS`, verrou 2 généralisé du cadriciel), limitées aux specs de l'appelant, jamais en écriture
-- [ ] Prompt à lancer côté lab-admin (hors de ce dépôt) pour y brancher « Lancer la construction » : remis au développeur, pas commité ici
+- [x] Génération côté serveur du cahier des charges (Markdown) depuis la spec — déterministe, sans IA (`api/remise.py`)
+- [x] Génération des lots métier de `FEUILLE_DE_ROUTE.md`, numérotés à partir de 2 (modèles, API, règles métier, services, pages, pipelines, recette), avec tests nommés dérivés des endpoints et des rôles. Ni en-tête, ni « Commande de test », ni Lot 1 : ils viennent du gabarit du lab, sur lequel le moteur greffe ces lots
+- [x] Paramètres de création rendus tels que le moteur les attend (`name`, `type`, `required_groups`)
+- [x] Mesure du contexte des lots : un lot ne dépasse pas 20 000 jetons estimés, la feuille de route 40 lots ; sinon la spec n'est pas « prête » (`context_budget`)
+- [x] API de remise réservée au lab, en lecture seule : `GET /api/handoff/specs/`, `…/specs/<id>/`, `…/specs/<id>/kit/` — ouvertes au client de l'app et à ceux de `KEYCLOAK_HANDOFF_CLIENTS` (en service : `lab-admin`), qui n'entrent nulle part ailleurs ; clients intégrés du realm toujours refusés ; specs de l'appelant seulement ; jamais la conversation ni une clé
+- [x] `GET /api/apps/<id>/livrables/` pour l'éditeur : mêmes textes, lot par lot, même quand la spec n'est pas prête
+- [ ] Générateurs de code de l'aperçu retirés (vues sans filtre de propriétaire, rôles ignorés) : la page « Code » devient « Livrables » (cahier des charges, feuille de route, blocages)
+- Le « prompt à lancer côté lab-admin » prévu à l'origine n'est plus un livrable : le côté lab-admin est fait par le lab lui-même, qui consomme l'API de remise
 **Tests à passer avant de clore le lot :**
-- [ ] `python manage.py test api.tests.FeuilleDeRouteGenereeTests` passe (le fichier généré satisfait l'expression de `validate-app.sh`, chaque lot a au moins un test nommé, une commande de test d'une ligne)
-- [ ] `python manage.py test api.tests.CahierDesChargesTests` passe (groupes, règles métier, routes publiques et stockage y figurent ; export d'autrui impossible)
-- [ ] `python manage.py test api.tests.RemiseAuLabTests` passe (jeton `lab-admin` accepté sur les seules routes de remise et refusé ailleurs, jeton d'un autre client refusé, specs d'autrui invisibles, aucune écriture)
-**Vérifié le :**
+- [x] `python manage.py test api.tests.FeuilleDeRouteGenereeTests` passe (la graine satisfait les règles du moteur ; greffée sur le gabarit elle passe l'expression de `validate-app.sh` ; chaque lot a au moins un test nommé ; un texte saisi ne peut pas casser le format ; budget de contexte)
+- [x] `python manage.py test api.tests.CahierDesChargesTests` passe (groupes, règles métier, routes publiques et stockage y figurent ; export d'autrui impossible)
+- [x] `python manage.py test api.tests.RemiseAuLabTests` passe (jeton `lab-admin` accepté sur les seules routes de remise et refusé ailleurs, `admin-cli` refusé partout, jeton d'un autre client refusé, specs d'autrui invisibles, aucune écriture, 409 si non prête)
+- [ ] `npm run build` du frontend sans erreur après le remplacement de la page « Code »
+**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : 137 tests, OK, dont les trois classes ci-dessus (37 tests). Tests verts hors déploiement ; reste la page « Livrables » du frontend.
 
 ## Lot 6 — Représentation graphique à toutes les échelles   ·   statut : à faire
 **Objectif :** la personne qui commande l'app la voit du plus large (sa place dans le lab) au plus fin (une étape de pipeline), en naviguant d'une échelle à l'autre.

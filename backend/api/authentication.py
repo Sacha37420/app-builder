@@ -22,6 +22,13 @@ class KeycloakUser:
         return self.username
 
 
+class AccesRefuse(AuthenticationFailed):
+    """Jeton authentique, mais qui n'ouvre pas cette API : autre client, hors
+    des groupes requis, sans email. Reste une `AuthenticationFailed` (même
+    réponse qu'avant sur toute l'API) ; la remise au lab s'en sert pour répondre
+    403 là où un jeton absent ou invalide donne 401 (api/handoff.py)."""
+
+
 class KeycloakJWTAuthentication(BaseAuthentication):
     """
     Validates Keycloak Bearer JWT tokens using the realm's JWKS endpoint.
@@ -82,7 +89,7 @@ class KeycloakJWTAuthentication(BaseAuthentication):
         # ne place pas le clientId dans 'aud' sans mapper d'audience dédié.
         allowed = self._allowed_client_ids()
         if claims.get('azp') not in allowed:
-            raise AuthenticationFailed(
+            raise AccesRefuse(
                 "Ce token a été émis pour un client non autorisé ici "
                 f"(attendu : {', '.join(sorted(allowed))})."
             )
@@ -95,13 +102,13 @@ class KeycloakJWTAuthentication(BaseAuthentication):
             if g.strip()
         }
         if required and not required & set(claims.get('groups') or []):
-            raise AuthenticationFailed(
+            raise AccesRefuse(
                 'Accès réservé aux membres du/des groupe(s) : '
                 f"{', '.join(sorted(required))}."
             )
 
         if not claims.get('email'):
-            raise AuthenticationFailed(
+            raise AccesRefuse(
                 "Le token ne contient pas de claim 'email'. "
                 "Vérifiez que le mapper 'email' est activé dans Keycloak."
             )
