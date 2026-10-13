@@ -44,10 +44,9 @@
           </label>
           <label class="field-row">
             <span class="field-label">Modèle</span>
-            <select [value]="claudeModel()"
-                    (change)="claudeModel.set($any($event.target).value)">
-              @for (m of claudeModels; track m.id) {
-                <option [value]="m.id">{{ m.label }}</option>
+            <select (change)="claudeModel.set($any($event.target).value)">
+              @for (m of claudeModels(); track m.id) {
+                <option [value]="m.id" [selected]="m.id === claudeModel()">{{ m.label }}</option>
               }
             </select>
           </label>
@@ -73,14 +72,17 @@
           </label>
           <label class="field-row">
             <span class="field-label">Modèle</span>
-            <select [value]="mistralModel()"
-                    (change)="mistralModel.set($any($event.target).value)">
-              @for (m of mistralModels; track m.id) {
-                <option [value]="m.id">{{ m.label }}</option>
+            <select (change)="mistralModel.set($any($event.target).value)">
+              @for (m of mistralModels(); track m.id) {
+                <option [value]="m.id" [selected]="m.id === mistralModel()">{{ m.label }}</option>
               }
             </select>
           </label>
         </div>
+      }
+
+      @if (modelsUnavailable()) {
+        <p class="models-ko" role="status">Liste des modèles indisponible — le modèle mémorisé reste utilisé.</p>
       }
 
       <!-- Tuto -->
@@ -295,6 +297,48 @@
 
   </div>
 
+  <!-- Jauge de contexte : ce que pèserait le prochain envoi face à la fenêtre du modèle -->
+  @if (jauge(); as j) {
+    @let c = contexte()!;
+    <div class="ctx" [class.attention]="j.etat === 'attention'" [class.alerte]="j.etat === 'alerte'">
+      <div class="ctx-bar" role="meter" aria-label="Place occupée dans le contexte du modèle"
+           aria-valuemin="0" [attr.aria-valuemax]="j.max" [attr.aria-valuenow]="j.now"
+           [attr.aria-valuetext]="j.mot + ' : ' + j.texte">
+        <span [style.width.%]="j.largeur"></span>
+      </div>
+      <details class="ctx-details">
+        <summary><strong class="ctx-state">{{ j.mot }}</strong> · {{ j.texte }}</summary>
+        <dl>
+          <dt>Consignes + spécification</dt>
+          <dd>{{ nombre(c.system_tokens) }}</dd>
+          <dt class="sub">dont spécification</dt>
+          <dd>{{ nombre(c.spec_tokens) }}</dd>
+          <dt>Conversation</dt>
+          <dd>{{ nombre(c.history_tokens) }}</dd>
+          <dt>Réservé à la réponse</dt>
+          <dd>{{ nombre(c.reserved_output_tokens) }}</dd>
+          <dt>Fenêtre du modèle</dt>
+          <dd>{{ nombre(c.context_window) }}</dd>
+        </dl>
+      </details>
+      @if (c.messages_dropped > 0) {
+        <p class="ctx-note">
+          @if (c.messages_dropped === 1) {
+            Le message le plus ancien n'est plus envoyé : la spécification fait mémoire.
+          } @else {
+            Les {{ nombre(c.messages_dropped) }} messages les plus anciens ne sont plus envoyés : la spécification fait mémoire.
+          }
+        </p>
+      }
+      @if (depasse()) {
+        <p class="ctx-note ctx-block" role="alert">
+          Cet envoi ne tient pas dans le modèle : choisissez un modèle à plus grande fenêtre (⚙),
+          effacez la conversation (🗑) ou réduisez la spécification.
+        </p>
+      }
+    </div>
+  }
+
   <!-- Zone de saisie -->
   <div class="chat-input-area">
     <textarea
@@ -307,7 +351,8 @@
       [disabled]="loading()"
       rows="3">
     </textarea>
-    <button class="btn-send" (click)="send()" [disabled]="loading() || !inputText().trim()">
+    <button class="btn-send" (click)="send()" [disabled]="loading() || depasse() || !inputText().trim()"
+            [attr.aria-label]="depasse() ? 'Envoi impossible : le contexte dépasse le modèle' : 'Envoyer'">
       &#9654;
     </button>
   </div>

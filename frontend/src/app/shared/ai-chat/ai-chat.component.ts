@@ -1,8 +1,9 @@
-import { Component, inject, signal, effect, ViewChild, ElementRef, AfterViewChecked, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, effect, ViewChild, ElementRef, AfterViewChecked, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { BuilderApiService } from '../../core/builder-api.service';
 import { BuilderStateService } from '../../core/builder-state.service';
-import { AiProvider, PatchMode, PersistedChatMessage } from '../../models/app-spec.model';
+import { Subscription } from 'rxjs';
+import { AiProvider, ChatContext, ChatMessage, ModelCatalogue, PatchMode, PersistedChatMessage } from '../../models/app-spec.model';
 
 type AppliedState = 'none' | 'merged' | 'replaced';
 
@@ -15,18 +16,12 @@ interface DisplayMessage extends PersistedChatMessage {
 
 interface ModelOption { id: string; label: string; }
 
-const CLAUDE_MODELS: ModelOption[] = [
-  { id: 'claude-opus-4-8',           label: 'Opus 4.8 — Ultra-puissant' },
-  { id: 'claude-sonnet-4-6',         label: 'Sonnet 4.6 — Recommandé ★' },
-  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5 — Rapide / économique' },
-];
+type EtatJauge = 'normal' | 'attention' | 'alerte';
 
-const MISTRAL_MODELS: ModelOption[] = [
-  { id: 'mistral-large-latest', label: 'Large — Ultra-puissant' },
-  { id: 'mistral-small-latest', label: 'Small — Recommandé ★' },
-  { id: 'codestral-latest',     label: 'Codestral — Spécialisé code' },
-  { id: 'open-mistral-nemo',    label: 'Nemo — Gratuit (tier libre)' },
-];
+/** Délai d'anti-rebond de l'estimation du contexte. */
+const DELAI_ESTIMATION_MS = 600;
+
+const nombre = (n: number): string => n.toLocaleString('fr-FR');
 
 const STARTER_PROMPTS = [
   'Je veux une app de gestion de stock avec tableau de bord et alertes de seuil',
@@ -76,11 +71,37 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
   // State pour les choix du dernier message assistant
   selectedChoices = signal<Set<string>>(new Set());
 
-  readonly claudeModels  = CLAUDE_MODELS;
-  readonly mistralModels = MISTRAL_MODELS;
+  // Liste des modèles : servie par l'API. Tant qu'elle manque, le modèle mémorisé reste seul proposé.
+  catalogue       = signal<ModelCatalogue | null>(null);
+  modelsUnavailable = signal(false);
+  readonly claudeModels  = computed(() => this.modelsOf('claude',  this.claudeModel()));
+  readonly mistralModels = computed(() => this.modelsOf('mistral', this.mistralModel()));
   readonly starters      = STARTER_PROMPTS;
 
+  // Mesure du contexte : dernière réponse de /api/chat/ ou dernière estimation.
+  contexte     = signal<ChatContext | null>(null);
+  readonly depasse = computed(() => this.contexte()?.fits === false);
+  readonly jauge = computed(() => {
+    const c = this.contexte();
+    if (!c) return null;
+    const etat: EtatJauge = c.ratio >= 1 || !c.fits ? 'alerte' : c.ratio >= 0.7 ? 'attention' : 'normal';
+    const max = Math.max(c.available_tokens, 1);
+    const pourcent = (c.ratio * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+    const modele = this.catalogue()?.providers[c.provider]?.models.find(m => m.id === c.model);
+    return {
+      etat,
+      mot: { normal: '✓ À l\'aise', attention: '⚠ Presque plein', alerte: '⛔ Trop long' }[etat],
+      max,
+      now: Math.min(Math.max(c.estimated_tokens, 0), max),
+      largeur: Math.min(Math.max(c.ratio, 0), 1) * 100,
+      texte: `≈ ${nombre(c.estimated_tokens)} / ${nombre(Math.max(c.available_tokens, 0))} jetons (${pourcent} %) — ${modele ? modele.label.split(' — ')[0] : c.model}`,
+    };
+  });
+  readonly nombre = nombre;
+
   private shouldScroll = false;
+  /** Numéro de la mesure la plus récente : une réponse d'estimation plus ancienne est ignorée. */
+  private mesureSeq = 0;
 
   constructor() {
     effect(() => localStorage.setItem(LS.provider,     this.provider()));
@@ -96,6 +117,26 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
       this.error.set('');
       this.selectedChoices.set(new Set());
     });
+
+    // Estime le contexte dès que change ce qui partirait : spec, fournisseur, modèle, messages, brouillon.
+    effect(onCleanup => {
+      const spec = this.state.spec();
+      const provider = this.provider();
+      const model = provider === 'claude' ? this.claudeModel() : this.mistralModel();
+      const brouillon = this.inputText().trim();
+      const envoi: ChatMessage[] = brouillon
+        ? [...this.messages(), { role: 'user', content: brouillon }]
+        : this.messages();
+      const seq = ++this.mesureSeq;
+      let appel: Subscription | undefined;
+      const minuterie = setTimeout(() => {
+        appel = this.api.estimateChat(envoi, spec, provider, model).subscribe({
+          next: res => { if (seq === this.mesureSeq && res?.context) this.contexte.set(res.context); },
+          error: () => { /* la jauge garde sa dernière mesure ; le serveur reste juge à l'envoi */ },
+        });
+      }, DELAI_ESTIMATION_MS);
+      onCleanup(() => { clearTimeout(minuterie); appel?.unsubscribe(); });
+    });
   }
 
   ngOnInit(): void {
@@ -104,6 +145,24 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
     this.claudeModel.set(localStorage.getItem(LS.claudeModel)  ?? 'claude-sonnet-4-6');
     this.mistralKey.set(localStorage.getItem(LS.mistralKey)   ?? '');
     this.mistralModel.set(localStorage.getItem(LS.mistralModel) ?? 'mistral-small-latest');
+
+    this.api.getModels().subscribe({
+      next: cat => {
+        if (!cat?.providers?.claude?.models || !cat.providers.mistral?.models) { this.modelsUnavailable.set(true); return; }
+        this.catalogue.set(cat);
+        this.modelsUnavailable.set(false);
+        // Un modèle mémorisé qui n'est plus proposé cède la place à celui par défaut.
+        const { claude, mistral } = cat.providers;
+        if (!claude.models.some(m => m.id === this.claudeModel()))   this.claudeModel.set(claude.default);
+        if (!mistral.models.some(m => m.id === this.mistralModel())) this.mistralModel.set(mistral.default);
+      },
+      error: () => this.modelsUnavailable.set(true),
+    });
+  }
+
+  /** Les modèles d'un fournisseur ; sans catalogue, le seul modèle mémorisé. */
+  private modelsOf(provider: AiProvider, memorise: string): ModelOption[] {
+    return this.catalogue()?.providers[provider].models ?? [{ id: memorise, label: memorise }];
   }
 
   ngAfterViewChecked(): void {
@@ -182,14 +241,27 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
             choices:    res.choices    ?? null,
             applied: 'none',
           }];
+          if (res.context) { this.mesureSeq++; this.contexte.set(res.context); }
           this.messages.set(updated);
           this._persistChat(updated);
           this.loading.set(false);
           this.shouldScroll = true;
         },
         error: err => {
-          this.error.set(`Erreur : ${err.error?.error ?? err.message ?? 'Erreur inconnue'}`);
+          const corps = err.error;
+          if (corps?.context) { this.mesureSeq++; this.contexte.set(corps.context); }
+          if (err.status === 413) {
+            // Rien n'est parti : le message refusé quitte la liste et son texte revient dans la saisie.
+            this.error.set(corps?.error ?? 'Cet envoi ne tient pas dans le modèle choisi.');
+            const msgs = this.messages();
+            const dernier = msgs[msgs.length - 1];
+            if (dernier?.role === 'user' && dernier.content === text) this.messages.set(msgs.slice(0, -1));
+            this.inputText.set(text);
+          } else {
+            this.error.set(`Erreur : ${corps?.error ?? err.message ?? 'Erreur inconnue'}`);
+          }
           this.loading.set(false);
+          this.shouldScroll = true;
         },
       });
   }
@@ -257,7 +329,10 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
   }
 
   onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); this.send(); }
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      if (!this.depasse()) this.send();
+    }
   }
 
   clearHistory(): void {

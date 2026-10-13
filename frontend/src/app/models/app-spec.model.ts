@@ -241,6 +241,39 @@ export interface PatchApplication {
 
 export interface ChatMessage extends PersistedChatMessage {}
 
+/** Un modèle proposé par `GET /api/models/` et ce qu'il peut tenir. */
+export interface ModelInfo {
+  id: string;
+  label: string;
+  context_window: number;
+  max_output: number;
+}
+
+/** Réponse de `GET /api/models/` : les modèles par fournisseur. */
+export interface ModelCatalogue {
+  providers: Record<AiProvider, { default: string; models: ModelInfo[] }>;
+  lot_budget_tokens: number;
+}
+
+/** Ce que pèse un envoi face à ce que le modèle peut tenir (`/api/chat/` et `/api/chat/estimate/`). */
+export interface ChatContext {
+  model: string;
+  provider: AiProvider;
+  context_window: number;
+  reserved_output_tokens: number;
+  available_tokens: number;
+  /** Consignes + spécification ; `spec_tokens` y est compris. */
+  system_tokens: number;
+  spec_tokens: number;
+  history_tokens: number;
+  estimated_tokens: number;
+  /** `estimated_tokens / available_tokens` — peut dépasser 1. */
+  ratio: number;
+  fits: boolean;
+  messages_sent: number;
+  messages_dropped: number;
+}
+
 // ── La spécification vue du lab : GET /api/apps/<id>/lab/ ─────────────────────
 
 export type BlockerCode =

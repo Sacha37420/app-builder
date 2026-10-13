@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import {
   AppSpec, ChatMessage, AiProvider, AgentPatch, PersistedChatMessage, PatchApplication, PatchMode, LabView, Livrables,
+  ModelCatalogue, ChatContext,
 } from '../models/app-spec.model';
 
 interface ChatResponse {
@@ -11,6 +12,19 @@ interface ChatResponse {
   spec_patch: AgentPatch | null;
   patch_summary: string | null;
   choices: { multiple: boolean; items: string[] } | null;
+  context?: ChatContext;
+}
+
+/** Clés de la spec qui ne partent jamais vers l'IA : la conversation voyage dans `messages`. */
+const HORS_ENVOI_IA = ['chat_history', 'created_at', 'updated_at', 'owner_email'];
+
+function specPourIa(spec: AppSpec | null): Record<string, unknown> | null {
+  if (!spec) return null;
+  return Object.fromEntries(Object.entries(spec).filter(([cle]) => !HORS_ENVOI_IA.includes(cle)));
+}
+
+function messagesPourIa(messages: ChatMessage[]): { role: string; content: string }[] {
+  return messages.map(m => ({ role: m.role, content: m.content }));
 }
 
 interface EnvWindow {
@@ -62,10 +76,27 @@ export class BuilderApiService {
     apiKey: string,
     model: string,
   ): Observable<ChatResponse> {
-    const cleanMessages = messages.map(m => ({ role: m.role, content: m.content }));
     return this.http.post<ChatResponse>(
       `${this.base}/api/chat/`,
-      { messages: cleanMessages, app_spec: appSpec, provider, api_key: apiKey, model },
+      { messages: messagesPourIa(messages), app_spec: specPourIa(appSpec), provider, api_key: apiKey, model },
+    );
+  }
+
+  /** Les modèles proposés, par fournisseur, et la fenêtre de chacun. */
+  getModels(): Observable<ModelCatalogue> {
+    return this.http.get<ModelCatalogue>(`${this.base}/api/models/`);
+  }
+
+  /** La place qu'occuperait un envoi : aucun appel à une IA, aucune clé, aucun coût. */
+  estimateChat(
+    messages: ChatMessage[],
+    appSpec: AppSpec | null,
+    provider: AiProvider,
+    model: string,
+  ): Observable<{ context: ChatContext }> {
+    return this.http.post<{ context: ChatContext }>(
+      `${this.base}/api/chat/estimate/`,
+      { messages: messagesPourIa(messages), app_spec: specPourIa(appSpec), provider, model },
     );
   }
 

@@ -42,16 +42,16 @@ python manage.py test
 **Objectif :** l'utilisateur voit à tout moment la place qu'occupent sa spec et sa conversation par rapport à ce que le modèle choisi peut traiter, et l'app n'envoie jamais une requête vouée à l'échec.
 **Tâches :**
 - [x] Table des modèles (fenêtre, sortie maximale) côté serveur (`api/budget.py`) ; liste servie par `GET /api/models/` et non plus codée en dur dans le frontend
-- [x] Estimation locale (aucun appel réseau) du prompt système, de la spec et de l'historique, rendue avec chaque réponse du chat et par `POST /api/chat/estimate/`  ; la jauge du frontend reste à livrer
+- [x] Estimation locale (aucun appel réseau) du prompt système, de la spec et de l'historique, rendue avec chaque réponse du chat et par `POST /api/chat/estimate/`  ; affichée en jauge au-dessus de la saisie
 - [x] Spec envoyée sous forme compacte (liens par nom, sans identifiants ni valeurs vides, sans indentation) ; historique borné aux messages récents qui tiennent (24 au plus), le dernier toujours envoyé, la spec faisant mémoire
-- [x] `chat_history` (et ses patchs) n'entre plus dans la spec envoyée à l'IA : écarté par le serveur (le frontend doit encore cesser de l'envoyer)
+- [x] `chat_history` (et ses patchs) n'entre plus dans la spec envoyée à l'IA : écarté par le serveur, plus envoyé par le frontend
 - [x] Refus explicite avant l'appel quand le budget est dépassé (413, `context_too_large`) ; erreur « contexte trop long » du fournisseur traduite de la même façon ; le patch n'est pas demandé s'il ne tient pas
 - [x] Même estimateur appliqué aux lots générés (lot 5) : un lot ne dépasse pas 20 000 jetons estimés
 **Tests à passer avant de clore le lot :**
 - [x] `python manage.py test api.tests.BudgetContexteTests` passe (estimation croissante avec la spec, seuil par modèle, refus avant appel, historique tronqué sans perdre le dernier message)
 - [x] `python manage.py test api.tests.ChatTests` reste vert
-- [ ] Frontend : liste des modèles lue sur l'API, jauge, `chat_history` plus envoyé ; `npm run build` sans erreur
-**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : suite complète verte, dont `BudgetContexteTests` (13) et `ChatTests` (8, inchangés). Backend seulement : le frontend du lot n'est pas encore intégré. Fenêtres Mistral posées prudemment (32 000 pour `small` et `codestral`) faute de pouvoir les vérifier hors ligne. Tests verts hors déploiement.
+- [x] Frontend : liste des modèles lue sur l'API, jauge, `chat_history` plus envoyé ; `npm run build` sans erreur
+**Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : suite complète verte, dont `BudgetContexteTests` (13) et `ChatTests` (8, inchangés). `npm run build` sans erreur ; jauge non essayée en navigateur. Fenêtres Mistral posées prudemment (32 000 pour `small` et `codestral`) faute de pouvoir les vérifier hors ligne. Tests verts hors déploiement.
 
 ## Lot 4 — Spécification alignée sur le cadriciel   ·   statut : en cours
 **Objectif :** toute spécification décrit une app que le moteur du lab sait créer et déployer, sans rien y contredire.

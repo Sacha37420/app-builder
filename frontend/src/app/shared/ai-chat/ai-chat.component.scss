@@ -518,6 +518,44 @@
   font-size: 0.82rem;
 }
 
+// ── Jauge de contexte ──────────────────────────────────────────────────────────
+.models-ko { margin: 0; padding: 0 0.75rem 0.5rem; font-size: 0.72rem; color: var(--text-mute); }
+
+.ctx {
+  --ctx: var(--success);
+  padding: 0.5rem 0.75rem 0;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--text-mute);
+
+  &.attention { --ctx: var(--warning); }
+  &.alerte    { --ctx: var(--danger); }
+}
+
+.ctx-bar {
+  height: 6px;
+  border-radius: 99px;
+  background: var(--overlay-strong);
+  overflow: hidden;
+
+  span { display: block; height: 100%; background: var(--ctx); transition: width 0.2s; }
+}
+
+.ctx-state { color: var(--ctx); }
+
+.ctx-details {
+  summary { min-height: 44px; padding: 13px 0; cursor: pointer; line-height: 18px; }
+
+  dl { display: grid; grid-template-columns: 1fr auto; gap: 2px 1rem; margin: 0 0 0.5rem; }
+  dt.sub { padding-left: 1rem; }
+  dd { margin: 0; text-align: right; font-family: var(--font-mono); color: var(--text); }
+}
+
+.ctx-note { margin: 0 0 0.5rem; }
+.ctx-block { color: var(--danger); }
+
 // ── Zone de saisie ─────────────────────────────────────────────────────────────
 .chat-input-area {
   display: flex;
