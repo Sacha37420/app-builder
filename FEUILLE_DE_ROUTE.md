@@ -102,3 +102,51 @@ python manage.py test
 - [x] `npm run build` du frontend sans erreur ; aucune couleur en dur dans les composants ajoutés (`grep` sur les valeurs hexadécimales)
 - [x] Test de cloisonnement vert après déploiement
 **Vérifié le :** 2026-10-13 — `bash chantiers/tests/essai.sh app-builder` : 158 tests, OK, dont `VueEnsembleTests` (6) et `GrapheReglesTests` (2). Arbre final : `npm run build` sans erreur (avertissements de budget de style sur cinq feuilles antérieures), `grep` de couleurs en dur vide sur `pages/overview/`. Interface non essayée en navigateur ; test de cloisonnement à lancer après déploiement : le lot passera « livré » à la mise en service. **Mis en service le 2026-10-13** : image du commit `57f79e5` construite pendant que l'ancienne tournait, `scripts/app-test.sh app-builder` vert sur cette image, migrations `0008` et `0009` jouées (les deux spécifications existantes intactes), test de cloisonnement 3/3 après déploiement. Vu en navigateur réel (compte `e2edev`) : jauge de contexte, pages « Vue d'ensemble », « Livrables » et « Lab & infra », puis la remise jusqu'au corps envoyé au moteur depuis lab-admin. Non vu : thème sombre ; création réelle d'un projet (demande un compte GitHub humain).
+
+---
+
+Lots ajoutés par l'analyse du 2026-10-31 (vue d'ensemble : `to_do_global.md` à la racine du dépôt
+du lab). [C] constaté, [D] déduit.
+
+## Lot 7 — Robustesse du chat IA   ·   statut : à faire
+**Objectif :** une entrée mal formée ou une erreur de fournisseur ne fait plus de 500 ni de fuite.
+**Constat [C] :**
+- `PATCH /api/apps/<id>/chat/ {"chat_history": null}` donne 500 (`views.py:824`, colonne `NOT NULL`).
+- `AIChatView` renvoie au client `str(exc)` du fournisseur (`views.py:736`).
+- Des `print` écrivent jusqu'à 300 caractères de la sortie brute de l'IA (`views.py:145,702`).
+**Tâches :**
+- [ ] `chat_history` validé : une liste, sinon 400
+- [ ] Message générique au client ; `logging` sans extrait brut
+**Tests à passer avant de clore le lot :**
+- [ ] `null` → 400 ; une exception du fournisseur donne un corps sans détail ; `bash chantiers/tests/essai.sh app-builder` vert
+**Vérifié le :**
+
+## Lot 8 — Clés IA hors de `localStorage`   ·   statut : à faire
+**Objectif :** une XSS sur le domaine commun du lab ne suffit plus à lire les clés Claude et Mistral.
+**Constat [C] :** les clés sont gardées en clair dans `localStorage`
+(`shared/ai-chat/ai-chat.component.ts:107-109`) et envoyées à chaque appel.
+**Tâches :**
+- [ ] Ⓟ `sessionStorage`, ou coffre côté serveur chiffré (comme oauth-hub)
+**Tests à passer avant de clore le lot :**
+- [ ] Après une conversation, aucune clé dans `localStorage` (navigateur réel) ; la clé n'apparaît jamais dans une réponse
+**Vérifié le :**
+
+## Lot 9 — Documentation et modèles à jour   ·   statut : à faire
+**Objectif :** un README qui décrit l'app et l'API de remise à lab-admin, et une liste de modèles IA juste.
+**Tâches :**
+- [ ] `README.md` : but, pages, API de l'éditeur, API de remise `/api/handoff/…` (codes 401/403/404/409, `KEYCLOAK_HANDOFF_CLIENTS`), tests. Aujourd'hui cette API n'est décrite que dans `chantiers/app-builder-lab/CONTRAT.md`, non versionné.
+- [ ] Table des modèles de `budget.py:37-52` à mettre à jour (fenêtres Mistral posées « de mémoire »)
+- [ ] Renommer `/preview` (page « Livrables ») en `/livrables`, avec redirection ; retirer de `TYPE_LABELS` les types Spring, qui ne sont plus « prêts »
+- [ ] Supprimer la branche fusionnée `worktree-agent-a92726caa5e3e0dce` ; réduire les budgets de style dépassés (cinq feuilles)
+**Tests à passer avant de clore le lot :**
+- [ ] `npm run build` sans avertissement de budget ; `/livrables` et l'ancien `/preview` s'ouvrent ; `BudgetContexteTests` vert
+**Vérifié le :**
+
+## Lot 10 — Parcours réel et gabarit front   ·   statut : à faire
+**Objectif :** prouver la remise jusqu'au déploiement, et aligner le front sur le gabarit (T3).
+**Tâches :**
+- [ ] Ⓟ Avec un compte GitHub humain : spécification → « Lancer la construction » → projet créé avec `FEUILLE_DE_ROUTE.md` et `CAHIER_DES_CHARGES.md` greffés → déployé
+- [ ] Thème sombre vérifié ; `tokenBases()` ; PKCE
+**Tests à passer avant de clore le lot :**
+- [ ] Le projet créé passe `validate-app.sh --quality-only` et se déploie
+**Vérifié le :**
