@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { apiUrl } from './env';
 import {
   AppSpec, ChatMessage, AiProvider, AgentPatch, PersistedChatMessage, PatchApplication, PatchMode, LabView, Livrables,
   ModelCatalogue, ChatContext, SpecGraph,
@@ -15,6 +16,8 @@ interface ChatResponse {
   context?: ChatContext;
 }
 
+export interface AiKeysState { claude_key_configured: boolean; mistral_key_configured: boolean; }
+
 /** Clés de la spec qui ne partent jamais vers l'IA : la conversation voyage dans `messages`. */
 const HORS_ENVOI_IA = ['chat_history', 'created_at', 'updated_at', 'owner_email'];
 
@@ -27,16 +30,12 @@ function messagesPourIa(messages: ChatMessage[]): { role: string; content: strin
   return messages.map(m => ({ role: m.role, content: m.content }));
 }
 
-interface EnvWindow {
-  __env?: { apiUrl?: string };
-}
-
 @Injectable({ providedIn: 'root' })
 export class BuilderApiService {
   private http = inject(HttpClient);
 
   private get base(): string {
-    return (window as unknown as EnvWindow).__env?.apiUrl ?? 'http://localhost:8087';
+    return apiUrl();
   }
 
   listApps(): Observable<AppSpec[]> {
@@ -78,13 +77,23 @@ export class BuilderApiService {
     messages: ChatMessage[],
     appSpec: AppSpec | null,
     provider: AiProvider,
-    apiKey: string,
     model: string,
   ): Observable<ChatResponse> {
+    // Aucune clé dans l'envoi : le serveur prend celle du coffre de l'utilisateur.
     return this.http.post<ChatResponse>(
       `${this.base}/api/chat/`,
-      { messages: messagesPourIa(messages), app_spec: specPourIa(appSpec), provider, api_key: apiKey, model },
+      { messages: messagesPourIa(messages), app_spec: specPourIa(appSpec), provider, model },
     );
+  }
+
+  /** Coffre des clés d'API : seulement « configurée ou non », jamais la clé. */
+  getAiKeys(): Observable<AiKeysState> {
+    return this.http.get<AiKeysState>(`${this.base}/api/ai-keys/`);
+  }
+
+  /** Dépose (ou, chaîne vide, supprime) une clé dans le coffre. Réponse 204. */
+  putAiKeys(keys: { claude_key?: string; mistral_key?: string }): Observable<void> {
+    return this.http.put<void>(`${this.base}/api/ai-keys/`, keys);
   }
 
   /** Les modèles proposés, par fournisseur, et la fenêtre de chacun. */

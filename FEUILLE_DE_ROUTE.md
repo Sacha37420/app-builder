@@ -108,7 +108,7 @@ python manage.py test
 Lots ajoutés par l'analyse du 2026-10-31 (vue d'ensemble : `to_do_global.md` à la racine du dépôt
 du lab). [C] constaté, [D] déduit.
 
-## Lot 7 — Robustesse du chat IA   ·   statut : à faire
+## Lot 7 — Robustesse du chat IA   ·   statut : en cours
 **Objectif :** une entrée mal formée ou une erreur de fournisseur ne fait plus de 500 ni de fuite.
 **Constat [C] :**
 - `PATCH /api/apps/<id>/chat/ {"chat_history": null}` donne 500 (`views.py:824`, colonne `NOT NULL`).
@@ -116,20 +116,24 @@ du lab). [C] constaté, [D] déduit.
 - Des `print` écrivent jusqu'à 300 caractères de la sortie brute de l'IA (`views.py:145,702`).
 **Tâches :**
 - [ ] `chat_history` validé : une liste, sinon 400
-- [ ] Message générique au client ; `logging` sans extrait brut
+- [x] Message générique au client (502) ; `logging` du seul type d'exception — fait avec le lot 8 (le texte d'une exception du fournisseur pouvait citer la requête). Les `print` d'extraits bruts restent
 **Tests à passer avant de clore le lot :**
 - [ ] `null` → 400 ; une exception du fournisseur donne un corps sans détail ; `bash chantiers/tests/essai.sh app-builder` vert
 **Vérifié le :**
 
-## Lot 8 — Clés IA hors de `localStorage`   ·   statut : à faire
+## Lot 8 — Clés IA hors de `localStorage`   ·   statut : en cours
 **Objectif :** une XSS sur le domaine commun du lab ne suffit plus à lire les clés Claude et Mistral.
 **Constat [C] :** les clés sont gardées en clair dans `localStorage`
 (`shared/ai-chat/ai-chat.component.ts:107-109`) et envoyées à chaque appel.
 **Tâches :**
-- [ ] Ⓟ `sessionStorage`, ou coffre côté serveur chiffré (comme oauth-hub)
+- [x] Coffre côté serveur chiffré (décision du propriétaire, chantier « failles », I3) : table `ai_key_vault` (migration `0010`), une ligne par compte (`owner_email`), `EncryptedTextField` sous `VAULT_ENCRYPTION_KEY` (jamais `SECRET_KEY` ; valeur indéchiffrable traitée comme absente)
+- [x] `GET /api/ai-keys/` → `{"claude_key_configured", "mistral_key_configured"}` seulement ; `PUT /api/ai-keys/` `{"claude_key"|"mistral_key": "…"}` → 204, chaîne vide ⇒ suppression
+- [x] `/api/chat/` lit la clé au coffre de l'appelant ; un `api_key` du corps est ignoré ; sans clé : 400 `key_not_configured`, aucun appel
+- [x] Front : saisie envoyée au coffre puis effacée, état « enregistrée » lu sur l'API ; anciennes entrées `ai_claude_key` / `ai_mistral_key` effacées de `localStorage` à l'ouverture, sans être envoyées
 **Tests à passer avant de clore le lot :**
+- [x] `python manage.py test api.tests.CoffreClesTests` passe (configured seul, chiffré en base, survit à un changement de `SECRET_KEY`, clé d'autrui ni lue ni utilisée, autre `azp` refusé, fournisseur simulé recevant la clé du coffre, réponse sans la clé)
 - [ ] Après une conversation, aucune clé dans `localStorage` (navigateur réel) ; la clé n'apparaît jamais dans une réponse
-**Vérifié le :**
+**Vérifié le :** 2026-11-01 — `bash chantiers/tests/essai.sh app-builder` vert (CoffreClesTests, ChatTests, BudgetContexteTests compris) ; `npx ng build` sans erreur. Non déployé ; navigateur réel à faire après déploiement.
 
 ## Lot 9 — Documentation et modèles à jour   ·   statut : à faire
 **Objectif :** un README qui décrit l'app et l'API de remise à lab-admin, et une liste de modèles IA juste.
@@ -142,11 +146,12 @@ du lab). [C] constaté, [D] déduit.
 - [ ] `npm run build` sans avertissement de budget ; `/livrables` et l'ancien `/preview` s'ouvrent ; `BudgetContexteTests` vert
 **Vérifié le :**
 
-## Lot 10 — Parcours réel et gabarit front   ·   statut : à faire
+## Lot 10 — Parcours réel et gabarit front   ·   statut : en cours
 **Objectif :** prouver la remise jusqu'au déploiement, et aligner le front sur le gabarit (T3).
 **Tâches :**
 - [ ] Ⓟ Avec un compte GitHub humain : spécification → « Lancer la construction » → projet créé avec `FEUILLE_DE_ROUTE.md` et `CAHIER_DES_CHARGES.md` greffés → déployé
-- [ ] Thème sombre vérifié ; `tokenBases()` ; PKCE
+- [x] `tokenBases()` (API d'App Builder seule, `core/env.ts`) et `core/token-scope.ts` dans l'intercepteur ; `pkceMethod: 'S256'` ; `redirect-uri.ts` aligné sur lab-admin ; ports liés à `${LAB_BIND_ADDR:-127.0.0.1}` (chantier « failles », I1/I2)
+- [ ] Thème sombre vérifié
 **Tests à passer avant de clore le lot :**
 - [ ] Le projet créé passe `validate-app.sh --quality-only` et se déploie
-**Vérifié le :**
+**Vérifié le :** 2026-11-01 — gabarit front : `npx ng build` sans erreur — non déployé (PKCE côté Keycloak posé par l'architecte après déploiement).

@@ -599,3 +599,13 @@
   &:hover:not(:disabled) { background: var(--accent-deep); }
   &:disabled { opacity: 0.4; cursor: not-allowed; }
 }
+
+.key-state {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-mute);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}

@@ -32,11 +32,16 @@ const STARTER_PROMPTS = [
 
 const LS = {
   provider:      'ai_provider',
-  claudeKey:     'ai_claude_key',
   claudeModel:   'ai_claude_model',
-  mistralKey:    'ai_mistral_key',
   mistralModel:  'ai_mistral_model',
 };
+
+/**
+ * Anciennes entrées où les clés étaient gardées en clair dans le navigateur.
+ * Effacées à l'ouverture, SANS être envoyées au serveur : l'utilisateur ressaisit
+ * sa clé une fois, elle va alors au coffre du serveur (`/api/ai-keys/`).
+ */
+const ANCIENNES_CLES = ['ai_claude_key', 'ai_mistral_key'];
 
 @Component({
   selector: 'app-ai-chat',
@@ -63,10 +68,17 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
   showMistralKey = signal(false);
 
   provider     = signal<AiProvider>('claude');
+  // Saisie en cours seulement (jamais persistée, vidée après l'envoi au coffre).
   claudeKey    = signal('');
   claudeModel  = signal('claude-sonnet-4-6');
   mistralKey   = signal('');
   mistralModel = signal('mistral-small-latest');
+  // Ce que dit le coffre du serveur : une clé est-elle enregistrée ? (jamais la clé)
+  claudeConfigured  = signal(false);
+  mistralConfigured = signal(false);
+  keysKnown         = signal(false);
+  keySaving         = signal(false);
+  keyMessage        = signal('');
 
   // State pour les choix du dernier message assistant
   selectedChoices = signal<Set<string>>(new Set());
@@ -105,9 +117,7 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
 
   constructor() {
     effect(() => localStorage.setItem(LS.provider,     this.provider()));
-    effect(() => localStorage.setItem(LS.claudeKey,    this.claudeKey()));
     effect(() => localStorage.setItem(LS.claudeModel,  this.claudeModel()));
-    effect(() => localStorage.setItem(LS.mistralKey,   this.mistralKey()));
     effect(() => localStorage.setItem(LS.mistralModel, this.mistralModel()));
 
     // Recharge le chat depuis le state (lui-même alimenté par le backend) à chaque changement de spec
@@ -141,9 +151,11 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
 
   ngOnInit(): void {
     this.provider.set((localStorage.getItem(LS.provider) ?? 'claude') as AiProvider);
-    this.claudeKey.set(localStorage.getItem(LS.claudeKey)    ?? '');
     this.claudeModel.set(localStorage.getItem(LS.claudeModel)  ?? 'claude-sonnet-4-6');
-    this.mistralKey.set(localStorage.getItem(LS.mistralKey)   ?? '');
+    for (const ancienne of ANCIENNES_CLES) {
+      try { localStorage.removeItem(ancienne); } catch { /* stockage indisponible : rien à effacer */ }
+    }
+    this.refreshKeys();
     this.mistralModel.set(localStorage.getItem(LS.mistralModel) ?? 'mistral-small-latest');
 
     this.api.getModels().subscribe({
@@ -174,7 +186,47 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
     if (el) el.scrollTop = el.scrollHeight;
   }
 
-  get activeKey():   string { return this.provider() === 'claude' ? this.claudeKey()   : this.mistralKey(); }
+  /** Une clé du fournisseur choisi est-elle au coffre ? (inconnu ⇒ on laisse le serveur juger) */
+  get activeKeyConfigured(): boolean {
+    if (!this.keysKnown()) return true;
+    return this.provider() === 'claude' ? this.claudeConfigured() : this.mistralConfigured();
+  }
+
+  // ── Coffre des clés (serveur) ──────────────────────────────────────────────
+
+  refreshKeys(): void {
+    this.api.getAiKeys().subscribe({
+      next: etat => {
+        this.claudeConfigured.set(!!etat?.claude_key_configured);
+        this.mistralConfigured.set(!!etat?.mistral_key_configured);
+        this.keysKnown.set(true);
+      },
+      error: () => this.keysKnown.set(false),
+    });
+  }
+
+  /** Envoie la clé saisie au coffre du serveur ; `''` la retire. */
+  saveKey(provider: AiProvider, retirer = false): void {
+    const saisie = provider === 'claude' ? this.claudeKey : this.mistralKey;
+    const valeur = retirer ? '' : saisie().trim();
+    if (!retirer && !valeur) return;
+    if (retirer && !confirm('Retirer la clé enregistrée sur le serveur ?')) return;
+    this.keySaving.set(true);
+    this.keyMessage.set('');
+    const corps = provider === 'claude' ? { claude_key: valeur } : { mistral_key: valeur };
+    this.api.putAiKeys(corps).subscribe({
+      next: () => {
+        saisie.set('');
+        this.keySaving.set(false);
+        this.keyMessage.set(retirer ? 'Clé retirée.' : 'Clé enregistrée sur le serveur.');
+        this.refreshKeys();
+      },
+      error: err => {
+        this.keySaving.set(false);
+        this.keyMessage.set(`Clé non enregistrée : ${err?.error?.error ?? 'erreur du serveur'}`);
+      },
+    });
+  }
   get activeModel(): string { return this.provider() === 'claude' ? this.claudeModel() : this.mistralModel(); }
 
   toggleSettings(): void { this.showSettings.update(v => !v); }
@@ -219,8 +271,8 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
   send(): void {
     const text = this.inputText().trim();
     if (!text || this.loading()) return;
-    if (!this.activeKey) {
-      this.error.set('Clé API manquante — ouvrez ⚙ et renseignez votre clé.');
+    if (!this.activeKeyConfigured) {
+      this.error.set('Clé API non enregistrée — ouvrez ⚙ et enregistrez votre clé.');
       return;
     }
 
@@ -231,7 +283,7 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
     this.error.set('');
     this.shouldScroll = true;
 
-    this.api.chat(this.messages(), this.state.spec(), this.provider(), this.activeKey, this.activeModel)
+    this.api.chat(this.messages(), this.state.spec(), this.provider(), this.activeModel)
       .subscribe({
         next: res => {
           const updated: DisplayMessage[] = [...this.messages(), {
@@ -250,6 +302,7 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
         error: err => {
           const corps = err.error;
           if (corps?.context) { this.mesureSeq++; this.contexte.set(corps.context); }
+          if (corps?.code === 'key_not_configured') this.refreshKeys();
           if (err.status === 413) {
             // Rien n'est parti : le message refusé quitte la liste et son texte revient dans la saisie.
             this.error.set(corps?.error ?? 'Cet envoi ne tient pas dans le modèle choisi.');

@@ -10,3 +10,4 @@ from .conformite import *  # noqa: F401,F403
 from .remise import *  # noqa: F401,F403
 from .budget import *  # noqa: F401,F403
 from .graphe import *  # noqa: F401,F403
+from .coffre import *  # noqa: F401,F403

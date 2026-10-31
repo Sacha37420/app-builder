@@ -34,14 +34,26 @@
               <input [type]="showClaudeKey() ? 'text' : 'password'"
                      [value]="claudeKey()"
                      (input)="claudeKey.set($any($event.target).value)"
-                     placeholder="sk-ant-api03-…" autocomplete="off" />
+                     (keydown.enter)="saveKey('claude')"
+                     [placeholder]="claudeConfigured() ? 'Clé enregistrée — saisir pour la remplacer' : 'sk-ant-api03-…'"
+                     autocomplete="off" />
               <button class="btn-eye" type="button"
                       (click)="showClaudeKey.update(v => !v)"
                       [title]="showClaudeKey() ? 'Masquer' : 'Afficher'">
                 {{ showClaudeKey() ? '🙈' : '👁' }}
               </button>
+              <button class="btn-eye" type="button" (click)="saveKey('claude')"
+                      [disabled]="keySaving() || !claudeKey().trim()">Enregistrer</button>
             </div>
           </label>
+          <p class="key-state" role="status">
+            @if (claudeConfigured()) {
+              ✓ Clé enregistrée sur le serveur (chiffrée, jamais renvoyée au navigateur).
+              <button class="btn-eye" type="button" (click)="saveKey('claude', true)" [disabled]="keySaving()">Retirer</button>
+            } @else {
+              Aucune clé enregistrée.
+            }
+          </p>
           <label class="field-row">
             <span class="field-label">Modèle</span>
             <select (change)="claudeModel.set($any($event.target).value)">
@@ -62,14 +74,26 @@
               <input [type]="showMistralKey() ? 'text' : 'password'"
                      [value]="mistralKey()"
                      (input)="mistralKey.set($any($event.target).value)"
-                     placeholder="Votre clé Mistral" autocomplete="off" />
+                     (keydown.enter)="saveKey('mistral')"
+                     [placeholder]="mistralConfigured() ? 'Clé enregistrée — saisir pour la remplacer' : 'Votre clé Mistral'"
+                     autocomplete="off" />
               <button class="btn-eye" type="button"
                       (click)="showMistralKey.update(v => !v)"
                       [title]="showMistralKey() ? 'Masquer' : 'Afficher'">
                 {{ showMistralKey() ? '🙈' : '👁' }}
               </button>
+              <button class="btn-eye" type="button" (click)="saveKey('mistral')"
+                      [disabled]="keySaving() || !mistralKey().trim()">Enregistrer</button>
             </div>
           </label>
+          <p class="key-state" role="status">
+            @if (mistralConfigured()) {
+              ✓ Clé enregistrée sur le serveur (chiffrée, jamais renvoyée au navigateur).
+              <button class="btn-eye" type="button" (click)="saveKey('mistral', true)" [disabled]="keySaving()">Retirer</button>
+            } @else {
+              Aucune clé enregistrée.
+            }
+          </p>
           <label class="field-row">
             <span class="field-label">Modèle</span>
             <select (change)="mistralModel.set($any($event.target).value)">
@@ -79,6 +103,10 @@
             </select>
           </label>
         </div>
+      }
+
+      @if (keyMessage()) {
+        <p class="models-ko" role="status">{{ keyMessage() }}</p>
       }
 
       @if (modelsUnavailable()) {
@@ -127,8 +155,9 @@
               </div>
               <div class="tuto-note">
                 <strong>🔒 Sécurité :</strong>
-                Votre clé est stockée uniquement dans votre navigateur (<code>localStorage</code>)
-                et transmise en HTTPS au backend. Elle n'est jamais enregistrée en base de données.
+                Votre clé est envoyée une fois au serveur d'App Builder, qui la garde chiffrée et
+                l'utilise pour appeler le fournisseur. Elle n'est jamais renvoyée au navigateur ni
+                gardée dans celui-ci ; vous pouvez la retirer à tout moment (bouton « Retirer »).
               </div>
             </div>
           }
@@ -168,8 +197,9 @@
               </div>
               <div class="tuto-note">
                 <strong>🔒 Sécurité :</strong>
-                Votre clé est stockée uniquement dans votre navigateur (<code>localStorage</code>)
-                et transmise en HTTPS au backend. Elle n'est jamais enregistrée en base de données.
+                Votre clé est envoyée une fois au serveur d'App Builder, qui la garde chiffrée et
+                l'utilise pour appeler le fournisseur. Elle n'est jamais renvoyée au navigateur ni
+                gardée dans celui-ci ; vous pouvez la retirer à tout moment (bouton « Retirer »).
               </div>
             </div>
           }
@@ -200,9 +230,9 @@
           <strong>L'agent construira un premier brouillon complet</strong> que vous pourrez appliquer
           en un clic — sans connaître Django ou Angular.
         </p>
-        @if (!activeKey) {
+        @if (!activeKeyConfigured) {
           <div class="intro-warning">
-            ⚙ Configurez d'abord votre clé API dans les paramètres (icône ⚙ en haut à droite).
+            ⚙ Enregistrez d'abord votre clé API dans les paramètres (icône ⚙ en haut à droite).
           </div>
         }
         <div class="starters">

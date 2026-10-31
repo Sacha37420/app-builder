@@ -1,13 +1,16 @@
 import re
 import json
+import logging
 import requests as http_requests
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import generics, status
 from rest_framework.response import Response
 from . import budget, conformite, patching
-from .models import AppSpec, PatchApplication
+from .models import AiKeyVault, AppSpec, PatchApplication
 from .serializers import AppSpecSerializer
+
+log = logging.getLogger(__name__)
 
 # ── Extraction du patch JSON depuis la réponse IA ─────────────────────────────
 
@@ -689,22 +692,75 @@ class ChatEstimateView(APIView):
         return Response({'context': _preparer(request.data)['context']})
 
 
+# ── Coffre des clés d'API (contrat « failles », I3) ───────────────────────────
+
+_VAULT_FIELDS = {'claude_key': 'claude', 'mistral_key': 'mistral'}
+_KEY_MAX_LEN = 512
+
+
+def cle_du_coffre(email: str, provider: str) -> str:
+    """La clé `provider` du compte `email`, '' si elle n'est pas configurée."""
+    coffre = AiKeyVault.objects.filter(owner_email=email).first()
+    if not coffre:
+        return ''
+    return (coffre.claude_key if provider == 'claude' else coffre.mistral_key) or ''
+
+
+class AiKeysView(APIView):
+    """GET /api/ai-keys/ → {"claude_key_configured": bool, "mistral_key_configured": bool}
+    — jamais la valeur, ni un extrait.
+    PUT /api/ai-keys/ {"claude_key": "…"} et/ou {"mistral_key": "…"} → 204 ;
+    chaîne vide ⇒ la clé est supprimée ; champ absent ⇒ inchangée."""
+
+    def get(self, request):
+        coffre = AiKeyVault.objects.filter(owner_email=request.user.email).first()
+        return Response({f'{champ}_configured': bool(coffre and getattr(coffre, champ))
+                         for champ in _VAULT_FIELDS})
+
+    def put(self, request):
+        donnees = request.data if isinstance(request.data, dict) else None
+        if not donnees:
+            return Response({'error': 'Corps attendu : {"claude_key": "…"} et/ou {"mistral_key": "…"}.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        inconnus = sorted(set(donnees) - set(_VAULT_FIELDS))
+        if inconnus:
+            return Response({'error': f'Champ(s) inconnu(s) : {", ".join(inconnus)}.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        valeurs = {}
+        for champ, valeur in donnees.items():
+            if not isinstance(valeur, str):
+                return Response({'error': f'{champ} : une chaîne est attendue.'}, status=status.HTTP_400_BAD_REQUEST)
+            valeur = valeur.strip()
+            if len(valeur) > _KEY_MAX_LEN or any(c.isspace() or not c.isprintable() for c in valeur):
+                return Response({'error': f'{champ} : clé mal formée.'}, status=status.HTTP_400_BAD_REQUEST)
+            valeurs[champ] = valeur
+        coffre, _ = AiKeyVault.objects.get_or_create(owner_email=request.user.email)
+        for champ, valeur in valeurs.items():
+            setattr(coffre, champ, valeur)
+        coffre.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class AIChatView(APIView):
-    """POST /api/chat/ — proxy structuré vers Mistral ou Claude."""
+    """POST /api/chat/ — proxy structuré vers Mistral ou Claude.
+
+    La clé est celle du coffre de l'utilisateur connecté (`/api/ai-keys/`) ; un
+    `api_key` éventuellement présent dans le corps est ignoré."""
 
     def post(self, request):
-        api_key = (request.data.get('api_key') or '').strip()
         envoi = _preparer(request.data)
         provider, model, app_spec = envoi['provider'], envoi['model'], envoi['app_spec']
         messages, contexte = envoi['messages'], envoi['context']
         self._contexte = contexte
+        api_key = cle_du_coffre(request.user.email, provider)
 
         print(f"[CHAT] provider={provider} model={model} messages={len(messages)} "
               f"jetons≈{contexte['estimated_tokens']}/{contexte['available_tokens']}")
 
         if not api_key:
             return Response(
-                {'error': f'Clé API {provider} manquante. Configurez-la dans les paramètres (⚙).'},
+                {'error': f'Clé API {provider} non configurée. Enregistrez-la dans les paramètres (⚙).',
+                 'code': 'key_not_configured'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if not messages:
@@ -733,7 +789,11 @@ class AIChatView(APIView):
             if budget.est_un_depassement(exc):
                 # Notre estimation était trop basse : même réponse que le refus local.
                 return trop_long
-            return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+            # Message générique : le texte d'une exception du fournisseur n'est pas
+            # rendu au client (il pourrait citer la requête envoyée).
+            log.warning('Chat : appel au fournisseur %s échoué (%s).', provider, type(exc).__name__)
+            return Response({'error': f'L\'appel au fournisseur {provider} a échoué. Vérifiez votre clé ou réessayez.'},
+                            status=status.HTTP_502_BAD_GATEWAY)
 
     def _finish(self, provider, content, choices, patch_ready, api_key, model, app_spec, messages,
                 tronquee=False):

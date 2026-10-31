@@ -161,7 +161,12 @@ if not DEBUG:
 else:
     CORS_ALLOWED_ORIGINS = []
 
+# ── Coffre des clés d'API (api/fields.py) ─────────────────────────────────────
+# Clé Fernet propre au coffre, SANS valeur par défaut : jamais dérivée de SECRET_KEY.
+VAULT_ENCRYPTION_KEY = config('VAULT_ENCRYPTION_KEY')
+
 # ── Clés API agents ────────────────────────────────────────────────────────────
+# Non utilisées par le chat : chaque utilisateur paie avec sa propre clé (coffre).
 ANTHROPIC_API_KEY = config('ANTHROPIC_API_KEY', default='')
 MISTRAL_API_KEY   = config('MISTRAL_API_KEY',   default='')
 

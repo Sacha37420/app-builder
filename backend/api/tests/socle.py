@@ -29,7 +29,7 @@ from rest_framework.test import APIClient
 
 from api import patching, views
 from api.authentication import KeycloakJWTAuthentication
-from api.models import AppSpec, EndpointGroup, FrontendService, Page, PatchApplication
+from api.models import AiKeyVault, AppSpec, EndpointGroup, FrontendService, Page, PatchApplication
 
 CLIENT_ID = 'app-builder'
 _RSA = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -71,6 +71,12 @@ class Base(TestCase):
                               classmethod(lambda cls: _JwksLocal()))
         p.start()
         self.addCleanup(p.stop)
+
+    @staticmethod
+    def coffre(uid='alice', claude='', mistral='') -> AiKeyVault:
+        """Pose directement les clés d'un compte dans le coffre (comme le ferait PUT /api/ai-keys/)."""
+        return AiKeyVault.objects.update_or_create(owner_email=f'{uid}@ssolab.local',
+                                                   defaults={'claude_key': claude, 'mistral_key': mistral})[0]
 
     def client_de(self, uid='alice', **kw) -> APIClient:
         c = APIClient()
@@ -562,27 +568,35 @@ class ChatTests(Base):
     def setUp(self):
         super().setUp()
         self.alice = self.client_de('alice')
-        self.corps = {'provider': 'claude', 'api_key': 'cle-de-alice',
+        self.coffre('alice', claude='cle-de-alice', mistral='cle-de-alice')
+        self.corps = {'provider': 'claude',
                       'messages': [{'role': 'user', 'content': 'Une boutique'}], 'app_spec': {'name': 'B'}}
 
-    def test_sans_cle_personnelle_aucun_appel_la_cle_du_serveur_ne_sert_pas(self):
-        # Le chat se fait avec la clé de l'utilisateur. Les clés du .env
-        # (ANTHROPIC_API_KEY / MISTRAL_API_KEY) ne doivent jamais financer
-        # les conversations de tout compte autorisé.
+    def test_sans_cle_au_coffre_aucun_appel_ni_cle_du_corps_ni_cle_du_serveur(self):
+        # Le chat se fait avec la clé du coffre de l'utilisateur. Une clé envoyée
+        # dans le corps n'est plus lue, et les clés du .env (ANTHROPIC_API_KEY /
+        # MISTRAL_API_KEY) ne financent jamais les conversations.
+        bob = self.client_de('bob')
         for provider in ('claude', 'mistral'):
-            for cle in ('', '   ', None):
+            for corps_cle in (None, 'cle-dans-le-corps'):
                 corps = {**self.corps, 'provider': provider}
-                if cle is None:
-                    corps.pop('api_key')
-                else:
-                    corps['api_key'] = cle
-                with self.subTest(provider=provider, cle=cle), \
+                if corps_cle:
+                    corps['api_key'] = corps_cle
+                with self.subTest(provider=provider, corps_cle=corps_cle), \
                         mock.patch('anthropic.Anthropic') as anthropic_ctor, \
                         mock.patch.object(views.http_requests, 'post') as post:
-                    resp = self.alice.post('/api/chat/', corps, format='json')
+                    resp = bob.post('/api/chat/', corps, format='json')
                     self.assertEqual(resp.status_code, 400)
+                    self.assertEqual(resp.json()['code'], 'key_not_configured')
                     anthropic_ctor.assert_not_called()
                     post.assert_not_called()
+
+    def test_une_cle_du_corps_n_ecrase_pas_celle_du_coffre(self):
+        client = _client_claude('Bonjour.')
+        with mock.patch('anthropic.Anthropic', return_value=client) as ctor:
+            resp = self.alice.post('/api/chat/', {**self.corps, 'api_key': 'cle-forcee'}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(ctor.call_args.kwargs, {'api_key': 'cle-de-alice'})
 
     def test_question_simple_un_seul_echange(self):
         client = _client_claude('Phase 1.\nQuel type ?\nCHOICES_START\n{"multiple": false, "items": ["A"]}\nCHOICES_END')
@@ -649,10 +663,12 @@ class ChatTests(Base):
         with mock.patch.object(views.http_requests, 'post', side_effect=requests.exceptions.ConnectTimeout()):
             resp = self.alice.post('/api/chat/', {**self.corps, 'provider': 'mistral'}, format='json')
         self.assertEqual(resp.status_code, 504)
-        with mock.patch('anthropic.Anthropic', side_effect=RuntimeError('clé refusée')):
+        with mock.patch('anthropic.Anthropic', side_effect=RuntimeError('détail interne cle-de-alice')):
             resp = self.alice.post('/api/chat/', self.corps, format='json')
         self.assertEqual(resp.status_code, 502)
-        self.assertEqual(resp.json(), {'error': 'clé refusée'})
+        # Le texte de l'exception du fournisseur n'est pas rendu (il pourrait citer la clé).
+        self.assertNotIn('cle-de-alice', resp.content.decode())
+        self.assertNotIn('détail interne', resp.content.decode())
 
 
 # ═══ 4. Patchs IA appliqués côté serveur ══════════════════════════════════════

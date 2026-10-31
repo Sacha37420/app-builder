@@ -37,6 +37,7 @@ export class KeycloakService {
       onLoad:           'login-required',
       checkLoginIframe: false,
       redirectUri,
+      pkceMethod:       'S256',
     });
   }
 

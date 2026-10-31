@@ -1,4 +1,5 @@
 from django.db import models
+from .fields import EncryptedTextField
 
 
 class AppSpec(models.Model):
@@ -204,3 +205,23 @@ class PatchApplication(models.Model):
     class Meta:
         db_table = 'patch_applications'
         ordering = ['-id']
+
+
+class AiKeyVault(models.Model):
+    """Coffre des clés d'API d'un utilisateur (Claude, Mistral).
+
+    Une ligne par compte (`owner_email`, comme les spécifications). Les clés sont
+    chiffrées au repos (`VAULT_ENCRYPTION_KEY`) et ne sortent jamais vers le
+    navigateur : l'API ne rend que « configurée : oui / non », et c'est le
+    backend qui appelle le fournisseur avec la clé lue ici.
+    """
+    owner_email = models.EmailField(max_length=255, unique=True)
+    claude_key = EncryptedTextField(blank=True, default='')
+    mistral_key = EncryptedTextField(blank=True, default='')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'ai_key_vault'
+
+    def __str__(self):
+        return f'coffre de {self.owner_email}'

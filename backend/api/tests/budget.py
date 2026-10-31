@@ -16,7 +16,8 @@ class BudgetContexteTests(Base):
     def setUp(self):
         super().setUp()
         self.alice = self.client_de('alice')
-        self.corps = {'provider': 'claude', 'api_key': 'cle-de-alice',
+        self.coffre('alice', claude='cle-de-alice', mistral='cle-de-alice')
+        self.corps = {'provider': 'claude',
                       'messages': [{'role': 'user', 'content': 'Une boutique'}], 'app_spec': {'name': 'B'}}
 
     def estimer(self, **corps):
@@ -74,7 +75,6 @@ class BudgetContexteTests(Base):
 
     def test_l_estimation_n_appelle_personne_et_ne_demande_pas_de_cle(self):
         corps = dict(self.corps)
-        corps.pop('api_key')
         with mock.patch('anthropic.Anthropic', side_effect=AssertionError('appel')), \
                 mock.patch.object(views.http_requests, 'post', side_effect=AssertionError('appel')), \
                 mock.patch('socket.socket', side_effect=AssertionError('réseau')):
