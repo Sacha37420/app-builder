@@ -114,6 +114,8 @@ du lab). [C] constaté, [D] déduit.
 - `PATCH /api/apps/<id>/chat/ {"chat_history": null}` donne 500 (`views.py:824`, colonne `NOT NULL`).
 - `AIChatView` renvoie au client `str(exc)` du fournisseur (`views.py:736`).
 - Des `print` écrivent jusqu'à 300 caractères de la sortie brute de l'IA (`views.py:145,702`).
+- 2026-11-08 (relecture, code inchangé) : `chat_history` est toujours pris tel quel (`views.py:884`) ;
+  il reste un seul extrait brut, `views.py:148` (`[PATCH] Extrait brut`).
 **Tâches :**
 - [ ] `chat_history` validé : une liste, sinon 400
 - [x] Message générique au client (502) ; `logging` du seul type d'exception — fait avec le lot 8 (le texte d'une exception du fournisseur pouvait citer la requête). Les `print` d'extraits bruts restent
@@ -141,7 +143,7 @@ du lab). [C] constaté, [D] déduit.
 - [ ] `README.md` : but, pages, API de l'éditeur, API de remise `/api/handoff/…` (codes 401/403/404/409, `KEYCLOAK_HANDOFF_CLIENTS`), tests. Aujourd'hui cette API n'est décrite que dans `chantiers/app-builder-lab/CONTRAT.md`, non versionné.
 - [ ] Table des modèles de `budget.py:37-52` à mettre à jour (fenêtres Mistral posées « de mémoire »)
 - [ ] Renommer `/preview` (page « Livrables ») en `/livrables`, avec redirection ; retirer de `TYPE_LABELS` les types Spring, qui ne sont plus « prêts »
-- [ ] Supprimer la branche fusionnée `worktree-agent-a92726caa5e3e0dce` ; réduire les budgets de style dépassés (cinq feuilles)
+- [ ] Supprimer la branche fusionnée `worktree-agent-a92726caa5e3e0dce` (toujours là le 2026-11-08) ; réduire les budgets de style dépassés (cinq feuilles)
 **Tests à passer avant de clore le lot :**
 - [ ] `npm run build` sans avertissement de budget ; `/livrables` et l'ancien `/preview` s'ouvrent ; `BudgetContexteTests` vert
 **Vérifié le :**
@@ -154,7 +156,7 @@ du lab). [C] constaté, [D] déduit.
 - [ ] Thème sombre vérifié
 **Tests à passer avant de clore le lot :**
 - [ ] Le projet créé passe `validate-app.sh --quality-only` et se déploie
-**Vérifié le :** 2026-11-01 — gabarit front : `npx ng build` sans erreur — non déployé (PKCE côté Keycloak posé par l'architecte après déploiement).
+**Vérifié le :** 2026-11-01 — gabarit front : `npx ng build` sans erreur — non déployé (PKCE côté Keycloak posé par l'architecte après déploiement). Mis en service le 2026-11-01 (section suivante).
 
 ## Mise en service — chantier « failles » (2026-11-01)
 Les mentions « non déployé » ci-dessus datent d'avant cette mise en service. Image construite pendant
