@@ -72,10 +72,11 @@ class Base(TestCase):
         self.addCleanup(p.stop)
 
     @staticmethod
-    def coffre(uid='alice', claude='', mistral='') -> AiKeyVault:
+    def coffre(uid='alice', claude='', mistral='', albert='') -> AiKeyVault:
         """Pose directement les clés d'un compte dans le coffre (comme le ferait PUT /api/ai-keys/)."""
-        return AiKeyVault.objects.update_or_create(owner_email=f'{uid}@ssolab.local',
-                                                   defaults={'claude_key': claude, 'mistral_key': mistral})[0]
+        return AiKeyVault.objects.update_or_create(
+            owner_email=f'{uid}@ssolab.local',
+            defaults={'claude_key': claude, 'mistral_key': mistral, 'albert_key': albert})[0]
 
     def client_de(self, uid='alice', **kw) -> APIClient:
         c = APIClient()

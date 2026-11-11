@@ -1,4 +1,4 @@
-"""Adaptateur unique Anthropic / Mistral : un appel non streamé, réponse normalisée.
+"""Adaptateur unique Anthropic / compatible OpenAI (Mistral, Albert) : un appel non streamé, réponse normalisée.
 
 Un tour de boucle ne connaît que `Reponse` (texte, appels d'outils, arrêt, usage)
 et deux fonctions : `appeler` et `ajouter_resultats`. Les messages propres à
@@ -12,8 +12,11 @@ Réponse de l'assistant rejouée ENTIÈRE dans le tour (réflexion comprise : on
 n'édite jamais l'historique). Cache : bloc system stable marqué `ephemeral`,
 plus le cache automatique de premier niveau pour la queue du tour.
 
-Mistral : HTTP (`requests`), `tool_calls[].function.arguments` est une chaîne
-JSON à décoder — illisible ⇒ résultat d'erreur rendu au modèle.
+Compatible OpenAI (Mistral, Albert — adresse dans `budget.FOURNISSEURS`) : HTTP
+(`requests`), `tool_calls[].function.arguments` est une chaîne JSON à décoder —
+illisible ⇒ résultat d'erreur rendu au modèle. `tool_choice: "auto"` toujours
+explicite (DeepSeek V4 sur Albert n'émet aucun appel d'outil sans lui). Un appel
+d'outil peut venir avec un contenu vide (Gemma 4 sur Albert) : c'est normal.
 """
 import json
 from dataclasses import dataclass, field
@@ -21,6 +24,8 @@ from dataclasses import dataclass, field
 import requests as http_requests
 
 MISTRAL_URL = 'https://api.mistral.ai/v1/chat/completions'
+# Où régler une clé ou un modèle (les messages d'erreur y renvoient).
+PAGE_IA = 'la page « Intelligence artificielle »'
 BETA_FALLBACK = 'server-side-fallback-2026-07-01'
 
 
@@ -73,7 +78,7 @@ def _erreur_anthropic(exc) -> ErreurFournisseur:
     if budget.est_un_depassement(exc):
         return ErreurFournisseur(413, '', depassement=True)
     if isinstance(exc, anthropic.AuthenticationError) or isinstance(exc, anthropic.PermissionDeniedError):
-        return ErreurFournisseur(502, 'Clé claude refusée par le fournisseur : vérifiez-la dans les paramètres (⚙).')
+        return ErreurFournisseur(502, f'Clé claude refusée par le fournisseur : vérifiez-la sur {PAGE_IA}.')
     if isinstance(exc, anthropic.RateLimitError):
         return ErreurFournisseur(502, 'Quota du fournisseur claude atteint : réessayez dans quelques instants.')
     return ErreurFournisseur(502, 'L’appel au fournisseur claude a échoué. Vérifiez votre clé ou réessayez.')
@@ -138,11 +143,20 @@ def resultats_anthropic(resultats) -> dict:
         for i, _nom, contenu, erreur in resultats]}
 
 
-# ── Mistral ───────────────────────────────────────────────────────────────────
+# ── Compatible OpenAI (Mistral, Albert) ───────────────────────────────────────
 
-def appeler_mistral(cle: str, fiche: dict, systeme_stable: str, systeme_variable: str, messages: list,
-                    outils: list | None, max_tokens: int, timeout: float, format_json=False) -> Reponse:
+def _url_chat(provider: str) -> str:
     from .. import budget
+    if provider == 'mistral':
+        return MISTRAL_URL          # gardée en constante : les tests la vérifient
+    return budget.FOURNISSEURS[provider]['url'] + '/chat/completions'
+
+
+def appeler_openai(provider: str, cle: str, fiche: dict, systeme_stable: str, systeme_variable: str,
+                   messages: list, outils: list | None, max_tokens: int, timeout: float,
+                   format_json=False) -> Reponse:
+    from .. import budget
+    nom = budget.FOURNISSEURS[provider]['label']
     payload = {'model': fiche['id'], 'max_tokens': max_tokens,
                'messages': [{'role': 'system', 'content': systeme_stable + '\n\n' + systeme_variable}] + messages}
     if outils:
@@ -151,24 +165,26 @@ def appeler_mistral(cle: str, fiche: dict, systeme_stable: str, systeme_variable
     if format_json:
         payload['response_format'] = {'type': 'json_object'}
     try:
-        resp = http_requests.post(MISTRAL_URL, headers={'Authorization': f'Bearer {cle}',
-                                                        'Content-Type': 'application/json'},
+        resp = http_requests.post(_url_chat(provider), headers={'Authorization': f'Bearer {cle}',
+                                                                'Content-Type': 'application/json'},
                                   json=payload, timeout=(10, max(timeout, 5)))
         resp.raise_for_status()
         donnees = resp.json()
         choix = donnees['choices'][0]
         message = choix.get('message') or {}
     except http_requests.exceptions.Timeout as exc:
-        raise ErreurFournisseur(504, 'Impossible de joindre l’API Mistral à temps. Réessayez dans quelques instants.') from exc
+        raise ErreurFournisseur(504, f'Impossible de joindre {nom} à temps. Réessayez dans quelques instants.') from exc
     except Exception as exc:  # noqa: BLE001
         if budget.est_un_depassement(exc):
             raise ErreurFournisseur(413, '', depassement=True) from exc
         code = getattr(getattr(exc, 'response', None), 'status_code', None)
         if code in (401, 403):
-            raise ErreurFournisseur(502, 'Clé mistral refusée par le fournisseur : vérifiez-la dans les paramètres (⚙).') from exc
+            raise ErreurFournisseur(502, f'Clé {nom} refusée par le fournisseur : vérifiez-la sur {PAGE_IA}.') from exc
+        if code == 404:
+            raise ErreurFournisseur(502, f'Modèle inconnu chez {nom} : choisissez-en un autre sur {PAGE_IA}.') from exc
         if code == 429:
-            raise ErreurFournisseur(502, 'Quota du fournisseur mistral atteint : réessayez dans quelques instants.') from exc
-        raise ErreurFournisseur(502, 'L’appel au fournisseur mistral a échoué. Vérifiez votre clé ou réessayez.') from exc
+            raise ErreurFournisseur(502, f'Quota du fournisseur {nom} atteint : réessayez dans quelques instants.') from exc
+        raise ErreurFournisseur(502, f'L’appel au fournisseur {nom} a échoué. Vérifiez votre clé ou réessayez.') from exc
 
     contenu = message.get('content') or ''
     if isinstance(contenu, list):     # contenu en morceaux (certains modèles)
@@ -194,6 +210,12 @@ def appeler_mistral(cle: str, fiche: dict, systeme_stable: str, systeme_variable
     if appels_bruts:
         assistant['tool_calls'] = appels_bruts
     return Reponse(texte=contenu.strip(), appels=appels, arret=arret, usage=usage, message_assistant=assistant)
+
+
+def appeler_mistral(cle: str, fiche: dict, systeme_stable: str, systeme_variable: str, messages: list,
+                    outils: list | None, max_tokens: int, timeout: float, format_json=False) -> Reponse:
+    return appeler_openai('mistral', cle, fiche, systeme_stable, systeme_variable, messages, outils,
+                          max_tokens, timeout, format_json)
 
 
 def resultats_mistral(resultats) -> list[dict]:

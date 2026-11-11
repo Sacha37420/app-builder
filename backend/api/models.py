@@ -236,7 +236,7 @@ class PatchApplication(models.Model):
 
 
 class AiKeyVault(models.Model):
-    """Coffre des clés d'API d'un utilisateur (Claude, Mistral).
+    """Coffre des clés d'API d'un utilisateur (Claude, Mistral, Albert).
 
     Une ligne par compte (`owner_email`, comme les spécifications). Les clés sont
     chiffrées au repos (`VAULT_ENCRYPTION_KEY`) et ne sortent jamais vers le
@@ -246,6 +246,7 @@ class AiKeyVault(models.Model):
     owner_email = models.EmailField(max_length=255, unique=True)
     claude_key = EncryptedTextField(blank=True, default='')
     mistral_key = EncryptedTextField(blank=True, default='')
+    albert_key = EncryptedTextField(blank=True, default='')
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

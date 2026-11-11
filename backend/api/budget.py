@@ -72,8 +72,33 @@ MODELES = (
      'context_window': 128_000, 'max_output': 8_192, 'tools': True},
     {'id': 'codestral-latest', 'provider': 'mistral', 'label': 'Codestral — Spécialisé code',
      'context_window': 32_000, 'max_output': 8_192, 'tools': True},
+    # Albert (DINUM) — table PRUDENTE d'après la doc du 2026-11-11 (guides.ia.numerique.gouv.fr,
+    # « Modèles disponibles ») ; la vraie liste est lue par `GET /v1/models` avec la clé de
+    # l'utilisateur (api/ia/catalogue.py) et la complète. Les alias `openweight-*` survivent aux
+    # remplacements de modèle annoncés par la DINUM.
+    {'id': 'openweight-large', 'provider': 'albert', 'label': 'openweight-large (gpt-oss-120b) — Recommandé ★',
+     'context_window': 131_072, 'max_output': 8_192, 'tools': True},
+    {'id': 'openweight-medium', 'provider': 'albert', 'label': 'openweight-medium (Mistral Small 3.2)',
+     'context_window': 131_072, 'max_output': 8_192, 'tools': True},
+    {'id': 'openweight-small', 'provider': 'albert', 'label': 'openweight-small (Ministral 3 8B) — Rapide',
+     'context_window': 262_144, 'max_output': 8_192, 'tools': True},
 )
-MODELE_PAR_DEFAUT = {'claude': 'claude-sonnet-5-5', 'mistral': 'mistral-small-latest'}
+MODELE_PAR_DEFAUT = {'claude': 'claude-sonnet-5-5', 'mistral': 'mistral-small-latest', 'albert': 'openweight-large'}
+
+# ── Les fournisseurs ──────────────────────────────────────────────────────────
+# `protocole` : `anthropic` (SDK officiel) ou `openai` (chat completions compatibles :
+# `tools` au format `function`, `tool_calls`, messages `tool`). `champ` : colonne du coffre
+# (`AiKeyVault`). `catalogue` : `fixe` (table ci-dessus seulement) ou `dynamique` (liste
+# lue chez le fournisseur avec la clé de l'utilisateur, la table servant de repli).
+FOURNISSEURS = {
+    'claude': {'label': 'Claude (Anthropic)', 'protocole': 'anthropic', 'champ': 'claude_key',
+               'catalogue': 'fixe', 'aide': 'Clé d’API Anthropic (sk-ant-api…), console.anthropic.com.'},
+    'mistral': {'label': 'Mistral', 'protocole': 'openai', 'url': 'https://api.mistral.ai/v1',
+                'champ': 'mistral_key', 'catalogue': 'fixe', 'aide': 'Clé d’API Mistral, console.mistral.ai.'},
+    'albert': {'label': 'Albert (DINUM)', 'protocole': 'openai', 'url': 'https://albert.api.etalab.gouv.fr/v1',
+               'champ': 'albert_key', 'catalogue': 'dynamique',
+               'aide': 'Clé d’API Albert (agents publics, accès par ProConnect) — guides.ia.numerique.gouv.fr/albert-api.'},
+}
 # Anciens identifiants encore enregistrés dans des navigateurs.
 _ALIAS = {'claude-haiku-4-5-20251001': 'claude-haiku-4-5'}
 # Modèle inconnu de la table : on le laisse passer, avec la plus petite fenêtre et
@@ -82,7 +107,7 @@ _FENETRE_INCONNUE = 32_000
 
 # Sortie demandée par appel (non streamé : le SDK d'Anthropic refuse au-delà
 # d'environ 21 000 jetons sans flux). La réflexion des modèles récents compte dedans.
-SORTIE_PAR_APPEL = {'claude': 16_000, 'mistral': 8_192}
+SORTIE_PAR_APPEL = {'claude': 16_000, 'mistral': 8_192, 'albert': 8_192}
 # Place gardée pour les résultats d'outils d'un tour (lectures, essais à blanc).
 RESERVE_OUTILS = 8_000
 
@@ -93,16 +118,28 @@ HISTORIQUE_MAX_MESSAGES = 24
 
 
 def fournisseur(provider) -> str:
-    return 'mistral' if provider == 'mistral' else 'claude'
+    """Un fournisseur connu ; Claude pour tout le reste (valeur absente ou mal formée)."""
+    return provider if isinstance(provider, str) and provider in FOURNISSEURS else 'claude'
+
+
+def fournisseur_existe(provider) -> bool:
+    return isinstance(provider, str) and provider in FOURNISSEURS
 
 
 def modele(provider, identifiant=None) -> dict:
-    """La fiche du modèle demandé (celui par défaut du fournisseur si aucun)."""
+    """La fiche du modèle demandé (celui par défaut du fournisseur si aucun).
+
+    Ordre : la table ci-dessus, puis les modèles déjà lus chez un fournisseur à catalogue
+    dynamique (cache, aucun appel réseau ici), puis une fiche prudente."""
     provider = fournisseur(provider)
     identifiant = _ALIAS.get(identifiant, identifiant) or MODELE_PAR_DEFAUT[provider]
     for m in MODELES:
         if m['id'] == identifiant and m['provider'] == provider:
             return dict(m)
+    from .ia import catalogue as catalogue_ia
+    connu = catalogue_ia.fiche_connue(provider, identifiant)
+    if connu:
+        return dict(connu)
     return {'id': identifiant, 'provider': provider, 'label': identifiant,
             'context_window': _FENETRE_INCONNUE, 'max_output': 4_096, 'tools': False,
             'effort': None, 'thinking': None, 'fallbacks': False, 'cache_min': 0}
@@ -113,13 +150,22 @@ def sortie(fiche: dict) -> int:
     return min(fiche['max_output'], SORTIE_PAR_APPEL[fiche['provider']])
 
 
-def catalogue() -> dict:
-    """La liste servie à l'interface, par fournisseur."""
+_CHAMPS_PUBLICS = ('id', 'label', 'context_window', 'max_output', 'tools')
+
+
+def modeles_fixes(provider: str) -> list[dict]:
+    return [{c: m[c] for c in _CHAMPS_PUBLICS} for m in MODELES if m['provider'] == provider]
+
+
+def catalogue(modeles_par_fournisseur: dict | None = None) -> dict:
+    """La liste servie à l'interface, par fournisseur. `modeles_par_fournisseur` :
+    listes déjà résolues (catalogue dynamique lu avec la clé de l'appelant) ; à défaut,
+    la table fixe."""
+    modeles_par_fournisseur = modeles_par_fournisseur or {}
     return {
-        'providers': {p: {'default': MODELE_PAR_DEFAUT[p],
-                          'models': [{c: m[c] for c in ('id', 'label', 'context_window', 'max_output', 'tools')}
-                                     for m in MODELES if m['provider'] == p]}
-                      for p in ('claude', 'mistral')},
+        'providers': {p: {'label': f['label'], 'default': MODELE_PAR_DEFAUT[p],
+                          'models': modeles_par_fournisseur.get(p) or modeles_fixes(p)}
+                      for p, f in FOURNISSEURS.items()},
         'lot_budget_tokens': LOT_BUDGET_JETONS,
     }
 
