@@ -4,11 +4,11 @@ import { Observable } from 'rxjs';
 import { apiUrl } from './env';
 import {
   AppSpec, ChatMessage, AiProvider, PersistedChatMessage, PatchApplication, LabView, Livrables,
-  ModelCatalogue, ChatContext, SpecGraph, ChatResponse, SpecOperation, OperationsApplied, OperationsTrial,
+  ModelCatalogue, AiSettings, ChatContext, SpecGraph, ChatResponse, SpecOperation, OperationsApplied, OperationsTrial,
   McpToken, McpInfo, McpScope,
 } from '../models/app-spec.model';
 
-export interface AiKeysState { claude_key_configured: boolean; mistral_key_configured: boolean; }
+export interface AiKeysState { claude_key_configured: boolean; mistral_key_configured: boolean; albert_key_configured: boolean; }
 
 /** Clés de la spec qui ne partent jamais vers l'IA : la conversation voyage dans `messages`. */
 const HORS_ENVOI_IA = ['chat_history', 'created_at', 'updated_at', 'owner_email', 'version'];
@@ -97,8 +97,18 @@ export class BuilderApiService {
   }
 
   /** Dépose (ou, chaîne vide, supprime) une clé dans le coffre. Réponse 204. */
-  putAiKeys(keys: { claude_key?: string; mistral_key?: string }): Observable<void> {
+  putAiKeys(keys: { claude_key?: string; mistral_key?: string; albert_key?: string }): Observable<void> {
     return this.http.put<void>(`${this.base}/api/ai-keys/`, keys);
+  }
+
+  /** Fournisseurs, état des clés (jamais la clé), modèles et préférences de l'appelant. */
+  getAiSettings(): Observable<AiSettings> {
+    return this.http.get<AiSettings>(`${this.base}/api/ai-settings/`);
+  }
+
+  /** Enregistre le fournisseur choisi et/ou le modèle choisi par fournisseur ; rend l'état complet. */
+  putAiSettings(body: { provider?: AiProvider; models?: Partial<Record<AiProvider, string>> }): Observable<AiSettings> {
+    return this.http.put<AiSettings>(`${this.base}/api/ai-settings/`, body);
   }
 
   /** Les modèles proposés, par fournisseur, et la fenêtre de chacun. */

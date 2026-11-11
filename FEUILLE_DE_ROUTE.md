@@ -181,6 +181,50 @@ du lab). [C] constaté, [D] déduit.
 - [x] Test de cloisonnement vert après mise en service (3/3, 2026-11-11)
 **Vérifié le :** 2026-11-11 — `bash chantiers/tests/essai.sh app-builder` : 253 tests OK ; image du commit `b6f7d10` construite pendant que l'ancienne tournait, `scripts/app-test.sh app-builder` : 253 tests OK sur cette image ; `npx ng build` sans erreur (avertissements de budget de style). **Mis en service le 2026-11-11** (fusion `6a6318d`, mêmes images, `up -d --no-build`) : migrations `0011`/`0012` jouées, les deux specs existantes identiques avant/après (comptes de lignes comparés à l'instantané) ; cloisonnement `lab-runner` 3/3. Navigateur réel (`e2edev`) : jeton créé sur `/connexion-ia`, puis par le MCP public `initialize`, `tools/list` (10 outils), `creer_spec`, `appliquer_operations` (18 opérations en un bloc), `lire_index`, `verifier_spec`, `lire_livrables`, et `version_perimee` refusé ; vues Données (ER), Sécurité (matrice, une case « à revoir » expliquée), Cycles de vie, API, sans erreur console ni réponse d'API en échec ; la spec apparaît « prête » dans lab-admin avec l'aperçu des lots. Restent : un vrai appel Claude et Mistral avec outils (aucune clé du compte d'essai), Claude Code réel relié par MCP. Défaut vu : dans le schéma des cycles de vie, la pointe de la flèche « en_cours → rendu » se lit mal (la liste dessous est juste).
 
+## Lot 12 — Fournisseurs d'IA génériques, et Albert de la DINUM   ·   statut : en cours
+**Objectif :** le chat sait parler à tout fournisseur compatible OpenAI, en plus de Claude ; Albert (API de la DINUM, https://albert.api.etalab.gouv.fr/v1) est le troisième, avec ses modèles lus en direct.
+**Tâches :**
+- [x] Registre des fournisseurs dans `budget.py` (protocole `anthropic` ou `openai`, adresse, champ du coffre) ; plus aucun « tout ce qui n'est pas Mistral est Claude »
+- [x] Adaptateur unique `openai` (Mistral et Albert) dans `api/ia/fournisseurs.py` ; outils au format `function` ; `tool_choice: "auto"` explicite (exigé par DeepSeek V4 sur Albert)
+- [x] Coffre : colonne `albert_key` (migration), même chiffrement ; `GET/PUT /api/ai-keys/` gagne `albert_key`
+- [x] Modèles d'Albert lus par `GET /v1/models` avec la clé de l'utilisateur (type `text-generation`, `max_context_length`), mis en cache ; à défaut, table prudente d'après la doc (alias `openweight-*`)
+- [x] Messages d'erreur qui renvoient à la page « Intelligence artificielle » (plus au ⚙)
+**Tests à passer avant de clore le lot :**
+- [x] `python manage.py test api.tests.AlbertTests` : boucle d'outils complète contre un Albert simulé (adresse, en-tête, `tool_choice`), clé lue au coffre, catalogue dynamique (filtre de type, fenêtre, panne ⇒ table prudente), clé refusée/quota ⇒ message fixe
+- [x] Suites `ChatOutilsMistralTests`, `ChatOutilsClaudeTests`, `CoffreClesTests`, `BudgetContexteTests` vertes
+- [ ] Ⓟ Un vrai échange avec outils sur Albert, avec la clé du propriétaire
+**Vérifié le :** 2026-11-11 — `bash chantiers/tests/essai.sh app-builder` : 264 tests OK, dont `AlbertTests` (11 : adresse, en-tête, `tool_choice` explicite, boucle complète, contenu vide de Gemma, clé du seul appelant, erreurs 401/404/429 à message fixe, catalogue filtré et mis en cache, panne ⇒ table prudente). Le chat ne propose Albert qu'avec le lot 13 (interface) ; l'essai réel attend la clé du propriétaire.
+
+## Lot 13 — Une page « Intelligence artificielle » unique   ·   statut : livré
+**Objectif :** un seul endroit pour régler l'IA (fournisseurs, clés, modèles, Claude Code et Vibe) ; le chat de l'accueil n'en garde qu'un sélecteur rapide, et les choix sont gardés sur le serveur.
+**Tâches :**
+- [x] `GET/PUT /api/ai-settings/` : fournisseurs (clé configurée ou non, modèles, modèle par défaut) et préférences de l'appelant (fournisseur et modèle par fournisseur), gardées en base
+- [x] Page `/ia` (l'ancienne `/connexion-ia` y redirige) : fournisseurs (clé, état, modèle par défaut), fournisseur par défaut du chat, puis Claude Code et Vibe
+- [x] ⚙ du chat : sélecteur fournisseur + modèle, limité aux fournisseurs qui ont une clé, et lien vers `/ia` ; plus de saisie de clé dans le chat ; plus de préférence dans `localStorage`
+**Tests à passer avant de clore le lot :**
+- [x] `python manage.py test api.tests.PreferencesIATests` (préférences de l'appelant seulement, fournisseur ou modèle inconnu refusé, jamais de clé rendue)
+- [x] `npx ng build` sans erreur ; navigateur réel : la page montre l'état des clés, le chat ne propose que les fournisseurs configurés
+**Vérifié le :** 2026-11-11 — suite 271 OK (`PreferencesIATests` 5) ; mis en service (image construite pendant que l'ancienne tournait, `app-test.sh` vert, migrations `0013`/`0014`, cloisonnement 3/3). Navigateur réel (`e2edev`) : `/connexion-ia` redirige vers `/ia` ; une clé Albert déposée passe « clé enregistrée » et « utilisée par le chat » ; le ⚙ de l'accueil ne propose qu'Albert, avec ses modèles ; un message part vers le vrai serveur d'Albert, qui refuse la fausse clé : message fixe, sans la clé ; « Retirer » efface la clé. Défaut vu et corrigé : le ⚙ et l'en-tête débordaient du panneau étroit.
+
+## Lot 14 — Claude Code des utilisateurs, par le MCP, fiabilisé   ·   statut : livré
+**Objectif :** un utilisateur relie son propre Claude Code (son abonnement, sur son poste ou dans son espace de travail du lab) à App Builder sans tâtonner, et Claude Code y travaille avec les mêmes garde-fous que le chat.
+**Tâches :**
+- [x] Configuration prête : `.mcp.json` de projet sans secret (`${APP_BUILDER_MCP_TOKEN}`), en plus de la commande `claude mcp add`
+- [x] Consignes du lab servies en invites MCP (`prompts/list`, `prompts/get`) : `/mcp__app-builder__concevoir`, `…__verifier`
+- [x] La page montre la dernière connexion de chaque jeton (« Claude Code s'est connecté le … »)
+**Tests à passer avant de clore le lot :**
+- [x] `python manage.py test api.tests.McpProtocoleTests` (invites comprises)
+- [x] Un vrai Claude Code relié par `--mcp-config` lit une spec et y applique une opération
+**Vérifié le :** 2026-11-11 — Claude Code 2.1.322 de l'hôte (abonnement du propriétaire, avec son accord), `--mcp-config` sur le `.mcp.json` proposé par la page (jeton lu dans `APP_BUILDER_MCP_TOKEN`), `--strict-mcp-config`, jeton d'essai d'`e2edev` limité à la spec 22 puis révoqué : `lire_index` puis `appliquer_operations` → « 1 champ ajouté à Livre », visible dans `patch_applications` (mode `ops`) ; `/mcp__app-builder__verifier 22` : relecture complète, corrections vérifiées par `essayer_operations`, rien d'appliqué sans accord. Il a relevé que les consignes ne décrivaient pas `query_params` : ligne ajoutée au prompt, mise en service.
+
+## Lot 15 — Claude Code ouvert depuis App Builder, dans le lab   ·   statut : à faire
+**Objectif :** un bouton « Concevoir avec Claude Code » ouvre une conversation avec le Claude Code de l'utilisateur, dans le lab, déjà reliée à sa spec.
+**Tâches :**
+- [ ] Chantier moteur (régime chantier) : espace de travail sans projet, pose du jeton MCP d'App Builder avec l'accord de l'utilisateur — à cadrer après le lot 14
+**Tests à passer avant de clore le lot :**
+- [ ] Contrat du chantier écrit ; parcours réel bout en bout
+**Vérifié le :**
+
 ## Mise en service — chantier « failles » (2026-11-01)
 Les mentions « non déployé » ci-dessus datent d'avant cette mise en service. Image construite pendant
 que l'ancienne tournait, `scripts/app-test.sh` : 167 tests OK, puis `up -d --no-build` ; ports

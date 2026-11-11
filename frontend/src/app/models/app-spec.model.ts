@@ -16,7 +16,7 @@ export type FieldType = 'string' | 'text' | 'int' | 'decimal' | 'bool' | 'dateti
   // Métamodèle v2 (contrat app-builder-v2, I1)
   | 'date' | 'email' | 'url' | 'enum' | 'secret' | 'geo_point' | 'geometry';
 export type RelType = 'FK' | 'M2M' | 'O2O';
-export type AiProvider = 'claude' | 'mistral';
+export type AiProvider = 'claude' | 'mistral' | 'albert';
 export type AppType = 'django-angular' | 'django' | 'spring-angular' | 'spring' | 'angular';
 /** Types que le moteur du lab sait créer (les autres ne restent que lisibles). */
 export const CONSTRUCTIBLE_APP_TYPES: readonly AppType[] = ['django-angular', 'django', 'angular'];
@@ -427,7 +427,8 @@ export interface McpToken {
 }
 
 /** `GET /api/mcp/info/` : les commandes portent `<JETON>` littéral. */
-export interface McpInfo { url: string; claude: string; vibe: string; }
+/** `GET /api/mcp/info/` — commandes avec `<JETON>` littéral ; `mcp_json` : config de projet SANS secret (lot 14). */
+export interface McpInfo { url: string; claude: string; vibe: string; mcp_json: string; env: string; }
 
 /** Un modèle proposé par `GET /api/models/` et ce qu'il peut tenir. */
 export interface ModelInfo {
@@ -441,7 +442,24 @@ export interface ModelInfo {
 
 /** Réponse de `GET /api/models/` : les modèles par fournisseur. */
 export interface ModelCatalogue {
-  providers: Record<AiProvider, { default: string; models: ModelInfo[] }>;
+  providers: Record<AiProvider, { label: string; default: string; models: ModelInfo[] }>;
+  lot_budget_tokens: number;
+}
+
+/** Un fournisseur d'IA tel que le rend `GET /api/ai-settings/` (lot 13) — jamais la clé. */
+export interface AiProviderSettings {
+  id: AiProvider;
+  label: string;
+  help: string;
+  configured: boolean;
+  default_model: string;
+  models: ModelInfo[];
+}
+
+/** `GET/PUT /api/ai-settings/` : fournisseurs et préférences de l'appelant, gardées sur le serveur. */
+export interface AiSettings {
+  providers: AiProviderSettings[];
+  preferences: { provider: AiProvider; models: Record<AiProvider, string> };
   lot_budget_tokens: number;
 }
 

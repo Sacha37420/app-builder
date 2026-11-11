@@ -97,6 +97,9 @@ Appliquées dans l'ordre ; une référence peut viser un élément créé par un
   json secret (chiffré, jamais rendu ; secret_scope "user"|"app") storage_file (max_bytes, accept)
   geo_point geometry (srid, geometry_kind). Attributs : required, unique, unique_ci, max_length,
   default, min, max, pattern.
+- Endpoint : query_params = filtres, recherche, tri et pagination d'une liste, [{name, type, required,
+  description}] (ex. {"name": "statut", "type": "enum"}, {"name": "page", "type": "int"}) ; request_schema
+  et response_schema = {champ: type}.
 - Genre de modèle (kind) : entity (défaut), singleton (une seule ligne : réglages), reference
   (liste de valeurs), log (journal, jamais modifié), join (table de liaison).
 - Accès d'un modèle (access) — à décrire pour chaque entité :

@@ -51,23 +51,23 @@ class CoffreClesTests(Base):
     # ── Forme de l'API ────────────────────────────────────────────────────────
 
     def test_get_ne_rend_que_configured(self):
-        self.assertEqual(self.etat(), {'claude_key_configured': False, 'mistral_key_configured': False})
+        self.assertEqual(self.etat(), {'claude_key_configured': False, 'mistral_key_configured': False, 'albert_key_configured': False})
         resp = self.deposer(claude_key=CLE_CLAUDE)
         self.assertEqual(resp.status_code, 204)
         self.assertEqual(resp.content, b'')
         resp = self.alice.get('/api/ai-keys/')
-        self.assertEqual(resp.json(), {'claude_key_configured': True, 'mistral_key_configured': False})
+        self.assertEqual(resp.json(), {'claude_key_configured': True, 'mistral_key_configured': False, 'albert_key_configured': False})
         self.assertNotIn('SECRETE', resp.content.decode())
         self.assertNotIn('sk-ant', resp.content.decode())
 
     def test_les_deux_cles_puis_suppression_par_chaine_vide(self):
         self.assertEqual(self.deposer(claude_key=CLE_CLAUDE, mistral_key=CLE_MISTRAL).status_code, 204)
-        self.assertEqual(self.etat(), {'claude_key_configured': True, 'mistral_key_configured': True})
+        self.assertEqual(self.etat(), {'claude_key_configured': True, 'mistral_key_configured': True, 'albert_key_configured': False})
         # Champ absent : inchangé ; chaîne vide : supprimée.
         self.assertEqual(self.deposer(mistral_key='').status_code, 204)
-        self.assertEqual(self.etat(), {'claude_key_configured': True, 'mistral_key_configured': False})
+        self.assertEqual(self.etat(), {'claude_key_configured': True, 'mistral_key_configured': False, 'albert_key_configured': False})
         self.assertEqual(self.deposer(claude_key='   ').status_code, 204)
-        self.assertEqual(self.etat(), {'claude_key_configured': False, 'mistral_key_configured': False})
+        self.assertEqual(self.etat(), {'claude_key_configured': False, 'mistral_key_configured': False, 'albert_key_configured': False})
 
     def test_corps_refuses(self):
         for corps in ({}, {'autre': 'x'}, {'claude_key': 12}, {'claude_key': None},
@@ -96,7 +96,7 @@ class CoffreClesTests(Base):
         claude_brut, _ = self.brut()
         with override_settings(VAULT_ENCRYPTION_KEY=Fernet.generate_key().decode()), \
                 self.assertLogs('api.fields', 'WARNING') as journal:
-            self.assertEqual(self.etat(), {'claude_key_configured': False, 'mistral_key_configured': False})
+            self.assertEqual(self.etat(), {'claude_key_configured': False, 'mistral_key_configured': False, 'albert_key_configured': False})
             with mock.patch('anthropic.Anthropic') as ctor:
                 resp = self.alice.post('/api/chat/', self.corps(), format='json')
             self.assertEqual(resp.status_code, 400)
@@ -107,7 +107,7 @@ class CoffreClesTests(Base):
 
     def test_un_autre_compte_ne_lit_ni_n_utilise_la_cle_d_autrui(self):
         self.deposer(claude_key=CLE_CLAUDE, mistral_key=CLE_MISTRAL)
-        self.assertEqual(self.etat(self.bob), {'claude_key_configured': False, 'mistral_key_configured': False})
+        self.assertEqual(self.etat(self.bob), {'claude_key_configured': False, 'mistral_key_configured': False, 'albert_key_configured': False})
         for provider in ('claude', 'mistral'):
             with self.subTest(provider=provider), mock.patch('anthropic.Anthropic') as ctor, \
                     mock.patch.object(fournisseurs.http_requests, 'post') as post:

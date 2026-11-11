@@ -7,7 +7,7 @@ from .views import (
     AppSpecChatHistoryView,
     AppSpecPatchView, AppSpecPatchHistoryView, AppSpecPatchUndoView,
     AppSpecLabView, AppSpecOperationsView, AppSpecOperationsEssaiView,
-    AIChatView, AiKeysView, ChatEstimateView, ModelsView,
+    AIChatView, AiKeysView, AiSettingsView, ChatEstimateView, ModelsView,
 )
 
 urlpatterns = [
@@ -30,6 +30,7 @@ urlpatterns = [
     path('chat/estimate/',           ChatEstimateView.as_view()),
     path('chat/',                    AIChatView.as_view()),
     path('ai-keys/',                 AiKeysView.as_view()),
+    path('ai-settings/',             AiSettingsView.as_view()),
     path('mcp-tokens/',              McpTokenListCreateView.as_view()),
     path('mcp-tokens/<int:pk>/',     McpTokenDetailView.as_view()),
     path('mcp/info/',                McpInfoView.as_view()),

@@ -45,12 +45,16 @@ def systeme_variable(spec: dict) -> tuple[str, str]:
     return bloc_variable(index, blocages), index
 
 
+def anthropique(fiche: dict) -> bool:
+    return budget.FOURNISSEURS[budget.fournisseur(fiche['provider'])]['protocole'] == 'anthropic'
+
+
 def outils_pour(fiche: dict) -> list | None:
     if not fiche.get('tools'):
         return None
-    if fiche['provider'] == 'claude':
+    if anthropique(fiche):
         return outils_mod.pour_anthropic(strict=fiche.get('strict', True))
-    return outils_mod.pour_mistral()
+    return outils_mod.pour_mistral()     # format `function` commun aux compatibles OpenAI
 
 
 class _Tour:
@@ -64,7 +68,7 @@ class _Tour:
         self.outils = outils_pour(fiche)
         self.etat = outils_mod.EtatDuTour(spec)
         self.usage = {'calls': 0, 'input_tokens': 0, 'output_tokens': 0, 'cache_read_tokens': 0}
-        self.client = fournisseurs.client_anthropic(cle) if fiche['provider'] == 'claude' else None
+        self.client = fournisseurs.client_anthropic(cle) if anthropique(fiche) else None
         self.textes = []
         self.tronque = False
         self.avis = ''
@@ -72,12 +76,15 @@ class _Tour:
     def appeler(self, conv, format_json=None):
         restant = self.fin - time.monotonic()
         sortie = budget.sortie(self.fiche)
-        if self.fiche['provider'] == 'claude':
+        if anthropique(self.fiche):
             r = fournisseurs.appeler_anthropic(self.client, self.fiche, REGLES, self.variable, conv, self.outils,
                                                sortie, restant, format_json=format_json)
-        else:
+        elif self.fiche['provider'] == 'mistral':
             r = fournisseurs.appeler_mistral(self.cle, self.fiche, REGLES, self.variable, conv, self.outils,
                                              sortie, restant, format_json=format_json is not None)
+        else:
+            r = fournisseurs.appeler_openai(self.fiche['provider'], self.cle, self.fiche, REGLES, self.variable,
+                                            conv, self.outils, sortie, restant, format_json=format_json is not None)
         self.usage['calls'] += 1
         for k in ('input_tokens', 'output_tokens', 'cache_read_tokens'):
             self.usage[k] += r.usage.get(k, 0)
@@ -124,7 +131,7 @@ class _Tour:
                 log.info('Chat : outil %s%s', a.nom, ' (erreur)' if erreur else '')
                 resultats.append((a.id, a.nom, contenu, erreur))
             self.conv.append(r.message_assistant)
-            if self.fiche['provider'] == 'claude':
+            if anthropique(self.fiche):
                 self.conv.append(fournisseurs.resultats_anthropic(resultats))
             else:
                 self.conv.extend(fournisseurs.resultats_mistral(resultats))

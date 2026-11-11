@@ -1,20 +1,87 @@
 <div class="cx-page">
-  <h1 class="cx-title">Connexion IA</h1>
+  <h1 class="cx-title">Intelligence artificielle</h1>
 
   <section class="cx-card" aria-labelledby="cx-ways">
     <h2 id="cx-ways" class="cx-h2">Deux façons de faire travailler une IA sur votre spécification</h2>
     <p>
-      <strong>Clé API au coffre</strong> — vous déposez une clé Anthropic ou Mistral dans App Builder
-      (⚙ du chat, page d'accueil) : elle sert au chat intégré, et chaque échange est facturé à cette clé.
-      <strong>Claude Code ou Mistral Vibe</strong> — vous gardez votre propre abonnement : votre outil
-      lit et modifie la spécification par le serveur MCP d'App Builder, avec un jeton personnel créé ici.
+      <strong>Le chat de l'accueil</strong> — vous déposez ci-dessous une clé d'API (Claude, Mistral ou
+      Albert) : elle sert au chat intégré, et chaque échange est facturé à cette clé.
+      <strong>Votre Claude Code ou Mistral Vibe</strong> — vous gardez votre propre abonnement : votre outil
+      lit et modifie la spécification par le serveur MCP d'App Builder, avec un jeton personnel créé plus bas.
     </p>
     <p class="cx-mute">
       Un jeton d'abonnement Claude (<code>sk-ant-oat…</code>) ne se dépose jamais dans App Builder : il
-      reste dans votre Claude Code. Toute modification faite par le MCP passe par les mêmes contrôles que
-      le chat et s'annule de la même façon.
+      reste dans votre Claude Code. Toute modification, par le chat ou par le MCP, passe par les mêmes
+      contrôles et s'annule de la même façon.
     </p>
   </section>
+
+  <!-- ── Fournisseurs du chat (lot 13) ─────────────────────────────────── -->
+  <section class="cx-card" aria-labelledby="cx-providers">
+    <h2 id="cx-providers" class="cx-h2">Fournisseurs du chat</h2>
+    @if (ai.unavailable()) {
+      <p class="ed-note ed-error" role="alert">Réglages indisponibles : le serveur n'a pas répondu.</p>
+    } @else if (!ai.settings()) {
+      <p class="cx-mute">Chargement…</p>
+    } @else {
+      <p class="cx-mute">
+        La clé part une fois au serveur, qui la garde chiffrée et ne la renvoie jamais. Le fournisseur
+        « utilisé par le chat » et le modèle par défaut se retrouvent dans le ⚙ du chat, sur tout appareil.
+      </p>
+      @for (p of ai.providers(); track p.id) {
+        <article class="cx-provider" [class.cx-provider-active]="p.id === ai.provider()" [attr.aria-label]="p.label">
+          <div class="cx-provider-head">
+            <h3 class="cx-h3">{{ p.label }}</h3>
+            @if (p.configured) {
+              <span class="cx-badge cx-ok">✓ clé enregistrée</span>
+            } @else {
+              <span class="cx-badge">aucune clé</span>
+            }
+            @if (p.id === ai.provider()) {
+              <span class="cx-badge cx-ok">utilisé par le chat</span>
+            } @else if (p.configured) {
+              <button type="button" class="ed-btn" (click)="useForChat(p.id)">Utiliser pour le chat</button>
+            }
+          </div>
+          <p class="cx-mute">{{ p.help }}</p>
+          <div class="cx-secret">
+            <label class="cx-key">
+              <span class="sr-only">Clé {{ p.label }}</span>
+              <input class="cx-code" [type]="keyVisible()[p.id] ? 'text' : 'password'" autocomplete="off"
+                     [value]="keyInput()[p.id] ?? ''" (input)="setKeyInput(p.id, $event)"
+                     (keydown.enter)="saveKey(p)"
+                     [placeholder]="p.configured ? 'Clé enregistrée — saisir pour la remplacer' : 'Coller la clé d’API'" />
+            </label>
+            <button type="button" class="ed-btn" (click)="toggleKeyVisible(p.id)"
+                    [attr.aria-label]="keyVisible()[p.id] ? 'Masquer la saisie' : 'Afficher la saisie'">
+              {{ keyVisible()[p.id] ? 'Masquer' : 'Afficher' }}
+            </button>
+            <button type="button" class="ed-btn ed-primary" (click)="saveKey(p)"
+                    [disabled]="keyBusy() !== null || !(keyInput()[p.id] ?? '').trim()">Enregistrer</button>
+            @if (p.configured) {
+              <button type="button" class="ed-btn" (click)="saveKey(p, true)" [disabled]="keyBusy() !== null">Retirer</button>
+            }
+          </div>
+          <label class="ed-field">Modèle par défaut
+            <select (change)="setDefaultModel(p.id, $event)">
+              @for (m of p.models; track m.id) {
+                <option [value]="m.id" [selected]="m.id === ai.modelOf(p.id)">
+                  {{ m.label }}{{ m.tools === false ? ' — sans outils' : '' }}
+                </option>
+              }
+            </select>
+          </label>
+          @if (keyMessage(); as km) {
+            @if (km.provider === p.id) {
+              <p class="ed-note" [class.ed-error]="!km.ok" role="status">{{ km.text }}</p>
+            }
+          }
+        </article>
+      }
+    }
+  </section>
+
+  <h2 class="cx-title cx-subtitle">Claude Code et Mistral Vibe</h2>
 
   <!-- ── Jeton tout juste créé : montré une seule fois ───────────────────── -->
   @if (fresh(); as t) {
@@ -39,11 +106,33 @@
       <p class="cx-mute">Adresse du serveur MCP : <code>{{ c.url }}</code>.
         @if (!c.withToken) { Remplacez <code>&lt;JETON&gt;</code> par un jeton créé ci-dessous. }
       </p>
-      <h3 class="cx-h3">Claude Code</h3>
+      <h3 class="cx-h3">Claude Code — pour tous vos projets</h3>
       <div class="cx-cmd">
         <pre class="cx-code">{{ c.claude }}</pre>
         <button type="button" class="ed-btn" (click)="copy('claude', c.claude)">{{ copied() === 'claude' ? 'Copié ✓' : 'Copier' }}</button>
       </div>
+      @if (c.mcpJson) {
+        <h3 class="cx-h3">Claude Code — pour un seul dossier, sans jeton écrit dans un fichier</h3>
+        <p class="cx-mute">
+          Enregistrez ceci dans un fichier <code>.mcp.json</code> à la racine du dossier, puis lancez Claude Code
+          avec le jeton dans la variable <code>APP_BUILDER_MCP_TOKEN</code> (la ligne en dessous). Le fichier ne
+          contient aucun secret : il peut être partagé.
+        </p>
+        <div class="cx-cmd">
+          <pre class="cx-code">{{ c.mcpJson }}</pre>
+          <button type="button" class="ed-btn" (click)="copy('json', c.mcpJson)">{{ copied() === 'json' ? 'Copié ✓' : 'Copier' }}</button>
+        </div>
+        <div class="cx-cmd">
+          <pre class="cx-code">{{ c.env }}</pre>
+          <button type="button" class="ed-btn" (click)="copy('env', c.env)">{{ copied() === 'env' ? 'Copié ✓' : 'Copier' }}</button>
+        </div>
+      }
+      <p class="cx-mute">
+        Dans Claude Code, deux commandes toutes prêtes : <code>/mcp__app-builder__concevoir</code> (travailler une
+        spécification avec vous, question par question, sans rien appliquer sans votre accord) et
+        <code>/mcp__app-builder__verifier</code> (la relire comme le lab la relira). La colonne « dernier usage » de
+        vos jetons, plus bas, dit si votre outil s'est bien connecté.
+      </p>
       <h3 class="cx-h3">Mistral Vibe</h3>
       <div class="cx-cmd">
         <pre class="cx-code">{{ c.vibe }}</pre>

@@ -63,7 +63,8 @@ def tour(t) -> None:
     # Mistral : `response_format: json_object`. Claude : seul un modèle INCONNU de la table arrive
     # ici (tous ceux de la table ont des outils) — rien ne dit qu'il prend `output_config.format` :
     # la consigne du prompt suffit, la réponse est validée de toute façon.
-    format_json = None if t.fiche['provider'] == 'claude' else {}
+    from .boucle import anthropique
+    format_json = None if anthropique(t.fiche) else {}
     conv = list(t.conv)
     for essai in (1, 2):
         r = t.appeler(conv, format_json=format_json)

@@ -48,7 +48,7 @@ class BudgetContexteTests(Base):
         resp = self.alice.get('/api/models/')
         self.assertEqual(resp.status_code, 200)
         catalogue = resp.json()
-        self.assertEqual(set(catalogue['providers']), {'claude', 'mistral'})
+        self.assertEqual(set(catalogue['providers']), {'claude', 'mistral', 'albert'})
         for fournisseur in catalogue['providers'].values():
             ids = [m['id'] for m in fournisseur['models']]
             self.assertIn(fournisseur['default'], ids)

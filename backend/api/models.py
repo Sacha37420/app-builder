@@ -236,7 +236,7 @@ class PatchApplication(models.Model):
 
 
 class AiKeyVault(models.Model):
-    """Coffre des clés d'API d'un utilisateur (Claude, Mistral).
+    """Coffre des clés d'API d'un utilisateur (Claude, Mistral, Albert).
 
     Une ligne par compte (`owner_email`, comme les spécifications). Les clés sont
     chiffrées au repos (`VAULT_ENCRYPTION_KEY`) et ne sortent jamais vers le
@@ -246,6 +246,11 @@ class AiKeyVault(models.Model):
     owner_email = models.EmailField(max_length=255, unique=True)
     claude_key = EncryptedTextField(blank=True, default='')
     mistral_key = EncryptedTextField(blank=True, default='')
+    albert_key = EncryptedTextField(blank=True, default='')
+    # Préférences du chat (lot 13), gardées sur le serveur plutôt que dans le navigateur :
+    # fournisseur choisi, et modèle choisi pour chaque fournisseur ({"albert": "openweight-large"}).
+    preferred_provider = models.CharField(max_length=20, blank=True, default='')
+    preferred_models = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
