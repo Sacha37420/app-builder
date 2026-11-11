@@ -14,8 +14,12 @@
       <div class="empty-panel">Aucun service défini.<br>Utilisez le chat IA ou ajoutez-en un manuellement.</div>
     }
 
-    @for (svc of state.spec().services; track svc.id) {
-      <div class="service-card">
+    @if (serviceMissing()) {
+      <p class="ed-note ed-warn" role="status">Le service demandé par l'adresse n'existe plus dans cette spécification.</p>
+    }
+    @for (svc of state.spec().services; track $index) {
+      <div class="service-card" [id]="'service-' + svc.id" [class.is-selected]="isServiceSelected(svc.id)"
+           [attr.aria-current]="isServiceSelected(svc.id) ? 'true' : null">
         <div class="svc-header">
           <input class="svc-name-input" [value]="svc.name"
                  (input)="setServiceName(svc.id!, $event)"
@@ -54,12 +58,14 @@
         <button class="btn-add-sm" (click)="state.addPage()">+</button>
       </div>
 
-      @for (page of state.spec().pages; track page.id) {
-        <div class="sidebar-item"
-             [class.active]="selectedPageId() === page.id"
-             (click)="selectPage(page.id!)">
+      <!-- `track $index` : les identifiants changent à chaque enregistrement -->
+      @for (page of state.spec().pages; track $index) {
+        <div class="sidebar-item" role="button" tabindex="0" [id]="'page-item-' + page.id"
+             [class.active]="selection.id() === page.id"
+             [attr.aria-current]="selection.id() === page.id ? 'true' : null"
+             (click)="selectPage(page.id!)" (keydown.enter)="selectPage(page.id!)">
           <span class="page-name">{{ page.name }}</span>
-          <span class="page-route">{{ page.route }}</span>
+          <span class="page-route">{{ page.route }}@if (page.public) { · public }</span>
         </div>
       }
       @if (state.spec().pages.length === 0) {
@@ -68,7 +74,16 @@
     </aside>
 
     <!-- Détail page sélectionnée -->
-    <main class="page-detail">
+    <main class="page-detail" id="page-detail">
+      <app-back-link />
+
+      @if (missing()) {
+        <p class="ed-note ed-warn" role="status">
+          La page demandée par l'adresse n'existe plus dans cette spécification (supprimée ou renommée
+          puis réenregistrée). Choisissez-la dans la liste.
+        </p>
+      }
+
       @if (!selectedPage) {
         <div class="select-hint">
           <div class="hint-icon">③</div>
@@ -94,11 +109,56 @@
           <button class="btn-danger-sm" (click)="state.removePage(selectedPage.id!)">Supprimer</button>
         </div>
 
+        <!-- Accès à la page (I1) -->
+        <div class="section-block access-block">
+          <div class="section-title">Accès à la page</div>
+          <label class="ed-check">
+            <input type="checkbox" [checked]="!!selectedPage.public"
+                   (change)="setPagePublic(selectedPage.id!, $event)" />
+            Page publique (visible sans connexion)
+          </label>
+          @if (selectedPage.public) {
+            <label class="ed-field">
+              Justification (obligatoire)
+              <input type="text" [value]="selectedPage.public_reason ?? ''" required
+                     [class.is-missing]="!(selectedPage.public_reason ?? '').trim()"
+                     [attr.aria-invalid]="!(selectedPage.public_reason ?? '').trim()"
+                     (input)="setPagePublicReason(selectedPage.id!, $event)"
+                     placeholder="Pourquoi cette page doit s'afficher sans connexion…" />
+            </label>
+            @if (!(selectedPage.public_reason ?? '').trim()) {
+              <p class="ed-note ed-warn" role="note">Une page publique se justifie : la raison est reportée dans la feuille de route.</p>
+            }
+          }
+          <div class="ed-field">
+            <span>Rôles requis</span>
+            <div class="roles-container">
+              @for (role of selectedPage.required_roles ?? []; track role) {
+                <span class="role-tag">
+                  {{ role }}
+                  <button type="button" [attr.aria-label]="'Retirer ' + role"
+                          (click)="removePageRole(selectedPage, role)">×</button>
+                </span>
+              }
+              @if ((selectedPage.required_roles ?? []).length === 0) {
+                <span class="empty-sm">Tout membre autorisé de l'app</span>
+              }
+              <input class="role-input" list="page-role-names" placeholder="Ajouter un rôle (Entrée)"
+                     aria-label="Ajouter un rôle requis"
+                     (keydown)="onPageRoleKeydown(selectedPage, $event)"
+                     (change)="onPageRoleChange(selectedPage, $event)" />
+            </div>
+          </div>
+          <datalist id="page-role-names">
+            @for (r of roleSuggestions(); track r) { <option [value]="r"></option> }
+          </datalist>
+        </div>
+
         <!-- Services liés -->
         <div class="section-block">
           <div class="section-title">Services utilisés par cette page</div>
           <div class="service-toggles">
-            @for (svc of state.spec().services; track svc.id) {
+            @for (svc of state.spec().services; track $index) {
               <label class="svc-toggle" [class.active]="selectedPage.service_ids.includes(svc.id!)">
                 <input type="checkbox"
                        [checked]="selectedPage.service_ids.includes(svc.id!)"
@@ -123,12 +183,15 @@
             <div class="empty-sm">Aucun composant — ajouter un tableau, formulaire, graphique ou carte.</div>
           }
 
-          @for (comp of selectedPage.components; track $index) {
+          @for (comp of selectedPage.components; track $index; let ci = $index) {
             <div class="comp-card">
               <div class="comp-header">
                 <select [value]="comp.type" (change)="setCompType(selectedPage.id!, $index, $event)">
                   @for (ct of compTypes; track ct) {
-                    <option [value]="ct" [selected]="ct === comp.type">{{ ct }}</option>
+                    <option [value]="ct" [selected]="ct === comp.type">{{ compTypeLabels[ct] }}</option>
+                  }
+                  @if (!compTypeLabels[comp.type]) {
+                    <option [value]="comp.type" selected>{{ comp.type }}</option>
                   }
                 </select>
                 <input [value]="comp.label" (input)="setCompLabel(selectedPage.id!, $index, $event)"
@@ -172,7 +235,7 @@
                   @for (f of comp.fields ?? []; track $index) {
                     <span class="field-tag">
                       {{ f }}
-                      <button (click)="removeCompField(selectedPage.id!, comp, $index, $index)">×</button>
+                      <button (click)="removeCompField(selectedPage.id!, comp, ci, $index)">×</button>
                     </span>
                   }
                   @if ((comp.fields ?? []).length === 0 && !comp.linked_model) {
@@ -183,6 +246,21 @@
                   }
                 </div>
               </div>
+
+              <!-- Réglages libres (`config`) : l'IA les remplit d'ordinaire -->
+              <details class="comp-config" [open]="!!configError(selectedPage.id!, ci)">
+                <summary>Réglages avancés (JSON)</summary>
+                <label class="ed-field">
+                  <span class="ed-help">Objet libre, propre au type de composant. Enregistré seulement s'il est valide.</span>
+                  <textarea rows="5" spellcheck="false" [value]="configJson(comp)"
+                            [attr.aria-invalid]="!!configError(selectedPage.id!, ci)"
+                            (change)="setCompConfig(selectedPage.id!, ci, $event)"
+                            placeholder='{ "zoom": 12 }'></textarea>
+                </label>
+                @if (configError(selectedPage.id!, ci)) {
+                  <p class="ed-note ed-error" role="alert">{{ configError(selectedPage.id!, ci) }}</p>
+                }
+              </details>
             </div>
           }
         </div>
@@ -198,12 +276,12 @@
             <div class="empty-sm">Aucune interaction définie.</div>
           }
 
-          @for (inter of selectedPage.interactions; track inter.id) {
+          @for (inter of selectedPage.interactions; track $index) {
             <div class="interaction-row">
               <select [value]="inter.type"
                       (change)="setInteractionType(selectedPage.id!, inter.id!, $event)">
                 @for (it of interactionTypes; track it) {
-                  <option [value]="it" [selected]="it === inter.type">{{ it }}</option>
+                  <option [value]="it" [selected]="it === inter.type">{{ interactionLabels[it] }}</option>
                 }
               </select>
               <input [value]="inter.name"

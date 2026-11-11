@@ -118,3 +118,117 @@ app-overview-page {
   }
   @media (prefers-reduced-motion: reduce) { .ov-card { transition: none; } }
 }
+
+// ── v2 : vues, inspecteur, diagrammes (chantier app-builder-v2) ──────────────
+app-overview-page {
+  .ov-sr {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+  .ov-insp-sub { display: block; font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-mute); }
+  .ov-faint { color: var(--text-mute); font-size: var(--text-xs); }
+  .ov-small { font-size: var(--text-xs); }
+  .ov-tag-warn {
+    display: inline-block; padding: 0 var(--space-2); border-radius: var(--radius-full);
+    border: 1px solid var(--warning); background: var(--warning-tint); color: var(--text);
+    font-size: var(--text-xs); font-weight: 600;
+  }
+  .ov-tab.unavailable { opacity: 0.6; font-style: italic; }
+  .ov-issues { flex-direction: column; align-items: flex-start; border-color: var(--warning); background: var(--warning-tint);
+    summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; }
+    ul { padding-left: var(--space-5); }
+  }
+
+  .ov-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+  .ov-picker { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text-mute);
+    select { min-height: 44px; padding: 0 var(--space-2); background: var(--card); color: var(--text);
+      border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; }
+  }
+  .ov-seg-btns { display: inline-flex; gap: var(--space-1);
+    .ov-btn[aria-pressed="false"] { background: var(--card); color: var(--text-mute); border-color: var(--border); }
+  }
+
+  // ── Scène + inspecteur ──
+  .ov-stage { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+  .ov-scene { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+  .ov-insp {
+    display: flex; flex-direction: column; gap: var(--space-3);
+    padding: var(--space-4); background: var(--card); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius-md); font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+  }
+  @media (min-width: 900px) {
+    .ov-stage.with-insp { grid-template-columns: minmax(0, 1fr) 360px; }
+    .ov-insp { position: sticky; top: var(--space-4); max-height: calc(100vh - 2 * var(--space-4)); overflow-y: auto; }
+  }
+  @media (max-width: 899px) {
+    .ov-insp { position: fixed; inset: 0; z-index: 50; border-radius: 0; overflow-y: auto; }
+  }
+  // ── Nœuds cliquables, fantômes ──
+  .ov-node {
+    display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2);
+    min-height: 44px; padding: var(--space-1) var(--space-3);
+    background: var(--card); color: var(--text); text-align: left;
+    border: 1px solid var(--border); border-left: 4px solid var(--k, var(--border)); border-radius: var(--radius-sm);
+    font: inherit; font-size: var(--text-sm); cursor: pointer;
+    &:hover:not(:disabled) { background: var(--overlay-hover); }
+    &:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    &:disabled { cursor: default; }
+    .ov-kind { margin: 0; }
+  }
+  .ov-node-sm { border-left-width: 1px; }
+  .is-ghost { opacity: 0.4; border-style: dashed !important; }
+  tr.is-ghost, th.is-ghost { opacity: 0.4; }
+
+  // ── Arbres (API, plan du site) ──
+  .ov-tree { list-style: none; display: flex; flex-direction: column; gap: var(--space-1);
+    ul { list-style: none; margin-left: var(--space-4); padding-left: var(--space-3); border-left: 1px solid var(--border);
+         display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-1); }
+    li { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+  }
+  .ov-seg { color: var(--text-mute); font-size: var(--text-xs); }
+
+  // ── Matrices ──
+  .ov-table-wrap { max-width: 100%; overflow-x: auto; }
+  .ov-matrix { border-collapse: collapse; font-size: var(--text-xs); background: var(--card);
+    th, td { padding: var(--space-1) var(--space-2); border: 1px solid var(--border); text-align: left; vertical-align: top; }
+    thead th { position: sticky; top: 0; background: var(--card); }
+    th[scope="row"] { white-space: nowrap; }
+    td .ov-link, th .ov-link { font-size: var(--text-xs); }
+  }
+  .ov-hole { color: var(--text-mute); background: var(--overlay-weak); }
+  .ov-allow { color: var(--success); }
+  .ov-deny { color: var(--text-mute); }
+  .ov-incons { color: var(--text); font-style: italic; }
+  .ov-acc { summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; }
+    ul { list-style: none; display: flex; flex-direction: column; gap: var(--space-1); } }
+  .ov-notes { padding-left: var(--space-5); font-size: var(--text-sm); }
+
+  // ── Diagrammes : nœuds HTML au-dessus d'une couche SVG ──
+  .ov-zoom { display: inline-flex; align-items: center; gap: var(--space-2); }
+  .ov-diagram { position: relative; overflow: auto; max-width: 100%; border: 1px solid var(--border);
+    border-radius: var(--radius-md); background: var(--overlay-weak); }
+  .ov-diagram-inner { position: relative; transform-origin: 0 0; }
+  .ov-links { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+  .ov-edge { fill: none; stroke: var(--text-mute); stroke-width: 1.5; &.is-near { stroke: var(--accent); stroke-width: 2.5; } }
+  .ov-arrow { fill: var(--text-mute); }
+  .ov-edge-label { fill: var(--text-mute); font-family: var(--font-mono); font-size: 11px; }
+  .ov-dnode {
+    position: absolute; display: flex; flex-direction: column; align-items: stretch; gap: 2px;
+    min-height: 44px; padding: var(--space-2); text-align: left;
+    background: var(--card); color: var(--text); border: 1px solid var(--border);
+    border-top: 4px solid var(--k, var(--cat-cyan)); border-radius: var(--radius-sm);
+    font: inherit; font-size: var(--text-sm); cursor: pointer;
+    &:hover { background: var(--overlay-hover); }
+    &:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    &.is-initial { border-width: 2px; border-top-width: 4px; }
+    &.is-frozen { border-style: double; }
+  }
+  .ov-er-name { font-weight: 700; }
+  .ov-er-field { display: flex; justify-content: space-between; gap: var(--space-2); font-size: var(--text-xs); line-height: 18px; }
+  .ov-trans { list-style: decimal; padding-left: var(--space-5); font-size: var(--text-sm); margin-top: var(--space-2); }
+  .ov-lc { display: flex; flex-direction: column; gap: var(--space-2); }
+
+
+  @media (prefers-reduced-motion: reduce) { .ov-node, .ov-dnode { transition: none; } }
+}

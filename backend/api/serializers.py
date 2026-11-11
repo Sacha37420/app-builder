@@ -9,7 +9,29 @@ from .models import (
 class DataModelSerializer(serializers.ModelSerializer):
     class Meta:
         model = DataModel
-        fields = ['id', 'name', 'description', 'fields', 'relationships', 'order']
+        fields = ['id', 'name', 'description', 'fields', 'relationships', 'order',
+                  'kind', 'access', 'states', 'constraints']
+
+    def validate_kind(self, value):
+        if value not in conformite.GENRES_DE_MODELE:
+            raise serializers.ValidationError(
+                f'Genre de modèle « {value} » inconnu : ' + ', '.join(conformite.GENRES_DE_MODELE) + '.')
+        return value
+
+    def validate_access(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError('Objet attendu (`{}` = accès non décrit).')
+        return value
+
+    def validate_states(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError('Objet attendu (`{}` = aucune machine à états).')
+        return value
+
+    def validate_constraints(self, value):
+        if not isinstance(value, list) or not all(isinstance(c, dict) for c in value):
+            raise serializers.ValidationError('Liste de contraintes attendue.')
+        return value
 
 
 class EndpointSerializer(serializers.ModelSerializer):
@@ -18,8 +40,29 @@ class EndpointSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'method', 'path', 'description', 'order',
             'operation', 'linked_model_name', 'auth_required', 'public_reason',
-            'required_roles', 'request_schema', 'response_schema', 'query_params', 'steps',
+            'required_roles', 'request_schema', 'response_schema', 'query_params', 'steps', 'auth',
         ]
+
+    def validate_auth(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError('Objet attendu (`{}` = jeton du lab).')
+        mode = value.get('mode')
+        if mode not in (None, '') and mode not in conformite.MODES_AUTH:
+            raise serializers.ValidationError(
+                f'Mode « {mode} » inconnu : ' + ', '.join(conformite.MODES_AUTH) + '.')
+        return value
+
+    def validate(self, attrs):
+        # Règle de cohérence I1 : un mode autre que le jeton du lab rend la route
+        # « sans jeton » (avec la raison) ; une route sans jeton sans mode est publique.
+        auth = attrs.get('auth')
+        if isinstance(auth, dict) and auth.get('mode') not in (None, '', 'jwt'):
+            attrs['auth_required'] = False
+            if isinstance(auth.get('reason'), str) and auth['reason'].strip():
+                attrs['public_reason'] = auth['reason'].strip()
+        elif attrs.get('auth_required') is False and not auth:
+            attrs['auth'] = {'mode': 'public'}
+        return attrs
 
 
 class EndpointGroupSerializer(serializers.ModelSerializer):
@@ -112,7 +155,13 @@ class PageSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'route', 'order', 'layout', 'components',
             'service_ids', 'interactions', 'pipelines',
+            'public', 'public_reason', 'required_roles',
         ]
+
+    def validate_required_roles(self, value):
+        if not isinstance(value, list) or not all(isinstance(r, str) for r in value):
+            raise serializers.ValidationError('Liste de noms de rôles attendue.')
+        return value
 
     def to_representation(self, instance):
         rep = super().to_representation(instance)
@@ -162,6 +211,7 @@ class AppSpecSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'project_name', 'description', 'app_type', 'owner_email', 'required_groups',
             'business_rules', 'uses_email',
+            'roles', 'jobs', 'integrations', 'external_apis', 'extensions',
             'created_at', 'updated_at', 'chat_history',
             'data_models', 'endpoint_groups', 'services', 'pages',
         ]
@@ -211,9 +261,61 @@ class AppSpecSerializer(serializers.ModelSerializer):
             if not isinstance(r, dict) or not isinstance(r.get('title'), str) or not r['title'].strip():
                 raise serializers.ValidationError('Chaque règle est un objet avec un titre (`title`).')
             description = r.get('description')
-            regles.append({'title': r['title'].strip()[:200],
-                           'description': description.strip() if isinstance(description, str) else ''})
+            regle = {'title': r['title'].strip()[:200],
+                     'description': description.strip() if isinstance(description, str) else ''}
+            # Clés I1 (facultatives) : gardées seulement si présentes et bien typées.
+            for cle in ('applies_to', 'kind'):
+                if isinstance(r.get(cle), str) and r[cle].strip():
+                    regle[cle] = r[cle].strip()
+            if isinstance(r.get('enforced_by'), list):
+                regle['enforced_by'] = [e.strip() for e in r['enforced_by'] if isinstance(e, str) and e.strip()]
+            regles.append(regle)
         return regles
+
+    @staticmethod
+    def _liste_nommee(value, cle='name', quoi='élément'):
+        if not isinstance(value, list) or not all(isinstance(x, dict) for x in value):
+            raise serializers.ValidationError(f'Liste de {quoi}s attendue.')
+        for x in value:
+            if not isinstance(x.get(cle), str) or not x[cle].strip():
+                raise serializers.ValidationError(f'Chaque {quoi} porte `{cle}`.')
+        return value
+
+    def validate_roles(self, value):
+        self._liste_nommee(value, quoi='rôle')
+        for r in value:
+            if r.get('kind') not in (None, '') and r['kind'] not in conformite.GENRES_DE_ROLE:
+                raise serializers.ValidationError(f"Rôle « {r['name']} » : genre « {r['kind']} » inconnu.")
+        return value
+
+    def validate_jobs(self, value):
+        self._liste_nommee(value, quoi='tâche')
+        for j in value:
+            if j.get('kind') not in (None, '') and j['kind'] not in conformite.GENRES_DE_JOB:
+                raise serializers.ValidationError(f"Tâche « {j['name']} » : genre « {j['kind']} » inconnu.")
+        return value
+
+    def validate_integrations(self, value):
+        self._liste_nommee(value, cle='type', quoi='intégration')
+        for i in value:
+            if i['type'] not in conformite.INTEGRATIONS:
+                raise serializers.ValidationError(
+                    f"Intégration « {i['type']} » inconnue : le lab fournit " + ', '.join(conformite.INTEGRATIONS) + '.')
+        return value
+
+    def validate_external_apis(self, value):
+        return self._liste_nommee(value, quoi='API externe')
+
+    def validate_extensions(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError('Objet attendu : {data_io: [...], realtime: [...], ...}.')
+        for liste, elements in value.items():
+            if liste not in conformite.LISTES_D_EXTENSIONS:
+                raise serializers.ValidationError(
+                    f'Liste d\'extensions « {liste} » inconnue : ' + ', '.join(conformite.LISTES_D_EXTENSIONS) + '.')
+            if not isinstance(elements, list) or not all(isinstance(x, dict) for x in elements):
+                raise serializers.ValidationError(f'`{liste}` : liste d\'objets attendue.')
+        return value
 
     def validate_data_models(self, value):
         # `fields` est un JSON libre : on n'y contrôle que le type « fichier ».

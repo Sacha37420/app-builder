@@ -89,35 +89,23 @@
         </div>
       </div>
 
-      <!-- Règles métier -->
+      <!-- Règles métier : éditées dans leur section (`?section=rules`) -->
       <div class="sub-block">
         <div class="sub-head">
           <h3 class="sub-title">Règles métier</h3>
-          <button type="button" class="btn" (click)="state.addBusinessRule()">+ Règle</button>
+          <button type="button" class="btn" (click)="openSection('rules')">
+            {{ state.spec().business_rules.length }} règle(s) — modifier
+          </button>
         </div>
         @if (state.spec().business_rules.length === 0) {
-          <p class="muted">Aucune règle : toute contrainte validée (« le stock ne peut pas être négatif ») se note ici.</p>
+          <p class="muted">Aucune règle : toute contrainte validée (« le stock ne peut pas être négatif ») se note dans la section Règles métier.</p>
+        } @else {
+          <ul class="rules-summary">
+            @for (rule of state.spec().business_rules; track $index) {
+              <li>{{ rule.title }}@if (rule.applies_to) { <span class="muted-inline"> — {{ rule.applies_to }}</span> }</li>
+            }
+          </ul>
         }
-        <ul class="rules">
-          @for (rule of state.spec().business_rules; track $index) {
-            <li class="rule">
-              <div class="rule-fields">
-                <input type="text" [value]="rule.title" [attr.aria-label]="'Titre de la règle ' + ($index + 1)"
-                       [class.invalid]="emptyRuleTitles().has($index)"
-                       (input)="setRuleTitle($index, $event)" placeholder="Titre de la règle" />
-                @if (emptyRuleTitles().has($index)) {
-                  <span class="field-error" role="alert">Le titre est obligatoire : cette saisie n'est pas enregistrée.</span>
-                }
-                <textarea rows="2" [value]="rule.description"
-                          [attr.aria-label]="'Description de la règle ' + ($index + 1)"
-                          (input)="setRuleDescription($index, $event)"
-                          placeholder="Ce que la règle impose, et dans quel cas…"></textarea>
-              </div>
-              <button type="button" class="btn btn-danger" [attr.aria-label]="'Supprimer la règle ' + ($index + 1)"
-                      (click)="removeRule($index)">✕</button>
-            </li>
-          }
-        </ul>
       </div>
     </article>
 

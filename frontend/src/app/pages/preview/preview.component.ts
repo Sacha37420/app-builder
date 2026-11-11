@@ -1,6 +1,7 @@
-import { Component, computed, effect, inject, OnDestroy, signal, untracked } from '@angular/core';
+import { afterNextRender, Component, computed, effect, inject, Injector, OnDestroy, signal, untracked } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { BuilderApiService } from '../../core/builder-api.service';
 import { BuilderStateService } from '../../core/builder-state.service';
@@ -37,6 +38,21 @@ const DOCS: { id: Doc; label: string; file: string }[] = [
 export class PreviewPageComponent implements OnDestroy {
   state = inject(BuilderStateService);
   private api = inject(BuilderApiService);
+  private route = inject(ActivatedRoute);
+  private injector = inject(Injector);
+  private params = toSignal(this.route.queryParamMap);
+
+  /** Lot désigné par l'adresse (`?lot=<n>`, contrat I6), ou `null`. */
+  readonly selectedLot = computed<number | null>(() => {
+    const v = this.params()?.get('lot');
+    return v && /^[0-9]{1,4}$/.test(v) ? Number(v) : null;
+  });
+  /** Le lot désigné est absent des livrables chargés. */
+  readonly lotMissing = computed(() => {
+    const n = this.selectedLot();
+    const l = this.livrables();
+    return n !== null && !!l && !l.lots.some(x => x.number === n);
+  });
 
   readonly docs = DOCS;
 
@@ -69,6 +85,7 @@ export class PreviewPageComponent implements OnDestroy {
   docMeta = computed(() => DOCS.find(d => d.id === this.activeDoc())!);
 
   private request?: Subscription;
+  private scrolledLot: number | null = null;
   private copiedTimer?: ReturnType<typeof setTimeout>;
 
   constructor() {
@@ -79,6 +96,19 @@ export class PreviewPageComponent implements OnDestroy {
       const id = this.state.savedId();
       this.state.lab();
       untracked(() => this.load(id));
+    });
+    // Arrivée par un lien : le lot désigné est amené à l'écran une fois les livrables chargés.
+    effect(() => {
+      const n = this.selectedLot();
+      const l = this.livrables();
+      if (n === null || !l || n === this.scrolledLot) return;
+      afterNextRender(() => {
+        const el = document.getElementById(`lot-${n}`);
+        if (!el) return;
+        this.scrolledLot = n;   // une seule fois par lien : un rechargement après enregistrement ne fait pas sauter la page
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        el.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+      }, { injector: this.injector });
     });
   }
 

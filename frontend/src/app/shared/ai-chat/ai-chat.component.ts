@@ -1,20 +1,33 @@
 import { Component, inject, signal, computed, effect, ViewChild, ElementRef, AfterViewChecked, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
 import { BuilderApiService } from '../../core/builder-api.service';
 import { BuilderStateService } from '../../core/builder-state.service';
-import { Subscription } from 'rxjs';
-import { AiProvider, ChatContext, ChatMessage, ModelCatalogue, PatchMode, PersistedChatMessage } from '../../models/app-spec.model';
+import { Subscription, switchMap } from 'rxjs';
+import {
+  AiProvider, ChatContext, ChatMessage, ChatUsage, ModelCatalogue, PersistedChatMessage, ProposalState,
+} from '../../models/app-spec.model';
 
-type AppliedState = 'none' | 'merged' | 'replaced';
+type DisplayMessage = PersistedChatMessage;
 
-interface Choices { multiple: boolean; items: string[]; }
+interface ModelOption { id: string; label: string; tools?: boolean; }
 
-interface DisplayMessage extends PersistedChatMessage {
-  applied?: AppliedState;
-  choices?: Choices | null;
-}
+/** Préfixe d'un jeton d'abonnement Claude : il ne s'utilise que dans Claude Code (contrat §7). */
+const PREFIXE_JETON_ABONNEMENT = 'sk-ant-oat';
+const MESSAGE_JETON_ABONNEMENT =
+  "Ce jeton d'abonnement Claude (sk-ant-oat…) ne s'utilise que dans Claude Code : App Builder ne le garde pas. "
+  + 'Déposez ici une clé API (sk-ant-api…), ou pilotez la spécification depuis votre Claude Code '
+  + '(page « Connexion IA »).';
 
-interface ModelOption { id: string; label: string; }
+/** Ce que l'agent sait d'une de ses propositions au tour suivant : du texte, jamais les opérations. */
+const ETAT_POUR_IA: Record<ProposalState, string> = {
+  proposed: 'proposition non appliquée',
+  applied: "proposition appliquée par l'utilisateur",
+  undone: "proposition appliquée puis annulée par l'utilisateur",
+  stale: 'proposition périmée : la spécification a changé avant son application',
+  refused: 'proposition refusée par le serveur',
+};
 
 type EtatJauge = 'normal' | 'attention' | 'alerte';
 
@@ -46,7 +59,7 @@ const ANCIENNES_CLES = ['ai_claude_key', 'ai_mistral_key'];
 @Component({
   selector: 'app-ai-chat',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink],
   templateUrl: './ai-chat.component.html',
   styleUrl: './ai-chat.component.scss',
 })
@@ -92,6 +105,8 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
 
   // Mesure du contexte : dernière réponse de /api/chat/ ou dernière estimation.
   contexte     = signal<ChatContext | null>(null);
+  /** Consommation du dernier tour (I4 `usage`). */
+  usage        = signal<ChatUsage | null>(null);
   readonly depasse = computed(() => this.contexte()?.fits === false);
   readonly jauge = computed(() => {
     const c = this.contexte();
@@ -137,10 +152,11 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
       const envoi: ChatMessage[] = brouillon
         ? [...this.messages(), { role: 'user', content: brouillon }]
         : this.messages();
+      const appId = this.state.savedId();
       const seq = ++this.mesureSeq;
       let appel: Subscription | undefined;
       const minuterie = setTimeout(() => {
-        appel = this.api.estimateChat(envoi, spec, provider, model).subscribe({
+        appel = this.api.estimateChat(appId, this.historyForAi(envoi), spec, provider, model).subscribe({
           next: res => { if (seq === this.mesureSeq && res?.context) this.contexte.set(res.context); },
           error: () => { /* la jauge garde sa dernière mesure ; le serveur reste juge à l'envoi */ },
         });
@@ -177,6 +193,11 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
     return this.catalogue()?.providers[provider].models ?? [{ id: memorise, label: memorise }];
   }
 
+  /** Libellé d'un modèle dans la liste : un modèle sans outils passe par une sortie structurée (moins sûre). */
+  modelLabel(m: ModelOption): string {
+    return m.tools === false ? `${m.label} — sans outils` : m.label;
+  }
+
   ngAfterViewChecked(): void {
     if (this.shouldScroll) { this.scrollToBottom(); this.shouldScroll = false; }
   }
@@ -210,6 +231,12 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
     const saisie = provider === 'claude' ? this.claudeKey : this.mistralKey;
     const valeur = retirer ? '' : saisie().trim();
     if (!retirer && !valeur) return;
+    if (!retirer && provider === 'claude' && valeur.startsWith(PREFIXE_JETON_ABONNEMENT)) {
+      // Refusé avant tout envoi : ce jeton ne doit jamais quitter le navigateur vers App Builder.
+      saisie.set('');
+      this.keyMessage.set(MESSAGE_JETON_ABONNEMENT);
+      return;
+    }
     if (retirer && !confirm('Retirer la clé enregistrée sur le serveur ?')) return;
     this.keySaving.set(true);
     this.keyMessage.set('');
@@ -223,7 +250,9 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
       },
       error: err => {
         this.keySaving.set(false);
-        this.keyMessage.set(`Clé non enregistrée : ${err?.error?.error ?? 'erreur du serveur'}`);
+        this.keyMessage.set(err?.error?.code === 'oauth_token_refused'
+          ? MESSAGE_JETON_ABONNEMENT
+          : `Clé non enregistrée : ${err?.error?.error ?? 'erreur du serveur'}`);
       },
     });
   }
@@ -268,6 +297,19 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
 
   // ── Envoi ──────────────────────────────────────────────────────────────────
 
+  /**
+   * L'historique tel qu'il repart vers le serveur : du texte seulement (I4). Une
+   * proposition y est résumée en une phrase, avec ce que l'utilisateur en a fait :
+   * l'agent ne revoit jamais les opérations elles-mêmes.
+   */
+  private historyForAi(msgs: ChatMessage[]): ChatMessage[] {
+    return msgs.map(m => {
+      if (m.role !== 'assistant' || !m.proposal) return { role: m.role, content: m.content };
+      const etat = ETAT_POUR_IA[m.proposal_state ?? 'proposed'];
+      return { role: m.role, content: `${m.content}\n\n[${etat} : ${m.proposal.resume?.texte ?? ''}]` };
+    });
+  }
+
   send(): void {
     const text = this.inputText().trim();
     if (!text || this.loading()) return;
@@ -282,103 +324,144 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
     this.loading.set(true);
     this.error.set('');
     this.shouldScroll = true;
+    const provider = this.provider();
+    const model = this.activeModel;
 
-    this.api.chat(this.messages(), this.state.spec(), this.provider(), this.activeModel)
-      .subscribe({
-        next: res => {
-          const updated: DisplayMessage[] = [...this.messages(), {
-            role: 'assistant', content: res.content,
-            spec_patch: res.spec_patch ?? null,
-            patch_summary: res.patch_summary ?? null,
-            choices:    res.choices    ?? null,
-            applied: 'none',
-          }];
-          if (res.context) { this.mesureSeq++; this.contexte.set(res.context); }
-          this.messages.set(updated);
-          this._persistChat(updated);
-          this.loading.set(false);
-          this.shouldScroll = true;
-        },
-        error: err => {
-          const corps = err.error;
-          if (corps?.context) { this.mesureSeq++; this.contexte.set(corps.context); }
-          if (corps?.code === 'key_not_configured') this.refreshKeys();
-          if (err.status === 413) {
-            // Rien n'est parti : le message refusé quitte la liste et son texte revient dans la saisie.
-            this.error.set(corps?.error ?? 'Cet envoi ne tient pas dans le modèle choisi.');
-            const msgs = this.messages();
-            const dernier = msgs[msgs.length - 1];
-            if (dernier?.role === 'user' && dernier.content === text) this.messages.set(msgs.slice(0, -1));
-            this.inputText.set(text);
-          } else {
-            this.error.set(`Erreur : ${corps?.error ?? err.message ?? 'Erreur inconnue'}`);
-          }
-          this.loading.set(false);
-          this.shouldScroll = true;
-        },
-      });
+    // Le serveur lit la spec en base (I4 : `app_id`) : ce qui est en attente est enregistré d'abord.
+    this.state.ensureSaved().pipe(
+      switchMap(id => this.api.chat(id, this.historyForAi(this.messages()), provider, model)),
+    ).subscribe({
+      next: res => {
+        const updated: DisplayMessage[] = [...this.messages(), {
+          role: 'assistant', content: res.content,
+          choices: res.choices ?? null,
+          proposal: res.proposal ?? null,
+          proposal_state: res.proposal ? 'proposed' : undefined,
+          truncated: res.truncated || undefined,
+        }];
+        if (res.context) { this.mesureSeq++; this.contexte.set(res.context); }
+        this.usage.set(res.usage ?? null);
+        this.messages.set(updated);
+        this._persistChat(updated);
+        this.loading.set(false);
+        this.shouldScroll = true;
+      },
+      error: (err: HttpErrorResponse) => {
+        const corps = err.error;
+        if (corps?.context) { this.mesureSeq++; this.contexte.set(corps.context); }
+        if (corps?.code === 'key_not_configured') this.refreshKeys();
+        if (err.status === 413 || err.status === 400 || this.state.savedId() === null) {
+          // Rien n'est parti : le message refusé quitte la liste et son texte revient dans la saisie.
+          const msgs = this.messages();
+          const dernier = msgs[msgs.length - 1];
+          if (dernier?.role === 'user' && dernier.content === text) this.messages.set(msgs.slice(0, -1));
+          this.inputText.set(text);
+        }
+        if (err.status === 413) {
+          this.error.set(corps?.error ?? 'Cet envoi ne tient pas dans le modèle choisi.');
+        } else if (this.state.saveStatus() === 'error') {
+          this.error.set("La spécification n'a pas pu être enregistrée : corrigez-la avant d'interroger l'agent.");
+        } else {
+          this.error.set(`Erreur : ${corps?.error ?? corps?.detail ?? err.message ?? 'Erreur inconnue'}`);
+        }
+        this.loading.set(false);
+        this.shouldScroll = true;
+      },
+    });
   }
 
-  merge(msgIndex: number): void { this.applyPatch(msgIndex, 'merge'); }
+  // ── Propositions (I4) ──────────────────────────────────────────────────────
 
-  replace(msgIndex: number): void {
-    if (!confirm('Remplacer toute la spécification par cette proposition ? (annulable juste après)')) return;
-    this.applyPatch(msgIndex, 'replace');
-  }
-
-  private applyPatch(msgIndex: number, mode: PatchMode): void {
+  apply(msgIndex: number): void {
     const msg = this.messages()[msgIndex];
-    if (!msg?.spec_patch || this.patchBusy()) return;
+    const p = msg?.proposal;
+    if (!p || this.patchBusy() || msg.proposal_state !== 'proposed') return;
+    if (p.erreurs?.length) return;
+    if (p.resume?.destructive
+        && !confirm('Cette proposition retire, renomme ou raccourcit des éléments de la spécification. '
+          + "L'appliquer quand même ? (annulable juste après)")) return;
     this.patchBusy.set(true);
     this.error.set('');
-    this.state.applyAgentPatch(msg.spec_patch, mode).subscribe({
+    this.state.applyOperations(p.operations, p.base_version).subscribe({
       next: application => {
-        this.markPatch(msgIndex, mode === 'merge' ? 'merged' : 'replaced', application.id);
+        this.markProposal(msgIndex, { proposal_state: 'applied', application_id: application.id, proposal_errors: undefined });
         this.patchBusy.set(false);
       },
-      error: err => this.patchFailed(err),
+      error: (err: HttpErrorResponse) => this.applyFailed(msgIndex, err),
     });
+  }
+
+  private applyFailed(msgIndex: number, err: HttpErrorResponse): void {
+    const corps = err.error ?? {};
+    if (err.status === 409 && corps.code === 'version_perimee') {
+      // La spec a changé depuis la proposition : on relit la version du serveur, puis
+      // l'utilisateur peut redemander une proposition sur cette version.
+      this.markProposal(msgIndex, { proposal_state: 'stale' });
+      this.state.reloadFromServer().subscribe({
+        next: () => this.patchBusy.set(false),
+        error: () => { this.patchBusy.set(false); this.error.set('La spécification n\'a pas pu être relue.'); },
+      });
+      return;
+    }
+    if (err.status === 400) {
+      const erreurs: string[] = Array.isArray(corps.erreurs) && corps.erreurs.length
+        ? corps.erreurs.map(String) : [String(corps.error ?? 'Proposition refusée par le serveur.')];
+      this.markProposal(msgIndex, { proposal_state: 'refused', proposal_errors: erreurs });
+      this.patchBusy.set(false);
+      return;
+    }
+    this.error.set(`${corps.error ?? corps.detail ?? err.message ?? 'Erreur inconnue'}`);
+    this.patchBusy.set(false);
+    this.shouldScroll = true;
+  }
+
+  /** Après un 409 : relance l'agent pour qu'il refasse sa proposition sur la version actuelle. */
+  askAgain(): void {
+    this.inputText.set('La spécification a changé depuis ta dernière proposition : refais-la sur la version actuelle.');
+    this.send();
+  }
+
+  /** Après un refus du serveur : renvoie les erreurs à l'agent, pour qu'il corrige sa proposition. */
+  askFix(msgIndex: number): void {
+    const erreurs = this.messages()[msgIndex]?.proposal_errors ?? [];
+    this.inputText.set(`Ta proposition a été refusée par le serveur :\n- ${erreurs.join('\n- ')}\nCorrige-la.`);
+    this.send();
   }
 
   undo(msgIndex: number): void {
     const id = this.messages()[msgIndex]?.application_id;
     if (id == null || this.patchBusy()) return;
-    if (!confirm('Annuler ce patch ? La spécification revient à son état d\'avant ; ce que vous avez modifié depuis est perdu.')) return;
+    if (!confirm('Annuler cette application ? La spécification revient à son état d\'avant ; ce que vous avez modifié depuis est perdu.')) return;
     this.patchBusy.set(true);
     this.error.set('');
     this.state.undoAgentPatch(id).subscribe({
-      next: () => { this.markPatch(msgIndex, 'none', null); this.patchBusy.set(false); },
-      error: err => this.patchFailed(err),
+      next: () => { this.markProposal(msgIndex, { proposal_state: 'undone' }); this.patchBusy.set(false); },
+      error: (err: HttpErrorResponse) => {
+        this.error.set(`${err.error?.error ?? err.message ?? 'Erreur inconnue'}`);
+        this.patchBusy.set(false);
+      },
     });
   }
 
-  /** L'état « appliqué » est enregistré avec la conversation : il survit à un rechargement. */
-  private markPatch(msgIndex: number, applied: AppliedState, applicationId: number | null): void {
-    const updated = this.messages().map((m, i) =>
-      i === msgIndex ? { ...m, applied, application_id: applicationId } : m);
+  /** L'état d'une proposition est enregistré avec la conversation : il survit à un rechargement. */
+  private markProposal(msgIndex: number, patch: Partial<DisplayMessage>): void {
+    const updated = this.messages().map((m, i) => (i === msgIndex ? { ...m, ...patch } : m));
     this.messages.set(updated);
     this._persistChat(updated);
-  }
-
-  private patchFailed(err: { error?: { error?: string; details?: string[] }; message?: string }): void {
-    const details = err.error?.details?.length ? ' ' + err.error.details.join(' ; ') : '';
-    this.error.set(`${err.error?.error ?? err.message ?? 'Erreur inconnue'}${details}`);
-    this.patchBusy.set(false);
     this.shouldScroll = true;
   }
 
-  isApplied(msg: DisplayMessage): boolean { return msg.applied === 'merged' || msg.applied === 'replaced'; }
-
-  /** Seul le dernier patch appliqué s'annule : c'est le seul qui porte le bouton. */
+  /** Seule la dernière application encore en place s'annule : c'est la seule qui porte le bouton. */
   canUndo(msgIndex: number): boolean {
     const msgs = this.messages();
-    if (msgs[msgIndex]?.application_id == null || !this.isApplied(msgs[msgIndex])) return false;
-    return !msgs.some((m, i) => i !== msgIndex && this.isApplied(m) && (m.application_id ?? 0) > msgs[msgIndex].application_id!);
+    const m = msgs[msgIndex];
+    if (m?.application_id == null || m.proposal_state !== 'applied') return false;
+    return !msgs.some((o, i) => i !== msgIndex && o.proposal_state === 'applied' && (o.application_id ?? 0) > m.application_id!);
   }
 
-  /** Résumé calculé par le serveur ; les messages d'avant ce calcul n'en ont pas. */
-  patchSummary(msg: DisplayMessage): string {
-    return msg.patch_summary ?? 'modifications de la spécification';
+  /** Message de l'ancien protocole (patch complet) : il ne s'applique plus, il se redemande. */
+  isLegacyPatch(msg: DisplayMessage): boolean {
+    return msg.role === 'assistant' && !msg.proposal && !!msg.spec_patch;
   }
 
   onKeydown(event: KeyboardEvent): void {

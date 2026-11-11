@@ -122,10 +122,22 @@
         <h2 class="card-title" id="liv-lots">Feuille de route</h2>
         <p class="muted">Le Lot 1 (socle) et la commande de test viennent du gabarit du lab.</p>
 
+        @if (lotMissing()) {
+          <p class="ed-note ed-warn" role="status">
+            Le lot {{ selectedLot() }} demandé par l'adresse n'existe pas (ou plus) dans cette feuille de route.
+          </p>
+        }
+
         @for (lot of l.lots; track lot.number) {
-          <details class="lot">
+          @let designated = lot.number === selectedLot();
+          <!-- Lot désigné par l'adresse (`?lot=<n>`, contrat I6) : ouvert et mis en avant -->
+          <details class="lot" [id]="'lot-' + lot.number" [open]="designated"
+                   [attr.aria-current]="designated ? 'true' : null"
+                   [style.border-color]="designated ? 'var(--accent)' : null"
+                   [style.box-shadow]="designated ? '0 0 0 1px var(--accent)' : null"
+                   [style.scroll-margin-top]="'var(--space-4)'">
             <summary>
-              <span class="lot-name">Lot {{ lot.number }} — {{ lot.title }}</span>
+              <span class="lot-name">Lot {{ lot.number }} — {{ lot.title }}@if (designated) { <span class="ed-tag">désigné par le lien</span> }</span>
               <span class="lot-tokens">{{ n(lot.tokens) }} jetons</span>
             </summary>
             <div class="lot-body">

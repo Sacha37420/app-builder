@@ -8,12 +8,13 @@ from django.test import SimpleTestCase, override_settings
 from rest_framework.test import APIClient
 
 from api import remise, views
+from api.ia import fournisseurs
 from api.budget import LOT_BUDGET_JETONS, estimer_jetons
 from api.models import AppSpec, PatchApplication
 
 from .socle import Base, jeton
 
-__all__ = ['FeuilleDeRouteGenereeTests', 'CahierDesChargesTests', 'RemiseAuLabTests']
+__all__ = ['FeuilleDeRouteGenereeTests', 'RemiseV2Tests', 'CahierDesChargesTests', 'RemiseAuLabTests']
 
 # Expression de scripts/validate-app.sh (porte de qualité du déploiement), traduite de POSIX.
 VALIDATE_APP = re.compile(r'^## Lot [0-9]+ — .+·[ \t\n\r\f\v]*statut : (à faire|en cours|livré)[ \t\n\r\f\v]*$')
@@ -97,6 +98,58 @@ def spec_riche() -> dict:
                                       'service_method': 'ProduitService.getAll()', 'on_error': 'bandeau'}]}],
         }],
     }
+
+
+def spec_v2() -> dict:
+    """`spec_riche` enrichie des structures du métamodèle v2 (contrat app-builder-v2, I1)."""
+    spec = spec_riche()
+    spec['roles'] = [
+        {'name': 'manager', 'kind': 'keycloak_group', 'description': 'Gère le catalogue.', 'implies': ['magasinier']},
+        {'name': 'magasinier', 'kind': 'keycloak_group', 'description': ''},
+        {'name': 'editeur', 'kind': 'object_role', 'on_model': 'Partage', 'description': 'Peut modifier un produit partagé.'}]
+    produit, mouvement = spec['data_models']
+    produit.update(kind='entity', access={
+        'scope': 'shared', 'owner_field': 'owner_email', 'share_model': 'Partage', 'public_flag': 'publie',
+        'rules': [{'action': 'read', 'who': ['owner']}, {'action': 'delete', 'who': ['role:manager']},
+                  {'action': 'update', 'who': ['owner', 'share:editeur']}],
+        'hidden_fields': [{'field': 'prix_achat', 'unless': 'role:manager'}], 'reason': 'Le prix d\'achat est confidentiel.'},
+        constraints=[{'kind': 'unique', 'fields': ['nom', 'owner_email'], 'name': 'nom_par_proprietaire'}])
+    produit['fields'] += [
+        {'name': 'statut', 'type': 'enum', 'values': ['brouillon', 'publie', 'archive'], 'required': True},
+        {'name': 'stock', 'type': 'int', 'min': 0, 'max': 10000},
+        {'name': 'reference', 'type': 'string', 'pattern': '^[A-Z]{3}-[0-9]+$', 'unique_ci': True},
+        {'name': 'notice', 'type': 'storage_file', 'max_bytes': 5_000_000, 'accept': ['application/pdf']},
+        {'name': 'zone', 'type': 'geometry', 'srid': 2154, 'geometry_kind': 'Polygon'},
+        {'name': 'cle_fournisseur', 'type': 'secret', 'secret_scope': 'user'}]
+    produit['states'] = {
+        'field': 'statut', 'initial': 'brouillon', 'values': ['brouillon', 'publie', 'archive'],
+        'transitions': [{'from': ['brouillon'], 'to': 'publie', 'by': ['owner', 'role:manager'],
+                         'action': 'POST /api/produits/{id}/publier/', 'side_effects': ['notify:owner']},
+                        {'from': ['publie'], 'to': 'archive', 'by': ['role:manager']}],
+        'frozen_in': ['archive']}
+    mouvement.update(kind='log', access={'scope': 'owner'})
+    spec['business_rules'][0].update(applies_to='Mouvement', kind='invariant', enforced_by=['POST /api/mouvements/'])
+    spec['endpoint_groups'][1]['endpoints'][0].update(
+        auth={'mode': 'hmac_signature', 'caller': 'stripe', 'key_source': 'STRIPE_WEBHOOK_SECRET', 'reason': 'Webhook signé'})
+    spec['pages'][0].update(public=False, required_roles=['manager'])
+    spec['pages'][0]['components'][0]['config'] = {'pagination': 25, 'tri': {'champ': 'nom', 'sens': 'asc'}, 'titre': 'Catalogue'}
+    spec['pages'].append({'id': 31, 'name': 'Vitrine', 'route': '/vitrine', 'layout': 'list', 'order': 1, 'service_ids': [],
+                          'public': True, 'public_reason': 'Les clients consultent sans compte.',
+                          'components': [], 'interactions': [], 'pipelines': []})
+    spec['jobs'] = [{'name': 'Inventaire', 'kind': 'scheduled', 'trigger': 'every:30min', 'input_model': 'Produit',
+                     'tracked_by': 'Mouvement', 'concurrency': 'one_per:Produit', 'heavy': False,
+                     'description': 'Recalcule les seuils.'}]
+    spec['integrations'] = [{'type': 'storage', 'mode': 'user_token', 'description': 'Notices des produits.'},
+                            {'type': 'email', 'mode': '', 'description': 'Alertes de seuil.'}]
+    spec['external_apis'] = [{'name': 'Stripe', 'purpose': 'paiement', 'auth': 'app_key', 'called_from': 'backend',
+                              'description': 'Encaisse les commandes.'}]
+    spec['extensions'] = {
+        'data_io': [{'direction': 'import', 'format': 'csv', 'model': 'Produit', 'mode': 'upsert', 'async': True}],
+        'realtime': [{'name': 'Stock en direct', 'transport': 'poll', 'description': 'Toutes les 10 s.'}],
+        'computations': [{'name': 'Valeur du stock', 'inputs': ['Produit.stock'], 'output': 'euros', 'run': 'sync',
+                          'verification': '3 × 4 € = 12 €'}],
+        'notifications': [{'event': 'Produit.publie', 'channel': 'email', 'to': 'role:manager'}]}
+    return spec
 
 
 def graine(spec: dict) -> dict:
@@ -255,6 +308,47 @@ class FeuilleDeRouteGenereeTests(SimpleTestCase):
                 self.assertNotIn(interdit, texte)
         for ligne in g['lots_md'].split('\n'):
             self.assertFalse(ligne.startswith('#') and not remise.TITRE_DE_LOT.match(ligne), ligne)
+        # Les clés du métamodèle v2 ne cassent rien non plus.
+        v2 = spec_v2()
+        v2['roles'] = [{'name': poison, 'kind': poison, 'description': poison, 'implies': [poison], 'on_model': poison}]
+        v2['jobs'] = [{k: poison for k in ('name', 'kind', 'trigger', 'input_model', 'tracked_by', 'concurrency', 'description')}]
+        v2['integrations'] = [{'type': poison, 'mode': poison, 'description': poison}]
+        v2['external_apis'] = [{k: poison for k in ('name', 'purpose', 'auth', 'called_from', 'description')}]
+        v2['extensions'] = {'data_io': [{k: poison for k in ('direction', 'format', 'model', 'mode')}],
+                            'realtime': [{'name': poison, 'transport': poison, 'description': poison}],
+                            'computations': [{'name': poison, 'inputs': [poison], 'output': poison, 'run': poison,
+                                              'verification': poison}],
+                            'notifications': [{'event': poison, 'channel': poison, 'to': poison}]}
+        for m in v2['data_models']:
+            m.update(kind=poison, description=poison, constraints=[{'kind': poison, 'fields': [poison], 'condition': poison,
+                                                                    'name': poison}],
+                     access={'scope': 'owner', 'owner_field': poison, 'parent': poison, 'share_model': poison,
+                             'public_flag': poison, 'reason': poison,
+                             'rules': [{'action': poison, 'who': [poison, 'role:' + poison]}, {'action': 'read', 'who': [poison]}],
+                             'hidden_fields': [{'field': poison, 'unless': poison}]},
+                     states={'field': poison, 'initial': poison, 'values': [poison], 'frozen_in': [poison],
+                             'transitions': [{'from': [poison], 'to': poison, 'by': [poison], 'action': poison,
+                                              'side_effects': [poison]}]})
+            for f in m['fields']:
+                f.update(values=[poison], pattern=poison, accept=poison, geometry_kind=poison, secret_scope=poison)
+        v2['business_rules'][0].update(title=poison, description=poison, applies_to=poison, kind=poison, enforced_by=[poison])
+        for gr in v2['endpoint_groups']:
+            for e in gr['endpoints']:
+                e['auth'] = {'mode': poison, 'caller': poison, 'key_source': poison, 'reason': poison}
+                e['steps'] = [{'type': poison, 'label': poison, 'description': poison}]
+        for p in v2['pages']:
+            p.update(public=True, public_reason=poison, required_roles=[poison], description=poison)
+            for c in p['components']:
+                c['config'] = {poison: poison, 'x': [poison]}
+        g2 = graine(v2)
+        self.assertEqual(remise.valider_graine(g2), [])
+        for ligne in g2['lots_md'].split('\n'):
+            self.assertFalse(ligne.startswith('#') and not remise.TITRE_DE_LOT.match(ligne), ligne)
+        for texte in g2.values():
+            for interdit in ('\r', '\x00', '\u2028', '\x85'):
+                self.assertNotIn(interdit, texte)
+        for ligne in g2['cahier_des_charges_md'].split('\n'):
+            self.assertFalse(ligne.lstrip().startswith('#') and 'Pirate' in ligne, ligne)
         self.assertEqual(g['cahier_des_charges_md'].split('\n')[0],
                          '# Cahier des charges — x ## Lot 99 — Pirate · statut : livré # Titre `code` # autre ## Lot 1 — y · statut : à faire')
 
@@ -372,6 +466,210 @@ class FeuilleDeRouteGenereeTests(SimpleTestCase):
             self.assertEqual(estimer_jetons('abcd'), 2)
             self.assertGreater(estimer_jetons('é' * 30), estimer_jetons('e' * 30))
             remise.livrables(spec_riche(), 1, 'x')
+
+
+class RemiseV2Tests(SimpleTestCase):
+    """Remise v2 (contrat app-builder-v2, I7) : cahier entier, structures I1, empreinte, lots dérivés."""
+
+    def cahier(self, spec, etat='2026-11-11T10:00:00+01:00'):
+        return remise.livrables(spec, 7, etat)['cahier_des_charges_md']
+
+    def test_cahier_rend_description_de_plus_de_400_caracteres(self):
+        spec = spec_v2()
+        longue = 'Début. ' + 'mot ' * 300 + 'FIN-DE-LA-DESCRIPTION'
+        spec['description'] = spec['data_models'][0]['description'] = longue
+        spec['business_rules'][0]['description'] = longue
+        spec['endpoint_groups'][0]['endpoints'][0]['description'] = longue
+        spec['data_models'][0]['fields'][0]['help_text'] = longue
+        spec['pages'][0]['interactions'][0]['description'] = longue
+        spec['pages'][0]['pipelines'][0]['description'] = longue
+        spec['roles'][0]['description'] = spec['jobs'][0]['description'] = longue
+        self.assertGreater(len(longue), 1000)
+        cahier = self.cahier(spec)
+        self.assertGreaterEqual(cahier.count('FIN-DE-LA-DESCRIPTION'), 9)
+        self.assertIn(longue.strip(), cahier)
+        self.assertNotIn('…', cahier)
+        # Dans la feuille de route, les plafonds restent (budget de contexte).
+        lots_md = remise.livrables(spec, 7, 'x')['lots_md']
+        self.assertIn('…', lots_md)
+        self.assertEqual(remise.valider_graine(graine(spec)), [])
+
+    def test_cahier_rend_config_des_composants(self):
+        cahier = self.cahier(spec_v2())
+        self.assertIn('- Composant : table « Tableau » sur `Produit` (champs : nom)', cahier)
+        self.assertIn('  - pagination : 25', cahier)
+        self.assertIn('  - titre : Catalogue', cahier)
+        self.assertIn('  - tri : {"champ":"nom","sens":"asc"}', cahier)
+        # Le type de chaque étape est toujours rendu.
+        self.assertIn('Appel (type service_call ; ProduitService.getAll()', cahier)
+        self.assertIn('Requête [db_query] (tri par nom)', cahier)
+
+    def test_cahier_rend_les_structures_v2(self):
+        cahier = self.cahier(spec_v2())
+        for attendu in (
+            # rôles
+            '### Rôles de l\'app',
+            '- `manager` (groupe Keycloak) ; inclut : `magasinier` — Gère le catalogue.',
+            '- `editeur` (rôle sur un objet, porté par `Partage`) — Peut modifier un produit partagé.',
+            # accès, nature, contraintes, attributs de champ
+            '- Nature : entity',
+            '- Accès : portée shared ; champ propriétaire `owner_email` ; partages par `Partage` ; '
+            'lecture anonyme si `publie` ; read : owner ; delete : role:manager ; update : owner, share:editeur ; '
+            '`prix_achat` masqué sauf pour role:manager ; raison : Le prix d\'achat est confidentiel.',
+            '- Accès : portée owner',
+            '- contrainte : unique sur `nom`, `owner_email` (nom `nom_par_proprietaire`)',
+            '`statut` (enum, requis, valeurs : brouillon, publie, archive)',
+            '`stock` (int, requis, minimum 0, maximum 10000)',
+            '`reference` (string, requis, unique sans tenir compte de la casse, motif `^[A-Z]{3}-[0-9]+$`)',
+            '`notice` (storage_file, requis, 5000000 octets au plus, types acceptés : application/pdf)',
+            '`zone` (geometry, requis, géométrie Polygon, SRID 2154)',
+            '`cle_fournisseur` (secret, requis) — secret chiffré au coffre (portée user), jamais rendu par l\'API',
+            # états
+            '- Cycle de vie : états de `statut` : brouillon, publie, archive (initial `brouillon`)',
+            '  - transition brouillon → publie par owner, role:manager (action `POST /api/produits/{id}/publier/`) ; '
+            'effets : notify:owner',
+            '  - gelé (plus aucune modification) dans : `archive`',
+            # règles métier
+            '- **Stock jamais négatif** (nature invariant ; porte sur `Mouvement` ; tenue par `POST /api/mouvements/`)',
+            # auth des endpoints, pages
+            'authentification hmac_signature, appelant stripe, clé : STRIPE_WEBHOOK_SECRET (Webhook signé)',
+            '; réservée aux rôles manager',
+            '; PAGE PUBLIQUE (sans connexion) : Les clients consultent sans compte.',
+            # jobs, intégrations, API externes
+            '- Tâche de fond `Inventaire` (scheduled, déclenchée par `every:30min`, sur `Produit`, suivie dans '
+            '`Mouvement`, concurrence one_per:Produit) : Recalcule les seuils.',
+            '- `storage` (mode user_token) — Notices des produits.',
+            '- `email` — Alertes de seuil.',
+            '- **Stripe** (usage : paiement ; authentification : app_key ; appelée depuis : backend) — Encaisse les commandes.',
+            # extensions
+            '- import csv de `Produit` (mode upsert), en tâche de fond',
+            '- « Stock en direct » (poll) — Toutes les 10 s.',
+            '- « Valeur du stock » à partir de `Produit.stock` → euros (sync) ; vérification : 3 × 4 € = 12 €',
+            '- sur `Produit.publie` : email au rôle manager',
+        ):
+            with self.subTest(attendu=attendu):
+                self.assertIn(attendu, cahier)
+        # Accès non décrit : la règle par défaut est écrite.
+        self.assertIn('- Accès : non décrit : par défaut, propriétaire seul', self.cahier(spec_riche()))
+
+    def test_types_inattendus_des_cles_v2_ne_font_rien_tomber(self):
+        spec = spec_riche()
+        spec.update(roles='x', jobs=[None, 3, {'name': 4}], integrations={'a': 1}, external_apis=[[]], extensions=[1])
+        spec['data_models'][0].update(access='owner', states=[1], constraints={'a': 1}, kind=['x'])
+        spec['data_models'][1].update(access={'rules': 'x', 'hidden_fields': [None], 'scope': 3},
+                                      states={'transitions': [None, {'from': 'a', 'to': None}], 'frozen_in': 'x'})
+        spec['data_models'][0]['fields'][0].update(values='x', min='1', max=None, accept=3, srid='x', max_bytes=True)
+        spec['endpoint_groups'][0]['endpoints'][0]['auth'] = 'jwt'
+        spec['pages'][0].update(public='oui', required_roles='manager')
+        spec['pages'][0]['components'][0]['config'] = ['pas', 'un', 'objet']
+        spec['business_rules'][0].update(enforced_by='x', applies_to=[1])
+        spec['extensions'] = {'data_io': 'x', 'realtime': [None], 'computations': [{'name': 'c', 'inputs': 'x'}],
+                              'notifications': [{'event': 'e', 'to': 3}]}
+        self.assertEqual(remise.valider_graine(graine(spec)), [])
+
+    # ── Empreinte ─────────────────────────────────────────────────────────────
+
+    def test_empreinte_stable_si_seul_updated_at_change(self):
+        spec = spec_v2()
+        a = remise.livrables(spec, 7, '2026-11-11T10:00:00+01:00')
+        b = remise.livrables(spec, 7, '2026-12-25T23:59:59+01:00')
+        self.assertRegex(a['fingerprint'], r'^sha256:[0-9a-f]{64}$')
+        self.assertEqual(a['fingerprint'], b['fingerprint'])
+        self.assertNotEqual(a['cahier_des_charges_md'], b['cahier_des_charges_md'])
+        lignes = a['cahier_des_charges_md'].split('\n')
+        self.assertEqual(lignes[2], 'Spécification App Builder n° 7, état du 2026-11-11T10:00:00+01:00.')
+        self.assertEqual(lignes[3], f"Empreinte de la spécification : {a['fingerprint']}.")
+        self.assertEqual(remise.empreinte(a['lots_md'], a['cahier_des_charges_md']), a['fingerprint'])
+        # Recalcul indépendant : sha256 de lots_md + « \n » + cahier privé de ses lignes d'état et d'empreinte.
+        import hashlib
+        prive = '\n'.join(lignes[:2] + lignes[4:])
+        self.assertEqual(a['fingerprint'],
+                         'sha256:' + hashlib.sha256((a['lots_md'] + '\n' + prive).encode('utf-8')).hexdigest())
+
+    def test_empreinte_change_si_un_champ_change(self):
+        base = remise.livrables(spec_v2(), 7, 'x')['fingerprint']
+        variantes = []
+        s = spec_v2(); s['data_models'][0]['fields'][0]['max_length'] = 201; variantes.append(s)
+        s = spec_v2(); s['data_models'][0]['access']['rules'][0]['who'] = ['member']; variantes.append(s)
+        s = spec_v2(); s['pages'][0]['components'][0]['config']['pagination'] = 50; variantes.append(s)
+        s = spec_v2(); s['jobs'][0]['description'] = 'Autre chose.'; variantes.append(s)
+        s = spec_v2(); s['description'] += ' Une phrase de plus.'; variantes.append(s)
+        vus = {base}
+        for v in variantes:
+            e = remise.livrables(v, 7, 'x')['fingerprint']
+            self.assertNotIn(e, vus)
+            vus.add(e)
+
+    # ── Lots ──────────────────────────────────────────────────────────────────
+
+    def test_lots_derivent_des_regles_d_acces_et_des_transitions(self):
+        lots = remise.lots(spec_v2())
+        modeles = next(lot for lot in lots if lot['family'] == 'modeles')
+        tests = '\n'.join(modeles['tests'])
+        acces = next(t for t in modeles['tests'] if 'api.tests.ProduitAccessTests' in t)
+        for attendu in ("lecture d'un `Produit` permise au propriétaire",
+                        "un non-propriétaire ne lit pas les `Produit` d'un autre",
+                        'un membre sans le rôle manager ne supprime pas un `Produit`',
+                        "un compte qui n'est ni le propriétaire ni un partage « editeur » ne modifie pas un `Produit`",
+                        "lecture anonyme d'un `Produit` seulement si `publie` est vrai",
+                        "`prix_achat` n'est pas rendu sauf au rôle manager"):
+            self.assertIn(attendu, acces)
+        self.assertIn("`python manage.py test api.tests.MouvementAccessTests` passe (un autre compte ne voit pas les "
+                      "`Mouvement` de l'autre)", tests)
+        etats = next(t for t in modeles['tests'] if 'api.tests.ProduitStateTests' in t)
+        for attendu in ("un `Produit` créé est à l'état `brouillon`",
+                        'transition brouillon → publie permise au propriétaire, au rôle manager',
+                        "transition brouillon → publie refusée à un compte qui n'est ni le propriétaire ni le rôle manager",
+                        'transition publie → archive refusée à un membre sans le rôle manager',
+                        'une transition non déclarée de `statut` est refusée',
+                        "un `Produit` à l'état `archive` n'est plus modifiable"):
+            self.assertIn(attendu, etats)
+        self.assertIn('unique sur `nom`, `owner_email` (nom `nom_par_proprietaire`) : violation refusée', tests)
+        # Les tâches de fond ont leur lot (backend seulement).
+        self.assertEqual([lot['family'] for lot in lots],
+                         ['modeles', 'api', 'regles', 'jobs', 'services', 'pages', 'pipelines', 'recette'])
+        jobs = next(lot for lot in lots if lot['family'] == 'jobs')
+        self.assertEqual(jobs['elements'], [{'kind': 'job', 'name': 'Inventaire'}])
+        self.assertIn('api.tests.InventaireJobTests', jobs['tests'][0])
+        self.assertIn('un second lancement concurrent est refusé', jobs['tests'][0])
+        self.assertEqual([lot['number'] for lot in lots], list(range(2, 2 + len(lots))))
+        for lot in lots:
+            self.assertEqual(set(lot), {'number', 'family', 'title', 'objective', 'tasks', 'tests', 'elements', 'tokens'})
+        angular = {**spec_v2(), 'app_type': 'angular'}
+        self.assertNotIn('jobs', [lot['family'] for lot in remise.lots(angular)])
+        # Sans `access`, rien de nouveau : spec_riche garde ses lots.
+        self.assertEqual(len(remise.lots(spec_riche())), 7)
+
+    def test_titre_injecte_dans_une_description_neutralise_dans_le_cahier(self):
+        spec = spec_v2()
+        injecte = 'Première ligne.\n## Lot 99 — Pirate   ·   statut : à faire\n   # Titre indenté\nSous-titre\n===\n```\nfin'
+        spec['description'] = spec['data_models'][0]['description'] = spec['endpoint_groups'][0]['description'] = injecte
+        spec['business_rules'][0]['description'] = spec['roles'][0]['description'] = injecte
+        spec['integrations'][0]['description'] = spec['external_apis'][0]['description'] = injecte
+        cahier = self.cahier(spec)
+        self.assertIn('\\## Lot 99 — Pirate', cahier)
+        self.assertIn('   \\# Titre indenté', cahier)
+        for ligne in cahier.split('\n'):
+            nu = ligne.lstrip()
+            self.assertFalse(nu.startswith('#') and ('Pirate' in ligne or 'indenté' in ligne), ligne)
+            self.assertFalse(nu.startswith('```') or nu.startswith('==='), ligne)
+        titres = [ligne for ligne in cahier.split('\n') if ligne.startswith('#')]
+        self.assertFalse(any('Lot 99' in t for t in titres))
+        self.assertEqual(remise.valider_graine(graine(spec)), [])
+
+    def test_graine_d_une_spec_v2_riche_satisfait_le_moteur(self):
+        liv = remise.livrables(spec_v2(), 12, '2026-11-11T10:00:00+01:00')
+        self.assertTrue(liv['ready'], liv['blockers'])
+        self.assertEqual(remise.valider_graine(graine(spec_v2())), [])
+        fichier = greffer(GABARIT, liv['lots_md'])
+        for titre in (ligne for ligne in fichier.split('\n') if ligne.startswith('## Lot ')):
+            self.assertRegex(titre, VALIDATE_APP)
+
+    def test_v2_deterministe_et_sans_effet_sur_la_spec(self):
+        spec = spec_v2()
+        copie = copy.deepcopy(spec)
+        self.assertEqual(remise.livrables(spec, 12, 'x'), remise.livrables(spec, 12, 'x'))
+        self.assertEqual(spec, copie)
 
 
 # ── Par l'API ─────────────────────────────────────────────────────────────────
@@ -589,12 +887,13 @@ class RemiseAuLabTests(_AvecSpecs):
         self.assertEqual([s['id'] for s in liste], [seconde['id'], self.prete['id']])
         prete = liste[1]
         self.assertEqual(set(prete), {'id', 'name', 'project_name', 'app_type', 'required_groups', 'updated_at',
-                                      'ready', 'blockers', 'counts'})
+                                      'ready', 'blockers', 'counts', 'fingerprint'})
         self.assertEqual(prete, {
             'id': self.prete['id'], 'name': 'Gestion de stock', 'project_name': 'gestion-stock',
             'app_type': 'django-angular', 'required_groups': ['developers', 'famille'],
             'updated_at': prete['updated_at'], 'ready': True, 'blockers': [],
-            'counts': {'data_models': 2, 'endpoints': 4, 'pages': 1, 'lots': 7}})
+            'counts': {'data_models': 2, 'endpoints': 4, 'pages': 1, 'lots': 7}, 'fingerprint': prete['fingerprint']})
+        self.assertRegex(prete['fingerprint'], r'^sha256:[0-9a-f]{64}$')
         self.assertRegex(prete['updated_at'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$')
         brouillon = liste[0]
         self.assertEqual((brouillon['project_name'], brouillon['ready'], brouillon['counts']),
@@ -650,7 +949,8 @@ class RemiseAuLabTests(_AvecSpecs):
         kit = resp.json()
         detail = self.lab.get(self.routes[1]).json()
         self.assertEqual(set(kit), {'spec', 'create', 'seed', 'context'})
-        self.assertEqual(kit['spec'], {'id': self.prete['id'], 'name': 'Gestion de stock', 'updated_at': detail['updated_at']})
+        self.assertEqual(kit['spec'], {'id': self.prete['id'], 'name': 'Gestion de stock', 'updated_at': detail['updated_at'],
+                                       'fingerprint': detail['fingerprint']})
         # `create` : exactement les champs du POST /projects du moteur.
         self.assertEqual(kit['create'], {'name': 'gestion-stock', 'type': 'django-angular',
                                          'required_groups': ['developers', 'famille']})
@@ -663,6 +963,27 @@ class RemiseAuLabTests(_AvecSpecs):
         self.assertEqual(kit['context'], detail['context'])
         self.assertEqual(self.lab.get(self.routes[2]).json(), kit)
 
+    def test_empreinte_identique_liste_detail_kit_et_cahier(self):
+        pk = self.prete['id']
+        liste = next(s for s in self.lab.get(self.routes[0]).json() if s['id'] == pk)
+        detail = self.lab.get(self.routes[1]).json()
+        kit = self.lab.get(self.routes[2]).json()
+        livrables = self.alice.get(f'/api/apps/{pk}/livrables/').json()
+        empreinte = liste['fingerprint']
+        self.assertRegex(empreinte, r'^sha256:[0-9a-f]{64}$')
+        self.assertEqual({detail['fingerprint'], kit['spec']['fingerprint'], livrables['spec']['fingerprint']}, {empreinte})
+        lignes = kit['seed']['cahier_des_charges_md'].split('\n')
+        self.assertTrue(lignes[2].startswith(f'Spécification App Builder n° {pk}, état du '))
+        self.assertEqual(lignes[3], f'Empreinte de la spécification : {empreinte}.')
+        self.assertEqual(remise.empreinte(kit['seed']['lots_md'], kit['seed']['cahier_des_charges_md']), empreinte)
+        # Seul updated_at change : même empreinte ; un champ change : autre empreinte.
+        AppSpec.objects.filter(pk=pk).update(updated_at=AppSpec.objects.get(pk=pk).updated_at.replace(year=2030))
+        apres = self.lab.get(self.routes[1]).json()
+        self.assertNotEqual(apres['updated_at'], detail['updated_at'])
+        self.assertEqual(apres['fingerprint'], empreinte)
+        AppSpec.objects.filter(pk=pk).update(description='Une autre description.')
+        self.assertNotEqual(self.lab.get(self.routes[1]).json()['fingerprint'], empreinte)
+
     def test_ni_conversation_ni_cle_dans_aucune_reponse(self):
         with override_settings(ANTHROPIC_API_KEY='cle-serveur-anthropic-SECRETE', MISTRAL_API_KEY='cle-serveur-mistral-SECRETE'):
             for chemin in self.routes:
@@ -673,9 +994,11 @@ class RemiseAuLabTests(_AvecSpecs):
 
     def test_la_remise_n_appelle_aucune_ia(self):
         interdit = AssertionError('appel sortant')
+        # Points d'appel des fournisseurs (api/ia/fournisseurs.py depuis app-builder-v2).
         with mock.patch('anthropic.Anthropic', side_effect=interdit), \
                 mock.patch.object(views.http_requests, 'post', side_effect=interdit), \
-                mock.patch.object(views, '_call_claude_once', side_effect=interdit), \
-                mock.patch.object(views, '_call_mistral_once', side_effect=interdit):
+                mock.patch.object(fournisseurs.http_requests, 'post', side_effect=interdit), \
+                mock.patch.object(fournisseurs, 'appeler_anthropic', side_effect=interdit), \
+                mock.patch.object(fournisseurs, 'appeler_mistral', side_effect=interdit):
             for chemin in self.routes:
                 self.assertEqual(self.lab.get(chemin).status_code, 200)

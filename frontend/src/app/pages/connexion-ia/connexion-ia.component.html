@@ -1,0 +1,121 @@
+<div class="cx-page">
+  <h1 class="cx-title">Connexion IA</h1>
+
+  <section class="cx-card" aria-labelledby="cx-ways">
+    <h2 id="cx-ways" class="cx-h2">Deux façons de faire travailler une IA sur votre spécification</h2>
+    <p>
+      <strong>Clé API au coffre</strong> — vous déposez une clé Anthropic ou Mistral dans App Builder
+      (⚙ du chat, page d'accueil) : elle sert au chat intégré, et chaque échange est facturé à cette clé.
+      <strong>Claude Code ou Mistral Vibe</strong> — vous gardez votre propre abonnement : votre outil
+      lit et modifie la spécification par le serveur MCP d'App Builder, avec un jeton personnel créé ici.
+    </p>
+    <p class="cx-mute">
+      Un jeton d'abonnement Claude (<code>sk-ant-oat…</code>) ne se dépose jamais dans App Builder : il
+      reste dans votre Claude Code. Toute modification faite par le MCP passe par les mêmes contrôles que
+      le chat et s'annule de la même façon.
+    </p>
+  </section>
+
+  <!-- ── Jeton tout juste créé : montré une seule fois ───────────────────── -->
+  @if (fresh(); as t) {
+    <section class="cx-card cx-fresh" role="alert" aria-labelledby="cx-fresh-title">
+      <h2 id="cx-fresh-title" class="cx-h2">Jeton « {{ t.name }} » créé</h2>
+      <p><strong>Copiez-le maintenant : il ne sera plus jamais affiché.</strong> App Builder n'en garde que l'empreinte.</p>
+      <div class="cx-secret">
+        <code class="cx-code">{{ t.token }}</code>
+        <button type="button" class="ed-btn ed-primary" (click)="copy('token', t.token ?? '')">
+          {{ copied() === 'token' ? 'Copié ✓' : 'Copier le jeton' }}
+        </button>
+      </div>
+      <p class="cx-mute">Les commandes ci-dessous portent ce jeton tant que cet encart est ouvert.</p>
+      <button type="button" class="ed-btn" (click)="dismissFresh()">J'ai copié le jeton — fermer</button>
+    </section>
+  }
+
+  <!-- ── Commandes ───────────────────────────────────────────────────────── -->
+  <section class="cx-card" aria-labelledby="cx-cmds">
+    <h2 id="cx-cmds" class="cx-h2">Brancher votre outil</h2>
+    @if (commands(); as c) {
+      <p class="cx-mute">Adresse du serveur MCP : <code>{{ c.url }}</code>.
+        @if (!c.withToken) { Remplacez <code>&lt;JETON&gt;</code> par un jeton créé ci-dessous. }
+      </p>
+      <h3 class="cx-h3">Claude Code</h3>
+      <div class="cx-cmd">
+        <pre class="cx-code">{{ c.claude }}</pre>
+        <button type="button" class="ed-btn" (click)="copy('claude', c.claude)">{{ copied() === 'claude' ? 'Copié ✓' : 'Copier' }}</button>
+      </div>
+      <h3 class="cx-h3">Mistral Vibe</h3>
+      <div class="cx-cmd">
+        <pre class="cx-code">{{ c.vibe }}</pre>
+        <button type="button" class="ed-btn" (click)="copy('vibe', c.vibe)">{{ copied() === 'vibe' ? 'Copié ✓' : 'Copier' }}</button>
+      </div>
+    } @else {
+      <p class="cx-mute">Commandes indisponibles : le serveur n'a pas répondu.</p>
+    }
+  </section>
+
+  <!-- ── Création ─────────────────────────────────────────────────────────── -->
+  <section class="cx-card" aria-labelledby="cx-new">
+    <h2 id="cx-new" class="cx-h2">Nouveau jeton</h2>
+    <div class="ed-grid">
+      <label class="ed-field">Nom
+        <input [value]="name()" (input)="setName($event)" maxlength="80" placeholder="Portable, Claude Code" />
+      </label>
+      <label class="ed-field">Droits
+        <select (change)="setScope($event)">
+          <option value="ecrire" [selected]="scope() === 'ecrire'">Lire et modifier</option>
+          <option value="lire" [selected]="scope() === 'lire'">Lire seulement</option>
+        </select>
+      </label>
+      <label class="ed-field">Spécification
+        <select (change)="setSpec($event)">
+          <option value="" [selected]="specChoice() === ''">Toutes mes spécifications</option>
+          @for (s of specs(); track s.id) {
+            <option [value]="s.id" [selected]="specChoice() === '' + s.id">{{ s.name }}</option>
+          }
+        </select>
+      </label>
+      <label class="ed-field">Valable (jours, 1 à 90)
+        <input type="number" min="1" max="90" [value]="days()" (change)="setDays($event)" />
+      </label>
+    </div>
+    @if (formError()) { <p class="ed-note ed-error" role="alert">{{ formError() }}</p> }
+    <div>
+      <button type="button" class="ed-btn ed-primary" (click)="create()" [disabled]="busy()">Créer le jeton</button>
+    </div>
+  </section>
+
+  <!-- ── Liste ────────────────────────────────────────────────────────────── -->
+  <section class="cx-card" aria-labelledby="cx-list">
+    <h2 id="cx-list" class="cx-h2">Mes jetons</h2>
+    @if (failed()) { <p class="ed-note ed-error" role="alert">{{ failed() }}</p> }
+    @if (loading()) { <p class="cx-mute" role="status">Chargement…</p> }
+    @if (!loading() && active().length === 0) { <p class="cx-mute">Aucun jeton actif.</p> }
+    <ul class="ed-list">
+      @for (t of active(); track t.id) {
+        <li class="ed-item cx-token">
+          <div class="cx-token-main">
+            <strong>{{ t.name }}</strong> <code>{{ t.prefix }}…</code>
+            <span class="ed-tag">{{ t.scope === 'ecrire' ? 'lire et modifier' : 'lire seulement' }}</span>
+            <span class="cx-mute">· {{ specName(t.spec_id) }}</span>
+            <span class="cx-mute cx-dates">
+              créé le {{ t.created_at | date:'dd/MM/yyyy' }} · expire le {{ t.expires_at | date:'dd/MM/yyyy' }}
+              · {{ t.last_used_at ? 'dernier usage le ' + (t.last_used_at | date:'dd/MM/yyyy HH:mm') : 'jamais utilisé' }}
+            </span>
+          </div>
+          <button type="button" class="ed-btn ed-danger" (click)="revoke(t)" [disabled]="busy()">Révoquer</button>
+        </li>
+      }
+    </ul>
+    @if (revoked().length) {
+      <details class="cx-revoked">
+        <summary>Jetons révoqués ({{ revoked().length }})</summary>
+        <ul class="ed-list">
+          @for (t of revoked(); track t.id) {
+            <li class="ed-item"><span>{{ t.name }} <code>{{ t.prefix }}…</code> — révoqué</span></li>
+          }
+        </ul>
+      </details>
+    }
+  </section>
+</div>

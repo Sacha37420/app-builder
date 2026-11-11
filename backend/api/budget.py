@@ -5,6 +5,7 @@ bibliothèque de découpage : elle sert à décider AVANT d'appeler un fournisse
 et à borner les lots remis à un agent de développement. Elle surestime
 volontairement (mieux vaut refuser trop tôt qu'envoyer une requête vouée à l'échec).
 """
+import json
 import math
 
 # Ce qu'un agent de développement doit pouvoir tenir pour UN lot de la feuille de
@@ -30,30 +31,60 @@ def estimer_jetons(texte) -> int:
 # ── Ce que chaque modèle peut tenir ───────────────────────────────────────────
 # Fenêtre de contexte (entrée + sortie) et sortie maximale, en jetons. Tenue ici,
 # côté serveur : l'interface lit cette liste (GET /api/models/) au lieu de la
-# recopier. Claude : valeurs publiées par Anthropic. Mistral : valeurs prudentes
-# (les alias « -latest » changent de modèle sans prévenir) — une fenêtre
-# sous-estimée fait refuser un peu tôt, jamais envoyer une requête perdue.
+# recopier. Claude : valeurs publiées par Anthropic (table du 2026-10-06). Mistral :
+# valeurs prudentes (docs.mistral.ai ne publie pas la fenêtre des alias « -latest »,
+# qui changent de modèle sans prévenir) — une fenêtre sous-estimée fait refuser un
+# peu tôt, jamais envoyer une requête perdue.
+#
+# `tools` : le modèle sait appeler des outils (boucle d'outils, api/ia/boucle.py) ;
+# faux ⇒ repli en sortie structurée (api/ia/repli.py).
+# `effort` : `output_config.effort` envoyé (None ⇒ rien : modèle qui le refuse).
+# `thinking` : `{"type": "adaptive"}` à envoyer explicitement (modèles 4.6/4.8 ;
+# sur les 5.5 la réflexion adaptative est le défaut, on n'envoie rien).
+# `fallbacks` : repli serveur d'Anthropic sur refus (`fallbacks: "default"`).
+# `strict` (Claude, défaut vrai) : accepte `strict: true` sur un outil.
+# `cache_min` : préfixe minimal mis en cache par Anthropic (sous ce seuil, rien
+# n'est mis en cache, sans erreur).
 MODELES = (
-    {'id': 'claude-sonnet-4-6', 'provider': 'claude', 'label': 'Sonnet 4.6 — Recommandé ★',
-     'context_window': 1_000_000, 'max_output': 128_000},
-    {'id': 'claude-opus-4-8', 'provider': 'claude', 'label': 'Opus 4.8 — Le plus puissant',
-     'context_window': 1_000_000, 'max_output': 128_000},
-    {'id': 'claude-haiku-4-5', 'provider': 'claude', 'label': 'Haiku 4.5 — Rapide / économique',
-     'context_window': 200_000, 'max_output': 64_000},
+    {'id': 'claude-sonnet-5-5', 'provider': 'claude', 'label': 'Sonnet 5.5 — Recommandé ★',
+     'context_window': 1_000_000, 'max_output': 128_000, 'tools': True,
+     'effort': 'medium', 'thinking': None, 'fallbacks': True, 'cache_min': 512},
+    {'id': 'claude-opus-5-5', 'provider': 'claude', 'label': 'Opus 5.5 — Le plus puissant',
+     'context_window': 1_000_000, 'max_output': 128_000, 'tools': True,
+     'effort': 'medium', 'thinking': None, 'fallbacks': True, 'cache_min': 512},
+    {'id': 'claude-haiku-5-5', 'provider': 'claude', 'label': 'Haiku 5.5 — Rapide / économique',
+     'context_window': 1_000_000, 'max_output': 128_000, 'tools': True,
+     'effort': 'low', 'thinking': None, 'fallbacks': False, 'cache_min': 512},
+    {'id': 'claude-sonnet-4-6', 'provider': 'claude', 'label': 'Sonnet 4.6 — Génération précédente',
+     'context_window': 1_000_000, 'max_output': 128_000, 'tools': True,
+     'effort': 'medium', 'thinking': 'adaptive', 'fallbacks': False, 'cache_min': 1024, 'strict': False},
+    {'id': 'claude-opus-4-8', 'provider': 'claude', 'label': 'Opus 4.8 — Génération précédente',
+     'context_window': 1_000_000, 'max_output': 128_000, 'tools': True,
+     'effort': 'medium', 'thinking': 'adaptive', 'fallbacks': False, 'cache_min': 1024},
+    {'id': 'claude-haiku-4-5', 'provider': 'claude', 'label': 'Haiku 4.5 — Génération précédente',
+     'context_window': 200_000, 'max_output': 64_000, 'tools': True,
+     'effort': None, 'thinking': None, 'fallbacks': False, 'cache_min': 4096},
     {'id': 'mistral-small-latest', 'provider': 'mistral', 'label': 'Small — Recommandé ★',
-     'context_window': 32_000, 'max_output': 8_192},
+     'context_window': 32_000, 'max_output': 8_192, 'tools': True},
+    {'id': 'mistral-medium-latest', 'provider': 'mistral', 'label': 'Medium — Équilibré',
+     'context_window': 128_000, 'max_output': 8_192, 'tools': True},
     {'id': 'mistral-large-latest', 'provider': 'mistral', 'label': 'Large — Le plus puissant',
-     'context_window': 128_000, 'max_output': 8_192},
+     'context_window': 128_000, 'max_output': 8_192, 'tools': True},
     {'id': 'codestral-latest', 'provider': 'mistral', 'label': 'Codestral — Spécialisé code',
-     'context_window': 32_000, 'max_output': 8_192},
-    {'id': 'open-mistral-nemo', 'provider': 'mistral', 'label': 'Nemo — Économique',
-     'context_window': 128_000, 'max_output': 8_192},
+     'context_window': 32_000, 'max_output': 8_192, 'tools': True},
 )
-MODELE_PAR_DEFAUT = {'claude': 'claude-sonnet-4-6', 'mistral': 'mistral-small-latest'}
+MODELE_PAR_DEFAUT = {'claude': 'claude-sonnet-5-5', 'mistral': 'mistral-small-latest'}
 # Anciens identifiants encore enregistrés dans des navigateurs.
 _ALIAS = {'claude-haiku-4-5-20251001': 'claude-haiku-4-5'}
-# Modèle inconnu de la table : on le laisse passer, avec la plus petite fenêtre.
+# Modèle inconnu de la table : on le laisse passer, avec la plus petite fenêtre et
+# sans outils (repli en sortie structurée : rien ne dit qu'il sait en appeler).
 _FENETRE_INCONNUE = 32_000
+
+# Sortie demandée par appel (non streamé : le SDK d'Anthropic refuse au-delà
+# d'environ 21 000 jetons sans flux). La réflexion des modèles récents compte dedans.
+SORTIE_PAR_APPEL = {'claude': 16_000, 'mistral': 8_192}
+# Place gardée pour les résultats d'outils d'un tour (lectures, essais à blanc).
+RESERVE_OUTILS = 8_000
 
 # Marge gardée libre : l'estimation n'est pas un décompte exact.
 MARGE_JETONS = 1_000
@@ -73,14 +104,20 @@ def modele(provider, identifiant=None) -> dict:
         if m['id'] == identifiant and m['provider'] == provider:
             return dict(m)
     return {'id': identifiant, 'provider': provider, 'label': identifiant,
-            'context_window': _FENETRE_INCONNUE, 'max_output': 4_096}
+            'context_window': _FENETRE_INCONNUE, 'max_output': 4_096, 'tools': False,
+            'effort': None, 'thinking': None, 'fallbacks': False, 'cache_min': 0}
+
+
+def sortie(fiche: dict) -> int:
+    """Jetons de sortie demandés à chaque appel de ce modèle."""
+    return min(fiche['max_output'], SORTIE_PAR_APPEL[fiche['provider']])
 
 
 def catalogue() -> dict:
     """La liste servie à l'interface, par fournisseur."""
     return {
         'providers': {p: {'default': MODELE_PAR_DEFAUT[p],
-                          'models': [{c: m[c] for c in ('id', 'label', 'context_window', 'max_output')}
+                          'models': [{c: m[c] for c in ('id', 'label', 'context_window', 'max_output', 'tools')}
                                      for m in MODELES if m['provider'] == p]}
                       for p in ('claude', 'mistral')},
         'lot_budget_tokens': LOT_BUDGET_JETONS,
@@ -124,17 +161,30 @@ def borner(messages: list[dict], budget: int) -> tuple[list[dict], int]:
 
 
 def mesurer(fiche: dict, prompt_systeme: str, spec_compacte: str, messages: list[dict],
-            sortie: int, retires: int = 0) -> dict:
-    """Ce que pèserait l'envoi, face à ce que le modèle peut tenir."""
-    systeme = estimer_jetons(prompt_systeme)
+            sortie: int, retires: int = 0, *, outils=None, index: str = '',
+            reserve_outils: int = 0, resultats_outils: int = 0) -> dict:
+    """Ce que pèserait l'envoi, face à ce que le modèle peut tenir.
+
+    `prompt_systeme` est le prompt système entier (bloc stable + bloc variable,
+    index compris) ; `outils` la liste des outils déclarés, comptée dans
+    `system_tokens` (elle part à chaque appel) et rendue à part dans
+    `tools_tokens` ; `index` l'index de la spec (déjà dans le prompt : rendu à
+    part, `index_tokens`, sans être compté deux fois). `reserve_outils` est la
+    place gardée pour les résultats d'outils du tour ; `resultats_outils` ce
+    qu'ils pèsent réellement (fin de tour)."""
+    outils_jetons = estimer_jetons(json.dumps(outils, ensure_ascii=False, sort_keys=True)) if outils else 0
+    systeme = estimer_jetons(prompt_systeme) + outils_jetons
     historique = sum(estimer_jetons(_contenu(m)) for m in messages)
-    disponible = fiche['context_window'] - sortie - MARGE_JETONS
+    disponible = fiche['context_window'] - sortie - MARGE_JETONS - reserve_outils
     total = systeme + historique
     return {
         'model': fiche['id'], 'provider': fiche['provider'],
         'context_window': fiche['context_window'], 'reserved_output_tokens': sortie,
+        'reserved_tool_tokens': reserve_outils,
         'available_tokens': disponible,
         'system_tokens': systeme, 'spec_tokens': estimer_jetons(spec_compacte), 'history_tokens': historique,
+        'tools_tokens': outils_jetons, 'index_tokens': estimer_jetons(index),
+        'tool_results_tokens': resultats_outils,
         'estimated_tokens': total,
         'ratio': round(total / disponible, 4) if disponible > 0 else 1.0,
         'fits': total <= disponible,

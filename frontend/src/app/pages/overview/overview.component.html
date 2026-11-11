@@ -3,7 +3,8 @@
   <h1 class="ov-title">Vue d'ensemble</h1>
   <p class="ov-intro">
     Votre app, du plus large (sa place dans le lab) au plus fin (une étape de pipeline).
-    Cliquez sur un élément pour y entrer ; le fil d'Ariane et « Remonter » ramènent en arrière.
+    Cliquez sur un élément pour l'inspecter ; « Modifier » mène à sa page d'édition, et la sélection
+    vous suit d'une vue à l'autre.
   </p>
 
   @if (state.savedId() === null) {
@@ -34,17 +35,61 @@
         @if (loading()) { <span role="status">— actualisation…</span> }
       </p>
 
-      <!-- ── Barre d'échelles ──────────────────────────────────────────── -->
-      <nav class="ov-tabs" aria-label="Échelles, de la plus large à la plus fine">
+      @if (graphIssues().length) {
+        <details class="ov-filter ov-issues">
+          <summary><span aria-hidden="true">⚠</span> {{ graphIssues().length }} défaut(s) dans la spécification</summary>
+          <ul>
+            @for (i of graphIssues(); track $index) {
+              <li>
+                {{ i.message }}
+                @if (i.node && store.node(i.node); as n) {
+                  — <button type="button" class="ov-link" (click)="store.goNode(n)">{{ n.label }}</button>
+                }
+              </li>
+            }
+          </ul>
+        </details>
+      }
+
+      <!-- ── Barre des vues ────────────────────────────────────────────── -->
+      <nav class="ov-tabs" aria-label="Vues de la spécification">
         @for (s of g.scales; track s.id; let i = $index) {
           <button type="button" class="ov-tab"
-                  [class.active]="store.scale() === s.id"
+                  [class.active]="store.scale() === s.id" [class.unavailable]="s.available === false"
                   [attr.aria-current]="store.scale() === s.id ? 'true' : null"
-                  (click)="store.open(s.id)">
+                  (click)="store.open(s.id, store.focus()?.id ?? null)">
             <span class="ov-tab-n" aria-hidden="true">{{ i + 1 }}</span>{{ s.label }}
+            @if (s.available === false) { <span class="ov-sr">(indisponible)</span> }
           </button>
         }
       </nav>
+
+      <!-- ── Barre d'outils : aller à, lot, schéma/liste ────────────────── -->
+      <div class="ov-toolbar">
+        <button type="button" class="ov-btn" (click)="gotoOpen.set(true)" aria-keyshortcuts="Control+K">
+          <span aria-hidden="true">⌕</span> Aller à… <span class="ov-faint">Ctrl+K</span>
+        </button>
+        @if (store.lotNumbers().length) {
+          <label class="ov-picker">
+            <span>L'app après</span>
+            <select (change)="setLot($any($event.target).value)">
+              <option value="" [selected]="store.lotCursor() === null">tous les lots</option>
+              @for (k of store.lotNumbers(); track k) {
+                <option [value]="k" [selected]="store.lotCursor() === k">le lot {{ k }}</option>
+              }
+            </select>
+          </label>
+        }
+        @if (hasDiagram()) {
+          <div class="ov-seg-btns" role="group" aria-label="Présentation">
+            <button type="button" class="ov-btn" [attr.aria-pressed]="store.mode() === 'carte'" (click)="store.setParam('mode', 'carte')">Schéma</button>
+            <button type="button" class="ov-btn" [attr.aria-pressed]="store.mode() === 'liste'" (click)="store.setParam('mode', 'liste')">Liste</button>
+          </div>
+        }
+      </div>
+      @if (store.lotCursor() !== null) {
+        <p class="ov-muted">En pointillés : ce qui sera construit après le lot {{ store.lotCursor() }}.</p>
+      }
 
       <!-- ── Fil d'Ariane ──────────────────────────────────────────────── -->
       <div class="ov-trail">
@@ -75,16 +120,51 @@
         </p>
       }
 
-      <!-- ── L'échelle courante ────────────────────────────────────────── -->
-      <section [attr.aria-label]="store.scaleLabel(store.scale())">
-        @switch (store.scale()) {
-          @case ('overview')     { <app-ov-lab /> }
-          @case ('architecture') { <app-ov-architecture /> }
-          @case ('data')         { <app-ov-data /> }
-          @case ('pipelines')    { <app-ov-pipelines /> }
-          @case ('roadmap')      { <app-ov-roadmap /> }
+      <div class="ov-stage" [class.with-insp]="!!store.focus()">
+        <!-- ── La vue courante ─────────────────────────────────────────── -->
+        <section class="ov-scene" [attr.aria-label]="store.scaleLabel(store.scale())" (click)="onSceneClick($event)">
+          @if (store.scaleInfo()?.available === false) {
+            <div class="ov-card ov-empty">
+              <p><strong>{{ store.scaleLabel(store.scale()) }} : rien à montrer.</strong></p>
+              <p>{{ store.scaleInfo()?.reason || "La spécification ne décrit pas encore ce qu'il faut pour cette vue." }}</p>
+            </div>
+          } @else {
+            @switch (store.scale()) {
+              @case ('overview')     { <app-ov-lab /> }
+              @case ('architecture') { <app-ov-architecture /> }
+              @case ('data') {
+                @if (store.mode() === 'carte') { <app-ov-er /> } @else { <app-ov-data /> }
+              }
+              @case ('pipelines') {
+                @if (store.mode() === 'carte' && (g.sequences?.length ?? 0) > 0) {
+                  <h2 class="ov-h2">Séquences</h2>
+                  <app-ov-sequences />
+                  <h2 class="ov-h2">Frises par page</h2>
+                }
+                <app-ov-pipelines />
+              }
+              @case ('roadmap')      { <app-ov-roadmap /> }
+              @case ('api')          { <app-ov-api /> }
+              @case ('security')     { <app-ov-security /> }
+              @case ('pages')        { <app-ov-pages /> }
+              @case ('lifecycles')   { <app-ov-lifecycles /> }
+              @case ('jobs')         { <app-ov-jobs /> }
+              @default {
+                <p class="ov-card ov-empty">Cette vue n'a pas encore de présentation ici.</p>
+              }
+            }
+          }
+        </section>
+
+        <!-- ── Inspecteur : panneau à droite (≥ 900 px), plein écran en dessous ── -->
+        @if (store.focus()) {
+          <aside class="ov-insp" aria-labelledby="ov-insp-title">
+            <app-ov-inspector (closed)="closeInspector()" />
+          </aside>
         }
-      </section>
+      </div>
+
+      @if (gotoOpen()) { <app-ov-goto (closed)="gotoOpen.set(false)" /> }
     }
   }
 </div>

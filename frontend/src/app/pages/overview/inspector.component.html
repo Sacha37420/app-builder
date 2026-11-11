@@ -1,0 +1,67 @@
+@if (node(); as n) {
+  <div class="ov-insp-head">
+    <span [class]="'ov-kind ' + store.kind(n).cat">{{ store.kind(n).label }}</span>
+    <button type="button" class="ov-btn ov-insp-close" (click)="closed.emit()" aria-label="Fermer l'inspecteur (Échap)">✕</button>
+  </div>
+  <h2 class="ov-insp-name" tabindex="-1" id="ov-insp-title">{{ n.label }}</h2>
+  @if (n.detail) { <p class="ov-detail">{{ n.detail }}</p> }
+
+  @if (n.issues?.length) {
+    <ul class="ov-insp-issues" role="list" aria-label="Défauts">
+      @for (i of n.issues; track $index) {
+        <li><span aria-hidden="true">⚠</span> {{ i.message }} <span class="ov-mono ov-faint">({{ i.code }})</span></li>
+      }
+    </ul>
+  }
+
+  @if (attrs().length) {
+    <dl class="ov-insp-attrs">
+      @for (a of attrs(); track a.key) {
+        <dt>{{ a.label }}</dt><dd class="ov-mono">{{ a.value }}</dd>
+      }
+    </dl>
+  }
+  @if (n.fields?.length) {
+    <p class="ov-insp-sub">Champs</p>
+    <p class="ov-mono ov-small">@for (f of n.fields; track $index) { {{ f.name }} <span class="ov-faint">{{ f.type }}</span>{{ $last ? '' : ' · ' }} }</p>
+  }
+
+  @if (lotNumbers().length) {
+    <p class="ov-insp-sub">Construit par</p>
+    <div class="ov-chips">
+      @for (k of lotNumbers(); track k) {
+        <button type="button" class="ov-chip k-purple" (click)="goLot(k)"><span>Lot {{ k }}</span></button>
+      }
+    </div>
+  }
+
+  @for (g of groups(); track g.key) {
+    <details class="ov-insp-group" [open]="g.nodes.length <= 6">
+      <summary>{{ g.label }} · {{ g.nodes.length + g.more }}</summary>
+      <ul>
+        @for (o of g.nodes; track o.id) {
+          <li>
+            <button type="button" class="ov-link" (click)="store.select(o)">
+              <span class="ov-faint">{{ store.kind(o).label }}</span> {{ o.label }}
+            </button>
+          </li>
+        }
+        @if (g.more) { <li class="ov-faint">+{{ g.more }} autres</li> }
+      </ul>
+    </details>
+  }
+
+  @if (views().length) {
+    <p class="ov-insp-sub">Voir dans…</p>
+    <div class="ov-chips">
+      @for (v of views(); track v.id) {
+        <button type="button" class="ov-chip k-blue" [attr.aria-current]="store.scale() === v.id ? 'true' : null"
+                (click)="store.open(v.id, n.id)"><span>{{ v.label }}</span></button>
+      }
+    </div>
+  }
+
+  @if (n.edit?.route) {
+    <button type="button" class="ov-btn ov-insp-edit" (click)="edit()">Modifier <span aria-hidden="true">→</span></button>
+  }
+}

@@ -114,3 +114,61 @@ class KeycloakJWTAuthentication(BaseAuthentication):
             )
 
         return KeycloakUser(claims), token
+
+
+# ── Jetons personnels du serveur MCP (I5 du chantier app-builder-v2) ──────────
+
+class McpUser:
+    """L'appelant d'un jeton personnel `abt_…` : son email, sa portée, sa spec liée."""
+
+    is_authenticated = True
+    is_active = True
+
+    def __init__(self, jeton) -> None:
+        self.email: str = jeton.owner_email
+        self.username: str = jeton.owner_email
+        self.pk = jeton.owner_email
+        self.jeton = jeton
+        self.claims: dict = {}
+
+    def __str__(self) -> str:
+        return self.username
+
+
+class McpTokenAuthentication(BaseAuthentication):
+    """`Authorization: Bearer abt_…` — n'est branchée QUE sur `/api/mcp/`
+    (`api.mcp.McpView.authentication_classes`) : partout ailleurs l'authentification
+    par défaut (Keycloak) refuse un `abt_` (ce n'est pas un JWT), et ici un jeton
+    Keycloak n'est pas reconnu.
+
+    Le jeton est retrouvé par son empreinte sha256 (index unique) : aucune
+    comparaison de secret en clair, donc pas de fuite par le temps de réponse.
+    Un message d'erreur unique pour tous les refus (inconnu, expiré, révoqué) :
+    rien ne dit à un attaquant lequel."""
+
+    PREFIXE = 'abt_'
+    _REFUS = 'Jeton MCP invalide, expiré ou révoqué.'
+
+    def authenticate_header(self, request) -> str:
+        return 'Bearer'
+
+    def authenticate(self, request):
+        import hashlib
+
+        from django.utils import timezone
+
+        from .models import McpToken
+
+        entete = request.headers.get('Authorization', '')
+        if not entete.startswith('Bearer '):
+            return None
+        valeur = entete[7:].strip()
+        if not valeur.startswith(self.PREFIXE) or len(valeur) > 128:
+            raise AuthenticationFailed(self._REFUS)
+        empreinte = hashlib.sha256(valeur.encode()).hexdigest()
+        maintenant = timezone.now()
+        jeton = McpToken.objects.filter(token_hash=empreinte).select_related('spec').first()
+        if jeton is None or jeton.revoked_at is not None or jeton.expires_at <= maintenant:
+            raise AuthenticationFailed(self._REFUS)
+        McpToken.objects.filter(pk=jeton.pk).update(last_used_at=maintenant)
+        return McpUser(jeton), None

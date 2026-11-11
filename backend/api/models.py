@@ -34,6 +34,19 @@ class AppSpec(models.Model):
     # Présent en base depuis la migration 0003 — la colonne est NOT NULL,
     # donc le champ doit rester déclaré ici sinon tout INSERT échoue.
     chat_history = models.JSONField(default=list)
+    # ── Métamodèle v2 (chantier app-builder-v2, I1) — tout additif ─────────────
+    # Rôles applicatifs : [{name, kind (keycloak_group|object_role), description,
+    # implies, on_model}]. `required_groups` reste la porte de l'app.
+    roles = models.JSONField(default=list)
+    # Tâches de fond : [{name, kind (async|scheduled|command), trigger, input_model,
+    # tracked_by, concurrency, heavy, description}].
+    jobs = models.JSONField(default=list)
+    # Services du lab utilisés : [{type (liste fermée), mode, description}].
+    integrations = models.JSONField(default=list)
+    # API tierces : [{name, purpose, auth, called_from, description}].
+    external_apis = models.JSONField(default=list)
+    # Extensions typées : {data_io: [...], realtime: [...], computations: [...], notifications: [...]}.
+    extensions = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -57,6 +70,15 @@ class DataModel(models.Model):
     # [{name, rel_type (FK/M2M/O2O), to_model, related_name, on_delete}]
     relationships = models.JSONField(default=list)
     order = models.PositiveIntegerField(default=0)
+    # ── Métamodèle v2 (I1) ─────────────────────────────────────────────────────
+    # entity | singleton | reference | log | join
+    kind = models.CharField(max_length=20, default='entity')
+    # Qui voit quoi ({} = non décrit : avertissement, défaut « propriétaire seul »).
+    access = models.JSONField(default=dict)
+    # Machine à états ({} = aucune) : {field, initial, values, transitions, frozen_in}.
+    states = models.JSONField(default=dict)
+    # [{kind (unique|check), fields, condition, name}]
+    constraints = models.JSONField(default=list)
 
     class Meta:
         db_table = 'data_models'
@@ -109,6 +131,8 @@ class Endpoint(models.Model):
     response_schema = models.JSONField(null=True, blank=True)  # {field: type}
     query_params = models.JSONField(default=list)          # [{name, type, required, description}]
     steps = models.JSONField(default=list)                 # [{label, type, description}]
+    # Mode d'authentification ({} = jwt) : {mode, caller, key_source, reason} (I1).
+    auth = models.JSONField(default=dict)
 
     class Meta:
         db_table = 'endpoints'
@@ -149,6 +173,10 @@ class Page(models.Model):
     layout = models.CharField(max_length=20, choices=LAYOUT_CHOICES, default='mixed')
     # [{type (table/form/chart/card), label, linked_model, fields, config}]
     components = models.JSONField(default=list)
+    # ── Métamodèle v2 (I1) ─────────────────────────────────────────────────────
+    public = models.BooleanField(default=False)
+    public_reason = models.TextField(blank=True, default='')
+    required_roles = models.JSONField(default=list)
 
     class Meta:
         db_table = 'pages'
@@ -195,7 +223,7 @@ class PatchApplication(models.Model):
     """Un patch IA appliqué à une spécification, avec la spec d'avant pour
     pouvoir l'annuler (voir api/patching.py)."""
     app = models.ForeignKey(AppSpec, related_name='patch_applications', on_delete=models.CASCADE)
-    mode = models.CharField(max_length=10)             # merge | replace
+    mode = models.CharField(max_length=10)             # merge | replace | ops
     patch = models.JSONField()
     summary = models.TextField(blank=True)
     snapshot_before = models.JSONField()
@@ -225,3 +253,28 @@ class AiKeyVault(models.Model):
 
     def __str__(self):
         return f'coffre de {self.owner_email}'
+
+
+class McpToken(models.Model):
+    """Jeton personnel du serveur MCP d'App Builder (I5 du chantier app-builder-v2).
+
+    Seule l'empreinte sha256 du jeton est gardée ; `prefix` (« abt_ » + 8
+    caractères) sert à le reconnaître dans la liste. Un jeton lié à une spec
+    (`spec`) ne voit qu'elle.
+    """
+    owner_email = models.EmailField(max_length=255, db_index=True)
+    name = models.CharField(max_length=80)
+    prefix = models.CharField(max_length=12)
+    token_hash = models.CharField(max_length=64, unique=True)
+    scope = models.CharField(max_length=10, default='lire')       # 'lire' | 'ecrire'
+    spec = models.ForeignKey(AppSpec, null=True, blank=True, on_delete=models.CASCADE, related_name='mcp_tokens')
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'mcp_tokens'
+
+    def __str__(self):
+        return f'{self.prefix}… ({self.owner_email})'

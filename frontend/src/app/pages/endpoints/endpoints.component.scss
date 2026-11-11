@@ -281,3 +281,19 @@
     }
   }
 }
+
+// ── Sélection portée par l'adresse, cibles tactiles ──────────────────────────
+.sidebar .sidebar-item {
+  min-height: 44px;
+  &:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+}
+.endpoint-card {
+  scroll-margin-top: var(--space-4);
+  .ep-header { min-height: 44px; &:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; } }
+}
+.endpoints-main > .ed-note { margin-bottom: var(--space-3); }
+.field-group select { min-height: 44px; }
+
+@media (max-width: 899px) {
+  .ep-row { flex-wrap: wrap; > .field-group { flex: 1 1 100%; } }
+}

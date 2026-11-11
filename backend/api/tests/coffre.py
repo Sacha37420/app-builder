@@ -9,10 +9,11 @@ from cryptography.fernet import Fernet
 from django.db import connection
 from django.test import override_settings
 
-from api import views
+from api.ia import fournisseurs
 from api.models import AiKeyVault
 
-from .socle import Base, _client_claude, jeton
+from .ia import FauxClaude, doubler_i3, rep_claude, rep_mistral, texte
+from .socle import Base, jeton
 
 __all__ = ['CoffreClesTests']
 
@@ -24,8 +25,15 @@ class CoffreClesTests(Base):
 
     def setUp(self):
         super().setUp()
+        doubler_i3(self)
         self.alice = self.client_de('alice')
         self.bob = self.client_de('bob')
+        self.spec_alice = self.alice.post('/api/apps/', {'name': 'A'}, format='json').json()['id']
+        self.spec_bob = self.bob.post('/api/apps/', {'name': 'B'}, format='json').json()['id']
+
+    def corps(self, provider='claude', spec=None):
+        return {'app_id': spec or self.spec_alice, 'provider': provider,
+                'messages': [{'role': 'user', 'content': 'x'}]}
 
     def deposer(self, client=None, **corps):
         return (client or self.alice).put('/api/ai-keys/', corps, format='json')
@@ -90,8 +98,7 @@ class CoffreClesTests(Base):
                 self.assertLogs('api.fields', 'WARNING') as journal:
             self.assertEqual(self.etat(), {'claude_key_configured': False, 'mistral_key_configured': False})
             with mock.patch('anthropic.Anthropic') as ctor:
-                resp = self.alice.post('/api/chat/', {'provider': 'claude', 'messages': [{'role': 'user', 'content': 'x'}]},
-                                       format='json')
+                resp = self.alice.post('/api/chat/', self.corps(), format='json')
             self.assertEqual(resp.status_code, 400)
             ctor.assert_not_called()
         self.assertNotIn(claude_brut, '\n'.join(journal.output))
@@ -103,19 +110,21 @@ class CoffreClesTests(Base):
         self.assertEqual(self.etat(self.bob), {'claude_key_configured': False, 'mistral_key_configured': False})
         for provider in ('claude', 'mistral'):
             with self.subTest(provider=provider), mock.patch('anthropic.Anthropic') as ctor, \
-                    mock.patch.object(views.http_requests, 'post') as post:
-                resp = self.bob.post('/api/chat/', {'provider': provider, 'messages': [{'role': 'user', 'content': 'x'}]},
-                                     format='json')
+                    mock.patch.object(fournisseurs.http_requests, 'post') as post:
+                resp = self.bob.post('/api/chat/', self.corps(provider, self.spec_bob), format='json')
                 self.assertEqual(resp.status_code, 400)
                 ctor.assert_not_called()
                 post.assert_not_called()
         # Bob qui dépose la sienne ne touche pas à celle d'Alice.
         self.deposer(self.bob, claude_key='cle-de-bob')
         self.assertEqual(AiKeyVault.objects.get(owner_email='alice@ssolab.local').claude_key, CLE_CLAUDE)
-        client = _client_claude('Bonjour.')
-        with mock.patch('anthropic.Anthropic', return_value=client) as ctor:
-            self.bob.post('/api/chat/', {'provider': 'claude', 'messages': [{'role': 'user', 'content': 'x'}]}, format='json')
-        self.assertEqual(ctor.call_args.kwargs, {'api_key': 'cle-de-bob'})
+        with mock.patch('anthropic.Anthropic', return_value=FauxClaude(rep_claude(texte('Bonjour.')))) as ctor:
+            self.bob.post('/api/chat/', self.corps('claude', self.spec_bob), format='json')
+        self.assertEqual(ctor.call_args.kwargs['api_key'], 'cle-de-bob')
+        # Bob ne peut pas non plus faire travailler sa clé sur la spec d'Alice.
+        with mock.patch('anthropic.Anthropic') as ctor:
+            self.assertEqual(self.bob.post('/api/chat/', self.corps(), format='json').status_code, 404)
+            ctor.assert_not_called()
 
     @override_settings(KEYCLOAK_HANDOFF_CLIENTS='lab-admin')
     def test_jeton_d_un_autre_client_refuse_en_lecture_et_en_ecriture(self):
@@ -134,24 +143,36 @@ class CoffreClesTests(Base):
         self.assertEqual(self.client.put('/api/ai-keys/', {'claude_key': 'pirate'}, format='json').status_code, 403)
         self.assertEqual(AiKeyVault.objects.get().claude_key, CLE_CLAUDE)
 
+    # ── Jeton d'abonnement Claude ─────────────────────────────────────────────
+
+    def test_jeton_d_abonnement_claude_refuse(self):
+        for valeur in ('sk-ant-oat01-abcdef', '  sk-ant-oat01-xyz  '):
+            resp = self.deposer(claude_key=valeur)
+            self.assertEqual(resp.status_code, 400)
+            self.assertEqual(resp.json()['code'], 'oauth_token_refused')
+            self.assertIn('Claude Code', resp.json()['error'])
+            self.assertNotIn('sk-ant-oat', resp.content.decode())
+        resp = self.deposer(mistral_key='sk-ant-oat01-abc')
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(AiKeyVault.objects.exists())
+        # Une clé d'API ordinaire passe toujours.
+        self.assertEqual(self.deposer(claude_key=CLE_CLAUDE).status_code, 204)
+
     # ── Appel au fournisseur ──────────────────────────────────────────────────
 
     def test_le_fournisseur_recoit_la_cle_du_coffre_et_la_reponse_ne_la_cite_pas(self):
         self.deposer(claude_key=CLE_CLAUDE, mistral_key=CLE_MISTRAL)
-        client = _client_claude('Voici.\nPATCH_READY', '{"set_meta": {"required_groups": ["famille"]}}')
-        with mock.patch('anthropic.Anthropic', return_value=client) as ctor:
-            resp = self.alice.post('/api/chat/', {'provider': 'claude', 'messages': [{'role': 'user', 'content': 'x'}]},
-                                   format='json')
+        faux = FauxClaude(rep_claude(texte('Voici.')))
+        with mock.patch('anthropic.Anthropic', return_value=faux) as ctor:
+            resp = self.alice.post('/api/chat/', {**self.corps(), 'api_key': 'cle-du-corps'}, format='json')
         self.assertEqual(resp.status_code, 200)
-        # Les deux échanges (texte puis patch) utilisent la clé du coffre.
-        self.assertEqual([c.kwargs for c in ctor.call_args_list], [{'api_key': CLE_CLAUDE}] * 2)
+        self.assertEqual(ctor.call_count, 1)
+        self.assertEqual(ctor.call_args.kwargs['api_key'], CLE_CLAUDE)
         self.assertNotIn('SECRETE', resp.content.decode())
+        self.assertNotIn('cle-du-corps', str(faux.requetes))
 
-        flux = mock.MagicMock()
-        flux.__enter__.return_value.iter_lines.return_value = iter([b'data: {"choices": [{"delta": {"content": "ok"}}]}'])
-        with mock.patch.object(views.http_requests, 'post', return_value=flux) as post:
-            resp = self.alice.post('/api/chat/', {'provider': 'mistral', 'messages': [{'role': 'user', 'content': 'x'}]},
-                                   format='json')
+        with mock.patch.object(fournisseurs.http_requests, 'post', return_value=rep_mistral('ok')) as post:
+            resp = self.alice.post('/api/chat/', self.corps('mistral'), format='json')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(post.call_args.kwargs['headers']['Authorization'], f'Bearer {CLE_MISTRAL}')
         self.assertTrue(post.call_args.args[0].startswith('https://api.mistral.ai/'))

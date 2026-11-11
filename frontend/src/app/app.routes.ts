@@ -33,5 +33,9 @@ export const routes: Routes = [
     path: 'overview',
     loadComponent: () => import('./pages/overview/overview.component').then(m => m.OverviewPageComponent),
   },
+  {
+    path: 'connexion-ia',
+    loadComponent: () => import('./pages/connexion-ia/connexion-ia.component').then(m => m.ConnexionIaPageComponent),
+  },
   { path: '**', redirectTo: '' },
 ];

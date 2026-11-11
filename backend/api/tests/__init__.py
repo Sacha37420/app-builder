@@ -11,3 +11,8 @@ from .remise import *  # noqa: F401,F403
 from .budget import *  # noqa: F401,F403
 from .graphe import *  # noqa: F401,F403
 from .coffre import *  # noqa: F401,F403
+from .ia import *  # noqa: F401,F403
+from .mcp import *  # noqa: F401,F403
+from .metamodele import *  # noqa: F401,F403
+from .operations import *  # noqa: F401,F403
+from .lecture import *  # noqa: F401,F403

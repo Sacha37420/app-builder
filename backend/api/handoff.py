@@ -8,6 +8,10 @@ autre client que le sien (`KEYCLOAK_HANDOFF_CLIENTS`). Tout le reste des
 contrôles est celui du reste de l'API : signature, email, groupes requis. Un
 appelant ne voit que ses propres spécifications ; jamais la conversation, jamais
 une clé d'API ; rien ici n'appelle une IA.
+
+Remise v2 (contrat « app-builder-v2 », I7) : chaque spec porte `fingerprint`
+(`remise.empreinte`), la même dans la liste, le détail, `kit.spec` et sur la ligne
+d'empreinte du cahier — lab-admin s'en sert pour voir qu'une spec a changé.
 """
 from datetime import timezone as tz
 
@@ -76,6 +80,7 @@ def _resume(app: AppSpec) -> tuple[dict, dict]:
         'ready': livrables['ready'],
         'blockers': livrables['blockers'],
         'counts': livrables['counts'],
+        'fingerprint': livrables['fingerprint'],
     }
     return resume, livrables
 
@@ -122,7 +127,8 @@ class HandoffKitView(_Remise):
             return Response({'error': 'not_ready', 'blockers': livrables['blockers']},
                             status=status.HTTP_409_CONFLICT)
         return Response({
-            'spec': {'id': app.pk, 'name': app.name, 'updated_at': resume['updated_at']},
+            'spec': {'id': app.pk, 'name': app.name, 'updated_at': resume['updated_at'],
+                     'fingerprint': resume['fingerprint']},
             'create': livrables['create'],
             'seed': {'lots_md': livrables['lots_md'],
                      'cahier_des_charges_md': livrables['cahier_des_charges_md']},
@@ -143,7 +149,8 @@ class LivrablesView(APIView):
             return Response(status=status.HTTP_404_NOT_FOUND)
         resume, livrables = _resume(app)
         return Response({
-            'spec': {'id': app.pk, 'name': app.name, 'updated_at': resume['updated_at']},
+            'spec': {'id': app.pk, 'name': app.name, 'updated_at': resume['updated_at'],
+                     'fingerprint': resume['fingerprint']},
             'ready': livrables['ready'], 'blockers': livrables['blockers'],
             'create': livrables['create'], 'counts': livrables['counts'], 'context': livrables['context'],
             'lots': livrables['lots'], 'lots_md': livrables['lots_md'],
