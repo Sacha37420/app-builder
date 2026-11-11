@@ -108,7 +108,7 @@ python manage.py test
 Lots ajoutés par l'analyse du 2026-10-31 (vue d'ensemble : `to_do_global.md` à la racine du dépôt
 du lab). [C] constaté, [D] déduit.
 
-## Lot 7 — Robustesse du chat IA   ·   statut : en cours
+## Lot 7 — Robustesse du chat IA   ·   statut : livré
 **Objectif :** une entrée mal formée ou une erreur de fournisseur ne fait plus de 500 ni de fuite.
 **Constat [C] :**
 - `PATCH /api/apps/<id>/chat/ {"chat_history": null}` donne 500 (`views.py:824`, colonne `NOT NULL`).
@@ -121,7 +121,7 @@ du lab). [C] constaté, [D] déduit.
 - [x] Message générique au client (502) ; `logging` du seul type d'exception — fait avec le lot 8 (le texte d'une exception du fournisseur pouvait citer la requête). Les `print` d'extraits bruts restent
 **Tests à passer avant de clore le lot :**
 - [x] `null` → 400 ; une exception du fournisseur donne un corps sans détail ; `bash chantiers/tests/essai.sh app-builder` vert
-**Vérifié le :** 2026-11-11 — `api.tests.ia.OperationsVuesTests.test_chat_history_doit_etre_une_liste` et `ChatGardeFousTests` (pannes 502/504 à message fixe) ; suite complète 253 OK par `essai.sh`, puis `scripts/app-test.sh app-builder` vert sur l'image du commit `b6f7d10`. **Non mis en service** (mise en service refusée à l'agent de nuit, à faire par le propriétaire) : le lot passera « livré » à la mise en service.
+**Vérifié le :** 2026-11-11 — `api.tests.ia.OperationsVuesTests.test_chat_history_doit_etre_une_liste` et `ChatGardeFousTests` (pannes 502/504 à message fixe) ; suite complète 253 OK par `essai.sh`, puis `scripts/app-test.sh app-builder` vert sur l'image du commit `b6f7d10`. **Mis en service le 2026-11-11** (image du commit `6a6318d`, voir lot 11).
 
 ## Lot 8 — Clés IA hors de `localStorage`   ·   statut : en cours
 **Objectif :** une XSS sur le domaine commun du lab ne suffit plus à lire les clés Claude et Mistral.
@@ -168,7 +168,8 @@ du lab). [C] constaté, [D] déduit.
 - [x] Jeton d'abonnement Claude (`sk-ant-oat…`) refusé au coffre (conditions d'Anthropic) ; Claude Code et Vibe passent par le serveur MCP (`POST /api/mcp/`, jetons personnels `abt_…`, page `/connexion-ia`)
 - [x] Graphe v2 (`ref`, `edit`, `issues`, matrices CRUD et sécurité, séquences, nouvelles échelles) ; vue d'ensemble avec inspecteur, ER, API, sécurité, plan du site, cycles de vie, tâches ; éditeurs des nouvelles structures ; `schema-canvas` retiré
 - [x] Remise : cahier sans troncature, empreinte `sha256` (liste, détail, kit, ligne du cahier), tests de lot dérivés des règles d'accès et des transitions
-- [ ] Ⓟ Mise en service, puis parcours en navigateur réel (`chantiers/app-builder-v2/rapports/C.md`, « Parcours navigateur ») et un vrai appel Claude et Mistral avec outils
+- [x] Mise en service et parcours en navigateur réel (2026-11-11, compte `e2edev`)
+- [ ] Ⓟ Un vrai appel Claude et Mistral avec outils depuis le chat (clé au coffre du propriétaire)
 - [ ] Claude Code relié par MCP depuis un espace de travail (`claude mcp add …` de `/connexion-ia`), un tour lecture + application
 **Tests à passer avant de clore le lot :**
 - [x] `python manage.py test api.tests.MetamodeleSerialiseurTests api.tests.MetamodelePatchTests api.tests.VerifierTests api.tests.MigrationMetamodeleV2Tests` (forme v2, migration sans perte)
@@ -177,8 +178,8 @@ du lab). [C] constaté, [D] déduit.
 - [x] `python manage.py test api.tests.McpJetonsTests api.tests.McpProtocoleTests api.tests.McpCloisonnementTests` (jeton expiré, révoqué, d'autrui, portée, `abt_` refusé hors `/api/mcp/`, jeton Keycloak refusé sur `/api/mcp/`)
 - [x] `python manage.py test api.tests.VueEnsembleTests api.tests.FeuilleDeRouteGenereeTests api.tests.CahierDesChargesTests api.tests.RemiseAuLabTests`
 - [x] `npm run build` du frontend sans erreur ; aucune couleur en dur dans les fichiers touchés
-- [ ] Test de cloisonnement vert après mise en service
-**Vérifié le :** 2026-11-11 — `bash chantiers/tests/essai.sh app-builder` : 253 tests OK ; image du commit `b6f7d10` construite pendant que l'ancienne tournait, `scripts/app-test.sh app-builder` : 253 tests OK sur cette image ; `npx ng build` sans erreur (avertissements de budget de style). **Non mis en service** : rien n'a été vu en navigateur ni essayé contre une vraie IA.
+- [x] Test de cloisonnement vert après mise en service (3/3, 2026-11-11)
+**Vérifié le :** 2026-11-11 — `bash chantiers/tests/essai.sh app-builder` : 253 tests OK ; image du commit `b6f7d10` construite pendant que l'ancienne tournait, `scripts/app-test.sh app-builder` : 253 tests OK sur cette image ; `npx ng build` sans erreur (avertissements de budget de style). **Mis en service le 2026-11-11** (fusion `6a6318d`, mêmes images, `up -d --no-build`) : migrations `0011`/`0012` jouées, les deux specs existantes identiques avant/après (comptes de lignes comparés à l'instantané) ; cloisonnement `lab-runner` 3/3. Navigateur réel (`e2edev`) : jeton créé sur `/connexion-ia`, puis par le MCP public `initialize`, `tools/list` (10 outils), `creer_spec`, `appliquer_operations` (18 opérations en un bloc), `lire_index`, `verifier_spec`, `lire_livrables`, et `version_perimee` refusé ; vues Données (ER), Sécurité (matrice, une case « à revoir » expliquée), Cycles de vie, API, sans erreur console ni réponse d'API en échec ; la spec apparaît « prête » dans lab-admin avec l'aperçu des lots. Restent : un vrai appel Claude et Mistral avec outils (aucune clé du compte d'essai), Claude Code réel relié par MCP. Défaut vu : dans le schéma des cycles de vie, la pointe de la flèche « en_cours → rendu » se lit mal (la liste dessous est juste).
 
 ## Mise en service — chantier « failles » (2026-11-01)
 Les mentions « non déployé » ci-dessus datent d'avant cette mise en service. Image construite pendant
