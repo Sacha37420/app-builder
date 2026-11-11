@@ -9,8 +9,8 @@ Trois familles :
   2. les règles d'autorisation de l'app — une spécification n'appartient qu'à
      son auteur (`owner_email`) ;
   3. les règles métier — résolution des identifiants temporaires du frontend,
-     remplacement complet à l'enregistrement, protocole du chat IA (blocs
-     CHOICES, sentinelle PATCH_READY, second échange dédié au patch JSON) ;
+     remplacement complet à l'enregistrement (le chat IA est testé dans
+     `tests/ia.py`) ;
   4. l'application des patchs IA côté serveur (api/patching.py) — fusion par
      élément, suppressions et renommages, références, historique et annulation.
 
@@ -21,13 +21,12 @@ import time
 from unittest import mock
 
 import jwt
-import requests
 from cryptography.hazmat.primitives.asymmetric import rsa
 from django.db import connection
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
-from api import patching, views
+from api import patching
 from api.authentication import KeycloakJWTAuthentication
 from api.models import AiKeyVault, AppSpec, EndpointGroup, FrontendService, Page, PatchApplication
 
@@ -419,256 +418,6 @@ class SpecificationTests(Base):
                     self.assertIn(table, tables)
                     presentes = {c.name for c in connection.introspection.get_table_description(cur, table)}
                     self.assertEqual(colonnes - presentes, set())
-
-
-# ═══ 3 bis. Règles métier : protocole du chat IA ══════════════════════════════
-
-class ExtractionTests(SimpleTestCase):
-
-    def test_bloc_de_choix_extrait_et_retire_du_texte(self):
-        texte = 'Quel type ?\nCHOICES_START\n{"multiple": false, "items": ["A", "B"]}\nCHOICES_END\nMerci.'
-        propre, choix = views._extract_choices(texte)
-        self.assertEqual(choix, {'multiple': False, 'items': ['A', 'B']})
-        self.assertNotIn('CHOICES', propre)
-        self.assertIn('Quel type ?', propre)
-        self.assertIn('Merci.', propre)
-
-    def test_bloc_de_choix_abime_laisse_le_texte_intact(self):
-        for texte in ('rien du tout',
-                      'CHOICES_START {"items": ["A"]}',                # jamais refermé
-                      'CHOICES_START pas de json CHOICES_END',
-                      'CHOICES_START {"items": [} CHOICES_END'):       # JSON invalide
-            with self.subTest(texte=texte):
-                self.assertEqual(views._extract_choices(texte), (texte, None))
-
-    def test_sentinelle_patch_ready_seule_sur_sa_ligne(self):
-        self.assertEqual(views._extract_patch_ready('Voici.\n  PATCH_READY  \n'), ('Voici.', True))
-        self.assertEqual(views._extract_patch_ready('Début\nPATCH_READY\nFin'), ('Début\n\nFin', True))
-        for texte in ('Le marqueur PATCH_READY sera émis plus tard.', 'PATCH_READY.', 'rien'):
-            with self.subTest(texte=texte):
-                self.assertEqual(views._extract_patch_ready(texte), (texte, False))
-
-    def test_json_isole_de_son_emballage(self):
-        self.assertEqual(json.loads(views._isolate_json('```json\n{"a": 1}\n```')), {'a': 1})
-        self.assertEqual(json.loads(views._isolate_json('Voici : {"a": {"b": 2}} voilà')), {'a': {'b': 2}})
-        self.assertEqual(views._isolate_json('aucun objet'), 'aucun objet')
-
-    def test_un_patch_sans_cle_reconnue_est_vide(self):
-        self.assertFalse(views._patch_has_content({}))
-        self.assertFalse(views._patch_has_content({'data_models': [], 'pages': [], 'commentaire': 'x'}))
-        self.assertTrue(views._patch_has_content({'set_meta': {'required_groups': ['famille']}}))
-        self.assertTrue(views._patch_has_content({'remove_pages': ['Liste']}))
-
-    def test_le_contexte_de_la_spec_est_injecte_dans_les_deux_prompts(self):
-        spec = {'name': 'Épicerie ⟨unique⟩'}
-        for prompt in (views._build_system_prompt(spec), views._build_patch_system_prompt(spec)):
-            self.assertIn('Épicerie ⟨unique⟩', prompt)
-            self.assertNotIn('{APP_SPEC}', prompt)
-            self.assertNotIn('{SCHEMA_DOC}', prompt)
-        # La consigne de cloisonnement fait partie du prompt conversationnel.
-        self.assertIn('required_groups', views._build_system_prompt(spec))
-
-
-class GenerationDuPatchTests(SimpleTestCase):
-    BON = '{"data_models": [{"name": "Produit"}]}'
-
-    def _generer(self, reponses):
-        appels = mock.Mock(side_effect=reponses)
-        with mock.patch.object(views, '_call_claude_once', appels):
-            resultat = views._generate_patch('claude', 'cle', None, {}, [{'role': 'user', 'content': 'x'}], 'ok')
-        return resultat, appels
-
-    def test_premier_essai_valide(self):
-        (patch, erreur), appels = self._generer([self.BON])
-        self.assertEqual((patch, erreur), ({'data_models': [{'name': 'Produit'}]}, None))
-        self.assertEqual(appels.call_count, 1)
-
-    def test_reessaie_en_renvoyant_l_erreur_au_modele(self):
-        (patch, erreur), appels = self._generer(['pas du json', '{"commentaire": "vide"}', self.BON])
-        self.assertIsNone(erreur)
-        self.assertEqual(patch['data_models'][0]['name'], 'Produit')
-        self.assertEqual(appels.call_count, 3)
-        # Chaque essai raté ajoute la réponse fautive et la correction demandée.
-        derniers = appels.call_args_list[-1].args[2]
-        self.assertEqual([m['role'] for m in derniers[-4:]], ['assistant', 'user', 'assistant', 'user'])
-        self.assertIn('JSON invalide', derniers[-3]['content'])
-        self.assertIn('sans clé reconnue', derniers[-1]['content'])
-
-    def test_abandonne_apres_trois_essais(self):
-        (patch, erreur), appels = self._generer(['non', 'non', 'non', self.BON])
-        self.assertIsNone(patch)
-        self.assertIn('JSON invalide', erreur)
-        self.assertEqual(appels.call_count, 3)
-
-    def test_une_panne_du_fournisseur_compte_comme_un_essai(self):
-        (patch, erreur), appels = self._generer([RuntimeError('503'), RuntimeError('503'), RuntimeError('503')])
-        self.assertIsNone(patch)
-        self.assertIn('appel API échoué', erreur)
-        self.assertEqual(appels.call_count, 3)
-
-    def test_un_tableau_json_n_est_pas_un_patch(self):
-        (patch, erreur), _ = self._generer(['[1, 2]'] * 3)
-        self.assertIsNone(patch)
-        self.assertIn('vide ou sans clé reconnue', erreur)
-
-    def test_une_reponse_tronquee_n_est_pas_redemandee(self):
-        # La même demande donnerait la même coupure : un seul appel, et un
-        # message qui dit quoi faire.
-        (patch, erreur), appels = self._generer([views.ReponseTronquee(), self.BON])
-        self.assertIsNone(patch)
-        self.assertIn('trop volumineux', erreur)
-        self.assertEqual(appels.call_count, 1)
-
-    def test_un_patch_incoherent_est_renvoye_au_modele_avec_la_raison(self):
-        orphelin = '{"endpoint_groups": [{"name": "G", "endpoints": [{"method": "GET", "path": "/x/", "linked_model_name": "Fantome"}]}]}'
-        (patch, erreur), appels = self._generer([orphelin, self.BON])
-        self.assertIsNone(erreur)
-        self.assertEqual(patch['data_models'][0]['name'], 'Produit')
-        correction = appels.call_args_list[-1].args[2][-1]['content']
-        self.assertIn('Fantome', correction)
-        self.assertIn('incohérent', correction)
-
-    def test_la_coupure_du_fournisseur_est_reconnue(self):
-        client = mock.Mock()
-        client.messages.create.return_value = mock.Mock(content=[], stop_reason='max_tokens')
-        with mock.patch('anthropic.Anthropic', return_value=client), self.assertRaises(views.ReponseTronquee):
-            views._call_claude_once('cle', 'sys', [], None, 10)
-        reponse = mock.Mock()
-        reponse.json.return_value = {'choices': [{'finish_reason': 'length', 'message': {'content': '{'}}]}
-        with mock.patch.object(views.http_requests, 'post', return_value=reponse), \
-                self.assertRaises(views.ReponseTronquee):
-            views._call_mistral_once('cle', 'sys', [], None, 10)
-
-
-class _FluxClaude:
-    def __init__(self, texte, stop_reason='end_turn'):
-        self.text_stream = iter([texte[:5], texte[5:]])
-        self.stop_reason = stop_reason
-
-    def get_final_message(self):
-        return mock.Mock(stop_reason=self.stop_reason)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
-
-
-def _client_claude(texte, patch_brut='{}', stop_flux='end_turn', stop_patch='end_turn'):
-    client = mock.Mock()
-    client.messages.stream.return_value = _FluxClaude(texte, stop_flux)
-    client.messages.create.return_value = mock.Mock(
-        content=[mock.Mock(type='text', text=patch_brut)], stop_reason=stop_patch)
-    return client
-
-
-class ChatTests(Base):
-
-    def setUp(self):
-        super().setUp()
-        self.alice = self.client_de('alice')
-        self.coffre('alice', claude='cle-de-alice', mistral='cle-de-alice')
-        self.corps = {'provider': 'claude',
-                      'messages': [{'role': 'user', 'content': 'Une boutique'}], 'app_spec': {'name': 'B'}}
-
-    def test_sans_cle_au_coffre_aucun_appel_ni_cle_du_corps_ni_cle_du_serveur(self):
-        # Le chat se fait avec la clé du coffre de l'utilisateur. Une clé envoyée
-        # dans le corps n'est plus lue, et les clés du .env (ANTHROPIC_API_KEY /
-        # MISTRAL_API_KEY) ne financent jamais les conversations.
-        bob = self.client_de('bob')
-        for provider in ('claude', 'mistral'):
-            for corps_cle in (None, 'cle-dans-le-corps'):
-                corps = {**self.corps, 'provider': provider}
-                if corps_cle:
-                    corps['api_key'] = corps_cle
-                with self.subTest(provider=provider, corps_cle=corps_cle), \
-                        mock.patch('anthropic.Anthropic') as anthropic_ctor, \
-                        mock.patch.object(views.http_requests, 'post') as post:
-                    resp = bob.post('/api/chat/', corps, format='json')
-                    self.assertEqual(resp.status_code, 400)
-                    self.assertEqual(resp.json()['code'], 'key_not_configured')
-                    anthropic_ctor.assert_not_called()
-                    post.assert_not_called()
-
-    def test_une_cle_du_corps_n_ecrase_pas_celle_du_coffre(self):
-        client = _client_claude('Bonjour.')
-        with mock.patch('anthropic.Anthropic', return_value=client) as ctor:
-            resp = self.alice.post('/api/chat/', {**self.corps, 'api_key': 'cle-forcee'}, format='json')
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(ctor.call_args.kwargs, {'api_key': 'cle-de-alice'})
-
-    def test_question_simple_un_seul_echange(self):
-        client = _client_claude('Phase 1.\nQuel type ?\nCHOICES_START\n{"multiple": false, "items": ["A"]}\nCHOICES_END')
-        with mock.patch('anthropic.Anthropic', return_value=client) as ctor:
-            resp = self.alice.post('/api/chat/', self.corps, format='json')
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(ctor.call_args.kwargs, {'api_key': 'cle-de-alice'})
-        donnees = resp.json()
-        self.assertEqual(donnees['choices'], {'multiple': False, 'items': ['A']})
-        self.assertIsNone(donnees['spec_patch'])
-        self.assertNotIn('CHOICES', donnees['content'])
-        client.messages.create.assert_not_called()
-        self.assertIn('"name": "B"', client.messages.stream.call_args.kwargs['system'])
-
-    def test_patch_ready_declenche_le_second_echange(self):
-        client = _client_claude('Voici le modèle.\nPATCH_READY',
-                                '```json\n{"set_meta": {"required_groups": ["famille"]}}\n```')
-        with mock.patch('anthropic.Anthropic', return_value=client):
-            donnees = self.alice.post('/api/chat/', self.corps, format='json').json()
-        self.assertEqual(donnees['content'], 'Voici le modèle.')
-        self.assertEqual(donnees['spec_patch'], {'set_meta': {'required_groups': ['famille']}})
-        second = client.messages.create.call_args.kwargs
-        self.assertEqual(second['messages'][-2], {'role': 'assistant', 'content': 'Voici le modèle.'})
-        self.assertIn('STRICTEMENT', second['system'])
-
-    def test_patch_impossible_signale_dans_la_reponse(self):
-        client = _client_claude('Voici.\nPATCH_READY', 'désolé, pas de JSON')
-        with mock.patch('anthropic.Anthropic', return_value=client):
-            resp = self.alice.post('/api/chat/', self.corps, format='json')
-        self.assertEqual(resp.status_code, 200)
-        self.assertIsNone(resp.json()['spec_patch'])
-        self.assertIn("n'a pas pu être généré", resp.json()['content'])
-        self.assertEqual(client.messages.create.call_count, 3)
-
-    def test_reponse_coupee_signalee_a_l_utilisateur(self):
-        with mock.patch('anthropic.Anthropic', return_value=_client_claude('Voici le début', stop_flux='max_tokens')):
-            donnees = self.alice.post('/api/chat/', self.corps, format='json').json()
-        self.assertIn('Réponse coupée', donnees['content'])
-        with mock.patch('anthropic.Anthropic', return_value=_client_claude('Complet.')):
-            donnees = self.alice.post('/api/chat/', self.corps, format='json').json()
-        self.assertNotIn('Réponse coupée', donnees['content'])
-
-    def test_le_patch_est_rendu_avec_son_resume(self):
-        client = _client_claude('Voici.\nPATCH_READY', '{"data_models": [{"name": "Produit"}], "remove_pages": ["Liste"]}')
-        with mock.patch('anthropic.Anthropic', return_value=client):
-            donnees = self.alice.post('/api/chat/', self.corps, format='json').json()
-        self.assertEqual(donnees['patch_summary'], '1 modèle(s) · −1 page(s)')
-
-    def test_mistral_flux_reassemble_avec_la_cle_de_l_utilisateur(self):
-        lignes = [b'', b': commentaire', b'data: {"choices": [{"delta": {"content": "Bon"}}]}',
-                  b'data: pas du json', b'data: {"choices": [{"delta": {}}]}',
-                  b'data: {"choices": [{"delta": {"content": "jour"}}]}', b'data: [DONE]',
-                  b'data: {"choices": [{"delta": {"content": " ignore"}}]}']
-        flux = mock.MagicMock()
-        flux.__enter__.return_value.iter_lines.return_value = iter(lignes)
-        with mock.patch.object(views.http_requests, 'post', return_value=flux) as post:
-            resp = self.alice.post('/api/chat/', {**self.corps, 'provider': 'mistral'}, format='json')
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()['content'], 'Bonjour')
-        self.assertEqual(resp.json()['provider'], 'mistral')
-        self.assertEqual(post.call_args.kwargs['headers']['Authorization'], 'Bearer cle-de-alice')
-
-    def test_pannes_du_fournisseur_rendues_en_erreur_de_passerelle(self):
-        with mock.patch.object(views.http_requests, 'post', side_effect=requests.exceptions.ConnectTimeout()):
-            resp = self.alice.post('/api/chat/', {**self.corps, 'provider': 'mistral'}, format='json')
-        self.assertEqual(resp.status_code, 504)
-        with mock.patch('anthropic.Anthropic', side_effect=RuntimeError('détail interne cle-de-alice')):
-            resp = self.alice.post('/api/chat/', self.corps, format='json')
-        self.assertEqual(resp.status_code, 502)
-        # Le texte de l'exception du fournisseur n'est pas rendu (il pourrait citer la clé).
-        self.assertNotIn('cle-de-alice', resp.content.decode())
-        self.assertNotIn('détail interne', resp.content.decode())
 
 
 # ═══ 4. Patchs IA appliqués côté serveur ══════════════════════════════════════

@@ -2,14 +2,14 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { BuilderStateService } from '../../core/builder-state.service';
 import { BuilderApiService } from '../../core/builder-api.service';
-import { SchemaCanvasComponent } from '../../shared/schema-canvas/schema-canvas.component';
+import { SpecSummaryComponent } from '../../shared/spec-summary/spec-summary.component';
 import { AiChatComponent } from '../../shared/ai-chat/ai-chat.component';
 import { AppSpec } from '../../models/app-spec.model';
 
 @Component({
   selector: 'app-builder',
   standalone: true,
-  imports: [RouterLink, SchemaCanvasComponent, AiChatComponent],
+  imports: [RouterLink, SpecSummaryComponent, AiChatComponent],
   templateUrl: './builder.component.html',
   styleUrl: './builder.component.scss',
 })

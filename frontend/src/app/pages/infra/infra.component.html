@@ -1,124 +1,517 @@
 <div class="infra-page">
+  <app-back-link />
 
-  <!-- ── Le projet dans le lab : fiche, état, empreinte ───────── -->
-  <app-lab-panel />
+  <!-- ── Sommaire : une section par paramètre d'adresse `section` (contrat I6) ── -->
+  <nav class="infra-tabs" aria-label="Sections de la page">
+    @for (sec of sections; track sec.id) {
+      <button type="button" class="infra-tab" [class.is-current]="current() === sec.id"
+              [attr.aria-current]="current() === sec.id ? 'true' : null"
+              (click)="goSection(sec.id)">
+        {{ sec.label }}
+        @if (countOf(sec.id); as n) { <span class="ed-tag">{{ n }}</span> }
+      </button>
+    }
+  </nav>
 
-  <div class="page-header">
-    <h1 class="page-title">&#128451; Infrastructure — Schéma de base de données</h1>
-    <button class="btn-copy" (click)="copyDdl()" title="Copier tout le SQL DDL">
-      &#128203; Copier le DDL SQL
-    </button>
-  </div>
-
-  @if (tables().length === 0) {
-    <div class="empty-state">
-      Aucun modèle défini — allez dans <strong>Modèles</strong> pour créer vos entités.
-    </div>
+  @if (unknownSection()) {
+    <p class="ed-note ed-warn" role="status">
+      La section demandée par l'adresse n'existe pas : la fiche du lab est affichée.
+    </p>
   }
 
-  <div class="tables-grid">
-    @for (table of tables(); track table.tableName) {
+  @switch (current()) {
 
-      <!-- ── Carte table ─────────────────────────────────────── -->
-      <div class="table-card">
+  <!-- ════════════════ Fiche du lab + schéma SQL (page d'origine) ════════════════ -->
+  @case ('meta') {
+  <div id="infra-section-meta" class="infra-section">
+    <!-- ── Le projet dans le lab : fiche, état, empreinte ───────── -->
+    <app-lab-panel />
 
-        <div class="table-card-header">
-          <div class="table-name-block">
-            <span class="table-icon">&#9632;</span>
-            <div>
-              <span class="table-name">{{ table.tableName }}</span>
-              <span class="model-name">{{ table.modelName }}</span>
-            </div>
-          </div>
-          @if (table.description) {
-            <p class="table-desc">{{ table.description }}</p>
-          }
-        </div>
-
-        <!-- Colonnes -->
-        <table class="col-table">
-          <thead>
-            <tr>
-              <th>Colonne</th>
-              <th>Type SQL</th>
-              <th>NULL</th>
-              <th>UNIQUE</th>
-              <th>Défaut</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (col of table.columns; track col.name) {
-              <tr [class.pk-row]="col.name === 'id'" [class.fk-row]="col.comment?.startsWith('FK') || col.comment?.startsWith('O2O')">
-                <td class="col-name">
-                  {{ col.name }}
-                  @if (col.name === 'id') { <span class="badge badge-pk">PK</span> }
-                  @if (col.comment?.startsWith('FK'))  { <span class="badge badge-fk">FK</span> }
-                  @if (col.comment?.startsWith('O2O')) { <span class="badge badge-o2o">O2O</span> }
-                </td>
-                <td class="col-type">{{ col.sqlType }}</td>
-                <td class="col-bool">{{ col.nullable ? '✓' : '✗' }}</td>
-                <td class="col-bool">{{ col.unique  ? '✓' : '' }}</td>
-                <td class="col-default">{{ col.default ?? '' }}</td>
-              </tr>
-            }
-          </tbody>
-        </table>
-
-        <!-- Contraintes FK -->
-        @if (table.fkConstraints.length > 0) {
-          <div class="constraints">
-            <span class="constraints-label">Contraintes</span>
-            @for (fk of table.fkConstraints; track fk) {
-              <code class="constraint-line">{{ fk }}</code>
-            }
-          </div>
-        }
-
-        <!-- DDL -->
-        <details class="ddl-block">
-          <summary>Voir CREATE TABLE SQL</summary>
-          <pre class="ddl-pre">{{ ddlFor(table) }}</pre>
-        </details>
-
-        <!-- Tables de jonction M2M -->
-        @for (m2m of table.m2mTables; track m2m.name) {
-          <div class="m2m-card">
-            <span class="m2m-label">Table de jonction M2M</span>
-            <span class="m2m-name">{{ m2m.name }}</span>
-            <pre class="ddl-pre">{{ m2m.ddl }}</pre>
-          </div>
-        }
-
+      <div class="page-header">
+        <h1 class="page-title">Infrastructure — Schéma de base de données</h1>
+        <button class="btn-copy" (click)="copyDdl()" title="Copier tout le SQL DDL">
+          Copier le DDL SQL
+        </button>
       </div>
-    }
-  </div>
 
-  <!-- ── Diagramme de relations textuelles ──────────────────── -->
-  @if (tables().length > 0) {
-    <div class="relations-section">
-      <h2 class="section-title">&#128279; Relations entre tables</h2>
-      <div class="relations-list">
+      @if (tables().length === 0) {
+        <div class="empty-state">
+          Aucun modèle défini — allez dans <strong>Modèles</strong> pour créer vos entités.
+        </div>
+      }
+
+      <div class="tables-grid">
         @for (table of tables(); track table.tableName) {
-          @for (col of table.columns; track col.name) {
-            @if (col.comment?.startsWith('FK') || col.comment?.startsWith('O2O')) {
-              <div class="relation-row">
-                <span class="rel-from">{{ table.tableName }}.{{ col.name }}</span>
-                <span class="rel-arrow">──{{ col.comment?.startsWith('O2O') ? '[1:1]' : '[N:1]' }}──▶</span>
-                <span class="rel-to">{{ toSnake((col.comment ?? '').split('→')[1] ?? '') }}.id</span>
+
+          <!-- ── Carte table ─────────────────────────────────────── -->
+          <div class="table-card">
+
+            <div class="table-card-header">
+              <div class="table-name-block">
+                <span class="table-icon">■</span>
+                <div>
+                  <span class="table-name">{{ table.tableName }}</span>
+                  <span class="model-name">{{ table.modelName }}</span>
+                </div>
+              </div>
+              @if (table.description) {
+                <p class="table-desc">{{ table.description }}</p>
+              }
+            </div>
+
+            <!-- Colonnes -->
+            <table class="col-table">
+              <thead>
+                <tr>
+                  <th>Colonne</th>
+                  <th>Type SQL</th>
+                  <th>NULL</th>
+                  <th>UNIQUE</th>
+                  <th>Défaut</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (col of table.columns; track col.name) {
+                  <tr [class.pk-row]="col.name === 'id'" [class.fk-row]="col.comment?.startsWith('FK') || col.comment?.startsWith('O2O')">
+                    <td class="col-name">
+                      {{ col.name }}
+                      @if (col.name === 'id') { <span class="badge badge-pk">PK</span> }
+                      @if (col.comment?.startsWith('FK'))  { <span class="badge badge-fk">FK</span> }
+                      @if (col.comment?.startsWith('O2O')) { <span class="badge badge-o2o">O2O</span> }
+                    </td>
+                    <td class="col-type">{{ col.sqlType }}</td>
+                    <td class="col-bool">{{ col.nullable ? '✓' : '✗' }}</td>
+                    <td class="col-bool">{{ col.unique  ? '✓' : '' }}</td>
+                    <td class="col-default">{{ col.default ?? '' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+
+            <!-- Contraintes FK -->
+            @if (table.fkConstraints.length > 0) {
+              <div class="constraints">
+                <span class="constraints-label">Contraintes</span>
+                @for (fk of table.fkConstraints; track fk) {
+                  <code class="constraint-line">{{ fk }}</code>
+                }
               </div>
             }
-          }
-          @for (m2m of table.m2mTables; track m2m.name) {
-            <div class="relation-row">
-              <span class="rel-from">{{ table.tableName }}</span>
-              <span class="rel-arrow">──[M:N]──▶</span>
-              <span class="rel-to">{{ m2m.name.split('_').slice(1).join('_') }}</span>
-              <span class="rel-junction">via {{ m2m.name }}</span>
-            </div>
-          }
+
+            <!-- DDL -->
+            <details class="ddl-block">
+              <summary>Voir CREATE TABLE SQL</summary>
+              <pre class="ddl-pre">{{ ddlFor(table) }}</pre>
+            </details>
+
+            <!-- Tables de jonction M2M -->
+            @for (m2m of table.m2mTables; track m2m.name) {
+              <div class="m2m-card">
+                <span class="m2m-label">Table de jonction M2M</span>
+                <span class="m2m-name">{{ m2m.name }}</span>
+                <pre class="ddl-pre">{{ m2m.ddl }}</pre>
+              </div>
+            }
+
+          </div>
         }
       </div>
-    </div>
+
+      <!-- ── Diagramme de relations textuelles ──────────────────── -->
+      @if (tables().length > 0) {
+        <div class="relations-section">
+          <h2 class="section-title">Relations entre tables</h2>
+          <div class="relations-list">
+            @for (table of tables(); track table.tableName) {
+              @for (col of table.columns; track col.name) {
+                @if (col.comment?.startsWith('FK') || col.comment?.startsWith('O2O')) {
+                  <div class="relation-row">
+                    <span class="rel-from">{{ table.tableName }}.{{ col.name }}</span>
+                    <span class="rel-arrow">──{{ col.comment?.startsWith('O2O') ? '[1:1]' : '[N:1]' }}──▶</span>
+                    <span class="rel-to">{{ toSnake((col.comment ?? '').split('→')[1] || '') }}.id</span>
+                  </div>
+                }
+              }
+              @for (m2m of table.m2mTables; track m2m.name) {
+                <div class="relation-row">
+                  <span class="rel-from">{{ table.tableName }}</span>
+                  <span class="rel-arrow">──[M:N]──▶</span>
+                  <span class="rel-to">{{ m2m.name.split('_').slice(1).join('_') }}</span>
+                  <span class="rel-junction">via {{ m2m.name }}</span>
+                </div>
+              }
+            }
+          </div>
+        </div>
+      }
+  </div>
   }
 
+  <!-- ════════════════ Règles métier ════════════════ -->
+  @case ('rules') {
+  <section id="infra-section-rules" class="infra-section ed-section" aria-labelledby="t-rules">
+    <div class="ed-title"><h2 id="t-rules">Règles métier</h2>
+      <button type="button" class="ed-btn" (click)="state.addBusinessRule()">+ Règle</button></div>
+    <p class="ed-help">Toute contrainte validée (« le stock ne peut pas être négatif ») : à quoi elle s'applique, sa nature et les routes qui la font respecter.</p>
+    @if (state.spec().business_rules.length === 0) { <p class="ed-note">Aucune règle.</p> }
+    <ul class="ed-list">
+      @for (rule of state.spec().business_rules; track $index) {
+        <li class="ed-item">
+          <label class="ed-field">Titre
+            <input type="text" [value]="rule.title" [class.is-invalid]="emptyRuleTitles().has($index)"
+                   [attr.aria-invalid]="emptyRuleTitles().has($index) ? 'true' : null"
+                   (input)="setRuleTitle($index, $event)" placeholder="Titre de la règle" />
+          </label>
+          <label class="ed-field">S'applique à
+            <input type="text" list="infra-applies-to" [value]="rule.applies_to ?? ''"
+                   (input)="setRuleText($index, 'applies_to', $event)" placeholder="Modèle ou « POST /api/x/ »" />
+          </label>
+          <label class="ed-field">Nature
+            <select (change)="setRuleKind($index, $event)">
+              <option value="" [selected]="!rule.kind">—</option>
+              @for (k of ruleKinds; track k.id) { <option [value]="k.id" [selected]="k.id === rule.kind">{{ k.label }}</option> }
+            </select>
+          </label>
+          <label class="ed-field">Tenue par (routes, séparées par des virgules)
+            <input type="text" [value]="joinCsv(rule.enforced_by)" (change)="setRuleEnforcedBy($index, $event)"
+                   placeholder="POST /api/commandes/, PATCH /api/commandes/{id}/" />
+          </label>
+          <label class="ed-field ed-wide">Description
+            <textarea rows="2" [value]="rule.description" (input)="setRuleDescription($index, $event)"
+                      placeholder="Ce que la règle impose, et dans quel cas…"></textarea>
+          </label>
+          @if (emptyRuleTitles().has($index)) {
+            <p class="ed-note ed-error ed-wide-note" role="alert">Le titre est obligatoire : cette saisie n'est pas enregistrée.</p>
+          }
+          <button type="button" class="ed-btn ed-danger" [attr.aria-label]="'Supprimer la règle ' + ($index + 1)"
+                  (click)="removeRule($index)">✕</button>
+        </li>
+      }
+    </ul>
+    <datalist id="infra-applies-to">
+      @for (m of modelNames(); track m) { <option [value]="m"></option> }
+      @for (r of endpointRefs(); track r) { <option [value]="r"></option> }
+    </datalist>
+  </section>
+  }
+
+  <!-- ════════════════ Rôles ════════════════ -->
+  @case ('roles') {
+  <section id="infra-section-roles" class="infra-section ed-section" aria-labelledby="t-roles">
+    <div class="ed-title"><h2 id="t-roles">Rôles</h2>
+      <button type="button" class="ed-btn" (click)="addItem('roles')">+ Rôle</button></div>
+    <p class="ed-help">Les groupes requis (fiche du lab) restent la porte de l'app ; un rôle distingue ce que chacun y fait.
+      Un rôle « sur un objet » est porté par une ligne de la base (ex. éditeur d'un arbre partagé).</p>
+    @if (list('roles').length === 0) { <p class="ed-note">Aucun rôle : tout membre autorisé fait tout.</p> }
+    <ul class="ed-list">
+      @for (r of list('roles'); track $index) {
+        <li class="ed-item">
+          <label class="ed-field">Nom
+            <input type="text" [value]="r.name" (input)="itemText('roles', $index, 'name', $event)" placeholder="manager" />
+          </label>
+          <label class="ed-field">Nature
+            <select (change)="setRoleKind($index, $event)">
+              @for (k of roleKinds; track k.id) { <option [value]="k.id" [selected]="k.id === r.kind">{{ k.label }}</option> }
+            </select>
+          </label>
+          @if (r.kind === 'object_role') {
+            <label class="ed-field">Porté par le modèle
+              <select (change)="itemText('roles', $index, 'on_model', $event)">
+                <option value="" [selected]="!r.on_model">—</option>
+                @for (m of modelNames(); track m) { <option [value]="m" [selected]="m === r.on_model">{{ m }}</option> }
+              </select>
+            </label>
+          }
+          <label class="ed-field">Inclut (autres rôles)
+            <input type="text" list="infra-role-names" [value]="joinCsv(r.implies)"
+                   (change)="itemCsv('roles', $index, 'implies', $event)" placeholder="serveur, lecteur" />
+          </label>
+          <label class="ed-field ed-wide">Description
+            <input type="text" [value]="r.description ?? ''" (input)="itemText('roles', $index, 'description', $event)" />
+          </label>
+          <button type="button" class="ed-btn ed-danger" [attr.aria-label]="'Retirer le rôle ' + r.name"
+                  (click)="removeItem('roles', $index)">✕</button>
+        </li>
+      }
+    </ul>
+    <datalist id="infra-role-names">
+      @for (n of roleNames(); track n) { <option [value]="n"></option> }
+    </datalist>
+  </section>
+  }
+
+  <!-- ════════════════ Tâches de fond ════════════════ -->
+  @case ('jobs') {
+  <section id="infra-section-jobs" class="infra-section ed-section" aria-labelledby="t-jobs">
+    <div class="ed-title"><h2 id="t-jobs">Tâches de fond</h2>
+      <button type="button" class="ed-btn" (click)="addItem('jobs')">+ Tâche</button></div>
+    <p class="ed-help">Ce qui ne tient pas dans une requête : calcul long, envoi groupé, tâche planifiée. Leur présence ajoute un worker au projet.</p>
+    @if (list('jobs').length === 0) { <p class="ed-note">Aucune tâche de fond.</p> }
+    <ul class="ed-list">
+      @for (j of list('jobs'); track $index) {
+        <li class="ed-item">
+          <label class="ed-field">Nom
+            <input type="text" [value]="j.name" (input)="itemText('jobs', $index, 'name', $event)" placeholder="Reconstruction" />
+          </label>
+          <label class="ed-field">Nature
+            <select (change)="itemText('jobs', $index, 'kind', $event)">
+              @for (k of jobKinds; track k.id) { <option [value]="k.id" [selected]="k.id === j.kind">{{ k.label }}</option> }
+            </select>
+          </label>
+          <label class="ed-field">Déclencheur
+            <input type="text" list="infra-job-triggers" [value]="j.trigger ?? ''"
+                   (input)="itemText('jobs', $index, 'trigger', $event)" placeholder="POST /api/x/{id}/lancer/ · every:30min · manual" />
+          </label>
+          <label class="ed-field">Modèle d'entrée
+            <select (change)="itemText('jobs', $index, 'input_model', $event)">
+              <option value="" [selected]="!j.input_model">—</option>
+              @for (m of modelNames(); track m) { <option [value]="m" [selected]="m === j.input_model">{{ m }}</option> }
+            </select>
+          </label>
+          <label class="ed-field">Suivie par (modèle)
+            <select (change)="itemText('jobs', $index, 'tracked_by', $event)">
+              <option value="" [selected]="!j.tracked_by">—</option>
+              @for (m of modelNames(); track m) { <option [value]="m" [selected]="m === j.tracked_by">{{ m }}</option> }
+            </select>
+          </label>
+          <label class="ed-field">Concurrence
+            <input type="text" [value]="j.concurrency ?? ''" (input)="itemText('jobs', $index, 'concurrency', $event)"
+                   placeholder="vide, ou one_per:Projet" />
+          </label>
+          <label class="ed-check">
+            <input type="checkbox" [checked]="!!j.heavy" (change)="itemBool('jobs', $index, 'heavy', $event)" />
+            Calcul lourd
+          </label>
+          <label class="ed-field ed-wide">Description
+            <input type="text" [value]="j.description ?? ''" (input)="itemText('jobs', $index, 'description', $event)" />
+          </label>
+          <button type="button" class="ed-btn ed-danger" [attr.aria-label]="'Retirer la tâche ' + j.name"
+                  (click)="removeItem('jobs', $index)">✕</button>
+        </li>
+      }
+    </ul>
+    <datalist id="infra-job-triggers">
+      <option value="manual"></option>
+      <option value="every:30min"></option>
+      @for (r of endpointRefs(); track r) { <option [value]="r"></option> }
+    </datalist>
+  </section>
+  }
+
+  <!-- ════════════════ Services du lab ════════════════ -->
+  @case ('integrations') {
+  <section id="infra-section-integrations" class="infra-section ed-section" aria-labelledby="t-integrations">
+    <div class="ed-title"><h2 id="t-integrations">Services du lab utilisés</h2>
+      <button type="button" class="ed-btn" (click)="addItem('integrations')">+ Service</button></div>
+    <p class="ed-help">Les seuls services du lab qu'une app peut appeler. Une API hors du lab va dans « API externes ».</p>
+    @if (list('integrations').length === 0) { <p class="ed-note">Aucun service du lab.</p> }
+    <ul class="ed-list">
+      @for (it of list('integrations'); track $index) {
+        <li class="ed-item">
+          <label class="ed-field">Service
+            <select (change)="setIntegrationType($index, $event)">
+              @for (t of integrationTypes; track t.id) { <option [value]="t.id" [selected]="t.id === it.type">{{ t.label }}</option> }
+            </select>
+          </label>
+          @if (it.type === 'storage') {
+            <label class="ed-field">Mode d'accès
+              <select (change)="itemText('integrations', $index, 'mode', $event)">
+                @for (m of storageModes; track m.id) { <option [value]="m.id" [selected]="m.id === it.mode">{{ m.label }}</option> }
+              </select>
+            </label>
+          } @else {
+            <label class="ed-field">Mode
+              <input type="text" [value]="it.mode ?? ''" (input)="itemText('integrations', $index, 'mode', $event)" />
+            </label>
+          }
+          <label class="ed-field ed-wide">Description
+            <input type="text" [value]="it.description ?? ''" (input)="itemText('integrations', $index, 'description', $event)"
+                   placeholder="Ce que l'app en fait" />
+          </label>
+          <button type="button" class="ed-btn ed-danger" [attr.aria-label]="'Retirer le service ' + it.type"
+                  (click)="removeItem('integrations', $index)">✕</button>
+        </li>
+      }
+    </ul>
+  </section>
+  }
+
+  <!-- ════════════════ API externes ════════════════ -->
+  @case ('external_apis') {
+  <section id="infra-section-external_apis" class="infra-section ed-section" aria-labelledby="t-external">
+    <div class="ed-title"><h2 id="t-external">API externes</h2>
+      <button type="button" class="ed-btn" (click)="addItem('external_apis')">+ API</button></div>
+    <p class="ed-help">Services tiers hors du lab (paiement, cartographie, IA…) : qui les appelle et avec quelle clé.</p>
+    @if (list('external_apis').length === 0) { <p class="ed-note">Aucune API externe.</p> }
+    <ul class="ed-list">
+      @for (a of list('external_apis'); track $index) {
+        <li class="ed-item">
+          <label class="ed-field">Nom
+            <input type="text" [value]="a.name" (input)="itemText('external_apis', $index, 'name', $event)" placeholder="Stripe" />
+          </label>
+          <label class="ed-field">Usage
+            <input type="text" [value]="a.purpose ?? ''" (input)="itemText('external_apis', $index, 'purpose', $event)" placeholder="paiement" />
+          </label>
+          <label class="ed-field">Authentification
+            <select (change)="itemText('external_apis', $index, 'auth', $event)">
+              @for (o of apiAuths; track o.id) { <option [value]="o.id" [selected]="o.id === (a.auth ?? 'none')">{{ o.label }}</option> }
+            </select>
+          </label>
+          <label class="ed-field">Appelée depuis
+            <select (change)="itemText('external_apis', $index, 'called_from', $event)">
+              <option value="backend" [selected]="(a.called_from ?? 'backend') === 'backend'">Le serveur</option>
+              <option value="job" [selected]="a.called_from === 'job'">Une tâche de fond</option>
+            </select>
+          </label>
+          <label class="ed-field ed-wide">Description
+            <input type="text" [value]="a.description ?? ''" (input)="itemText('external_apis', $index, 'description', $event)" />
+          </label>
+          <button type="button" class="ed-btn ed-danger" [attr.aria-label]="'Retirer l’API ' + a.name"
+                  (click)="removeItem('external_apis', $index)">✕</button>
+        </li>
+      }
+    </ul>
+  </section>
+  }
+
+  <!-- ════════════════ Extensions ════════════════ -->
+  @case ('extensions') {
+  <section id="infra-section-extensions" class="infra-section ed-section" aria-labelledby="t-extensions">
+    <div class="ed-title"><h2 id="t-extensions">Extensions</h2></div>
+    <p class="ed-help">Ce qui sort du cas courant : imports et exports, temps réel, calculs, notifications.</p>
+
+    <!-- Imports / exports -->
+    <div class="ed-block">
+      <div class="ed-title"><h3>Imports et exports</h3>
+        <button type="button" class="ed-btn" (click)="addExt('data_io')">+ Import / export</button></div>
+      <ul class="ed-list">
+        @for (d of ext('data_io'); track $index) {
+          <li class="ed-item">
+            <label class="ed-field">Sens
+              <select (change)="extText('data_io', $index, 'direction', $event)">
+                <option value="import" [selected]="d.direction === 'import'">Import</option>
+                <option value="export" [selected]="d.direction === 'export'">Export</option>
+              </select>
+            </label>
+            <label class="ed-field">Format
+              <input type="text" [value]="d.format" (input)="extText('data_io', $index, 'format', $event)" placeholder="csv" />
+            </label>
+            <label class="ed-field">Modèle
+              <select (change)="extText('data_io', $index, 'model', $event)">
+                <option value="" [selected]="!d.model">—</option>
+                @for (m of modelNames(); track m) { <option [value]="m" [selected]="m === d.model">{{ m }}</option> }
+              </select>
+            </label>
+            <label class="ed-field">Mode
+              <select (change)="extText('data_io', $index, 'mode', $event)">
+                <option value="" [selected]="!d.mode">—</option>
+                <option value="append" [selected]="d.mode === 'append'">Ajout</option>
+                <option value="upsert" [selected]="d.mode === 'upsert'">Mise à jour ou ajout</option>
+                <option value="replace" [selected]="d.mode === 'replace'">Remplacement</option>
+              </select>
+            </label>
+            <label class="ed-check">
+              <input type="checkbox" [checked]="!!d.async" (change)="extBool('data_io', $index, 'async', $event)" />
+              En tâche de fond
+            </label>
+            <button type="button" class="ed-btn ed-danger" aria-label="Retirer cet import ou export"
+                    (click)="removeExt('data_io', $index)">✕</button>
+          </li>
+        } @empty { <li class="ed-help">Aucun.</li> }
+      </ul>
+    </div>
+
+    <!-- Temps réel -->
+    <div class="ed-block">
+      <div class="ed-title"><h3>Temps réel</h3>
+        <button type="button" class="ed-btn" (click)="addExt('realtime')">+ Flux</button></div>
+      <ul class="ed-list">
+        @for (r of ext('realtime'); track $index) {
+          <li class="ed-item">
+            <label class="ed-field">Nom
+              <input type="text" [value]="r.name" (input)="extText('realtime', $index, 'name', $event)" />
+            </label>
+            <label class="ed-field">Transport
+              <select (change)="extText('realtime', $index, 'transport', $event)">
+                <option value="poll" [selected]="r.transport === 'poll'">Interrogation régulière</option>
+                <option value="ws_relay" [selected]="r.transport === 'ws_relay'">Relais WebSocket</option>
+                <option value="webrtc" [selected]="r.transport === 'webrtc'">WebRTC</option>
+                <option value="hls" [selected]="r.transport === 'hls'">HLS</option>
+              </select>
+            </label>
+            <label class="ed-field ed-wide">Description
+              <input type="text" [value]="r.description ?? ''" (input)="extText('realtime', $index, 'description', $event)" />
+            </label>
+            <button type="button" class="ed-btn ed-danger" [attr.aria-label]="'Retirer le flux ' + r.name"
+                    (click)="removeExt('realtime', $index)">✕</button>
+          </li>
+        } @empty { <li class="ed-help">Aucun.</li> }
+      </ul>
+    </div>
+
+    <!-- Calculs -->
+    <div class="ed-block">
+      <div class="ed-title"><h3>Calculs</h3>
+        <button type="button" class="ed-btn" (click)="addExt('computations')">+ Calcul</button></div>
+      <ul class="ed-list">
+        @for (c of ext('computations'); track $index) {
+          <li class="ed-item">
+            <label class="ed-field">Nom
+              <input type="text" [value]="c.name" (input)="extText('computations', $index, 'name', $event)" />
+            </label>
+            <label class="ed-field">Entrées (Modèle.champ, …)
+              <input type="text" [value]="joinCsv(c.inputs)" (change)="extCsv('computations', $index, 'inputs', $event)"
+                     placeholder="Mur.surface, Mur.resistance" />
+            </label>
+            <label class="ed-field">Résultat
+              <input type="text" [value]="c.output ?? ''" (input)="extText('computations', $index, 'output', $event)" />
+            </label>
+            <label class="ed-field">Exécution
+              <select (change)="extText('computations', $index, 'run', $event)">
+                <option value="sync" [selected]="(c.run ?? 'sync') === 'sync'">Dans la requête</option>
+                <option value="job" [selected]="c.run === 'job'">En tâche de fond</option>
+              </select>
+            </label>
+            <label class="ed-field ed-wide">Vérification
+              <input type="text" [value]="c.verification ?? ''" (input)="extText('computations', $index, 'verification', $event)"
+                     placeholder="Valeur de référence calculée à la main" />
+            </label>
+            <button type="button" class="ed-btn ed-danger" [attr.aria-label]="'Retirer le calcul ' + c.name"
+                    (click)="removeExt('computations', $index)">✕</button>
+          </li>
+        } @empty { <li class="ed-help">Aucun.</li> }
+      </ul>
+    </div>
+
+    <!-- Notifications -->
+    <div class="ed-block">
+      <div class="ed-title"><h3>Notifications</h3>
+        <button type="button" class="ed-btn" (click)="addExt('notifications')">+ Notification</button></div>
+      <ul class="ed-list">
+        @for (n of ext('notifications'); track $index) {
+          <li class="ed-item">
+            <label class="ed-field">Événement
+              <input type="text" [value]="n.event" (input)="extText('notifications', $index, 'event', $event)" placeholder="Commande.payee" />
+            </label>
+            <label class="ed-field">Canal
+              <input type="text" [value]="n.channel" (input)="extText('notifications', $index, 'channel', $event)" placeholder="email" />
+            </label>
+            <label class="ed-field">Destinataire
+              <input type="text" list="infra-notify-to" [value]="n.to" (input)="extText('notifications', $index, 'to', $event)"
+                     placeholder="owner · role:manager · champ" />
+            </label>
+            <button type="button" class="ed-btn ed-danger" aria-label="Retirer cette notification"
+                    (click)="removeExt('notifications', $index)">✕</button>
+          </li>
+        } @empty { <li class="ed-help">Aucune.</li> }
+      </ul>
+      <datalist id="infra-notify-to">
+        <option value="owner"></option>
+        @for (n of roleNames(); track n) { <option [value]="'role:' + n"></option> }
+      </datalist>
+    </div>
+  </section>
+  }
+
+  }
 </div>

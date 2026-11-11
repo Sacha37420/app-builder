@@ -609,3 +609,37 @@
   gap: 0.4rem;
   flex-wrap: wrap;
 }
+
+// ── Propositions (I4) ─────────────────────────────────────────────────────────
+.patch-panel.destructive:not(.applied) { border-color: var(--warning); }
+.patch-panel.legacy { background: var(--overlay-weak); border-color: var(--border); }
+.patch-destructive {
+  margin: 0 0 0.4rem; padding: 0.35rem 0.5rem; border-radius: var(--radius-sm);
+  background: var(--warning-tint); border: 1px solid var(--warning); color: var(--text);
+}
+.patch-details {
+  margin-bottom: 0.4rem;
+  summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--text-mute); }
+  ol { padding-left: 1.2rem; display: flex; flex-direction: column; gap: 2px; }
+  li.destructive { color: var(--text); }
+}
+.tag-destructive {
+  display: inline-block; margin-left: 0.3rem; padding: 0 6px; border-radius: var(--radius-full);
+  border: 1px solid var(--warning); color: var(--warning); font-size: 0.68rem; font-weight: 600;
+}
+.patch-errors {
+  margin-bottom: 0.4rem; padding: 0.35rem 0.5rem; border-radius: var(--radius-sm);
+  background: var(--danger-tint); border: 1px solid var(--danger); color: var(--text);
+  ul { padding-left: 1.1rem; }
+}
+.btn-merge { min-height: 44px; padding: 0 14px; }
+.msg-truncated { margin-top: 0.3rem; font-size: 0.72rem; color: var(--warning); }
+.choices-question { margin-bottom: 0.4rem; font-weight: 600; font-size: 0.82rem; }
+.ia-ways {
+  margin: 0.5rem 0.75rem; padding: 0.5rem 0.65rem; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--overlay-weak); font-size: 0.78rem; color: var(--text);
+  p { margin-bottom: 0.3rem; }
+}
+.ia-ways-link {
+  display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; color: var(--accent);
+}

@@ -3,7 +3,7 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import SimpleTestCase, TransactionTestCase
 
-from api import conformite, patching, views
+from api import conformite, patching
 from api.models import AppSpec, DataModel
 
 from .socle import Base, _spec_complete
@@ -283,22 +283,6 @@ class ConformiteReglesTests(SimpleTestCase):
         for nom in ('', 'ab', 'a-', 'A-b', 'a--b', 'x' * 41, None, 12, 'a b', 'a\nb'):
             self.assertIsNotNone(conformite.erreur_nom_de_projet(nom), nom)
 
-    def test_le_prompt_ne_contredit_plus_le_cadriciel(self):
-        for prompt in (views._build_system_prompt({}), views._build_patch_system_prompt({})):
-            self.assertIn('storage_file', prompt)
-            self.assertNotIn('json/file', prompt)
-            self.assertIn('project_name', prompt)
-            self.assertIn('business_rules', prompt)
-            self.assertIn('public_reason', prompt)
-        conversation = views._build_system_prompt({})
-        for attendu in ('moteur du lab', 'send_mail', 'Foyer', 'storage', 'Angular seul'):
-            self.assertIn(attendu, conversation)
-        self.assertNotIn('Spring Boot', conversation)
-
-    def test_un_patch_de_regles_seules_a_du_contenu(self):
-        self.assertTrue(views._patch_has_content({'business_rules': [{'title': 'x'}]}))
-        self.assertTrue(views._patch_has_content({'remove_business_rules': ['x']}))
-
     def test_la_fusion_garde_les_champs_du_cadriciel(self):
         avant = {'name': 'B', 'project_name': 'ma-boutique', 'uses_email': True,
                  'business_rules': [{'title': 'R', 'description': 'd'}]}
@@ -327,7 +311,10 @@ class MigrationCadricielTests(TransactionTestCase):
 
             executeur = MigrationExecutor(connection)
             executeur.migrate([('api', '0009_cadriciel')])
-            apres = AppSpec.objects.get(pk=spec.pk)
+            # Modèles historiques de 0009 : les modèles actuels portent des colonnes
+            # (0011) qui n'existent pas encore à ce stade.
+            apps = MigrationExecutor(connection).loader.project_state([('api', '0009_cadriciel')]).apps
+            apres = apps.get_model('api', 'AppSpec').objects.get(pk=spec.pk)
             self.assertEqual((apres.name, apres.app_type, apres.owner_email, apres.required_groups, apres.chat_history),
                              ('Avant', 'spring', 'alice@ssolab.local', ['famille'], [{'role': 'user', 'content': 'x'}]))
             self.assertEqual((apres.project_name, apres.business_rules, apres.uses_email), ('', [], False))

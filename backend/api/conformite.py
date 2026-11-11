@@ -16,7 +16,21 @@ TYPES_CONSTRUCTIBLES = ('django-angular', 'django', 'angular')
 
 # Types de champ d'un modèle. `storage_file` : un fichier déposé par l'utilisateur
 # dans le service `storage` du lab — le modèle n'en garde que le chemin.
-TYPES_DE_CHAMP = ('string', 'text', 'int', 'decimal', 'bool', 'datetime', 'json', 'storage_file')
+TYPES_DE_CHAMP = ('string', 'text', 'int', 'decimal', 'bool', 'datetime', 'json', 'storage_file',
+                  # Métamodèle v2 (I1) : `secret` est chiffré au coffre et jamais rendu par l'API ;
+                  # `geo_point` / `geometry` demandent l'instance PostGIS.
+                  'date', 'email', 'url', 'enum', 'secret', 'geo_point', 'geometry')
+
+# ── Listes fermées du métamodèle v2 (contrat app-builder-v2, I1) ──────────────
+GENRES_DE_MODELE = ('entity', 'singleton', 'reference', 'log', 'join')
+PORTEES = ('owner', 'shared', 'group', 'parent', 'public_read', 'global')
+ACTIONS_D_ACCES = ('read', 'create', 'update', 'delete', 'manage_shares')
+MODES_AUTH = ('jwt', 'public', 'api_key', 'hmac_signature', 'internal_key', 'ticket')
+GENRES_DE_ROLE = ('keycloak_group', 'object_role')
+GENRES_DE_JOB = ('async', 'scheduled', 'command')
+INTEGRATIONS = ('storage', 'email', 'keycloak_admin', 'lab_media', 'postgis', 'oauth_hub')
+LISTES_D_EXTENSIONS = ('data_io', 'realtime', 'computations', 'notifications')
+LAYOUTS = ('list', 'detail', 'form', 'dashboard', 'mixed', 'canvas', 'wizard', 'settings')
 # Ancien type « fichier » (FileField / blob) : contraire à la règle du lab. Une
 # spec qui en porte encore reste lisible ; il ne peut plus être introduit.
 TYPE_FICHIER_ANCIEN = 'file'
@@ -184,3 +198,77 @@ def empreinte(spec: dict) -> dict:
         'deployment': 'Créée et déployée par le moteur du lab (lab-admin → Projets) : seul un commit '
                       'poussé sur GitHub est déployé, après les tests backend.',
     }
+
+
+def avertissements(spec: dict) -> list[dict]:
+    """Ce qui est mal décrit sans empêcher la construction : [{code, message, element}].
+
+    Codes : `modele_sans_access`, `role_hors_porte`, `role_inconnu`,
+    `regle_sans_endpoint`, `enum_sans_values`, `etat_sans_transition`,
+    `job_sans_declencheur`, `endpoint_non_jwt_sans_raison`, `geometry_sans_postgis`.
+    """
+    resultat = []
+
+    def averti(code, message, element):
+        resultat.append({'code': code, 'message': message, 'element': element})
+
+    modeles = _dicts(spec.get('data_models'))
+    roles = {r.get('name') for r in _dicts(spec.get('roles')) if isinstance(r.get('name'), str)}
+    groupes = {g for g in _liste(spec.get('required_groups')) if isinstance(g, str)}
+    connus = roles | groupes
+    integrations = {i.get('type') for i in _dicts(spec.get('integrations'))}
+
+    for m in modeles:
+        nom = m.get('name')
+        if not (isinstance(m.get('access'), dict) and m['access']):
+            averti('modele_sans_access', f"Le modèle « {nom} » ne dit pas qui voit quoi (`access`) : "
+                   'par défaut, chaque compte ne voit que ce qu\'il a créé.', nom)
+        acces = m.get('access') if isinstance(m.get('access'), dict) else {}
+        etats = m.get('states') if isinstance(m.get('states'), dict) else {}
+        cites = [w for r in _dicts(acces.get('rules')) for w in _liste(r.get('who'))]
+        cites += [w for t in _dicts(etats.get('transitions')) for w in _liste(t.get('by'))]
+        cites += [h.get('unless') for h in _dicts(acces.get('hidden_fields'))]
+        for w in dict.fromkeys(w for w in cites if isinstance(w, str) and w.startswith('role:')):
+            if w[5:] not in connus:
+                averti('role_inconnu', f"Le modèle « {nom} » cite le rôle « {w[5:]} », absent des rôles et des groupes requis.", nom)
+        if etats and (not _liste(etats.get('values')) or not _dicts(etats.get('transitions'))):
+            averti('etat_sans_transition', f"Le cycle de vie du modèle « {nom} » n'a pas de valeurs ou pas de transitions.", nom)
+        for f in _dicts(m.get('fields')):
+            if f.get('type') == 'enum' and not _liste(f.get('values')):
+                averti('enum_sans_values', f"Le champ « {nom}.{f.get('name')} » est une énumération sans valeurs.",
+                       f"{nom}.{f.get('name')}")
+            if f.get('type') in ('geometry', 'geo_point') and 'postgis' not in integrations:
+                averti('geometry_sans_postgis', f"Le champ « {nom}.{f.get('name')} » est géographique : déclarez "
+                       "l'intégration `postgis` (instance PostgreSQL à extension PostGIS).", f"{nom}.{f.get('name')}")
+
+    for e in endpoints(spec):
+        route = f"{e.get('method')} {e.get('path')}"
+        for r in _liste(e.get('required_roles')):
+            if isinstance(r, str) and r not in connus:
+                averti('role_hors_porte', f"L'endpoint {route} exige le rôle « {r} », absent des rôles et des groupes requis.", route)
+        auth = e.get('auth') if isinstance(e.get('auth'), dict) else {}
+        mode = auth.get('mode') or ('public' if e.get('auth_required') is False else 'jwt')
+        raison = (auth.get('reason') or e.get('public_reason') or '')
+        if mode != 'jwt' and not (isinstance(raison, str) and raison.strip()):
+            averti('endpoint_non_jwt_sans_raison', f"L'endpoint {route} n'utilise pas le jeton du lab (mode {mode}) "
+                   'sans en donner la raison.', route)
+    for p in _dicts(spec.get('pages')):
+        for r in _liste(p.get('required_roles')):
+            if isinstance(r, str) and r not in connus:
+                averti('role_hors_porte', f"La page « {p.get('name')} » exige le rôle « {r} », absent des rôles et des groupes requis.",
+                       p.get('name'))
+
+    for r in _dicts(spec.get('business_rules')):
+        if r.get('kind') in ('invariant', 'validation') and not _liste(r.get('enforced_by')):
+            averti('regle_sans_endpoint', f"La règle « {r.get('title')} » ({r['kind']}) ne dit pas quel endpoint la tient "
+                   '(`enforced_by`) : elle ne sera pas testée.', r.get('title'))
+
+    for j in _dicts(spec.get('jobs')):
+        if not (isinstance(j.get('trigger'), str) and j['trigger'].strip()):
+            averti('job_sans_declencheur', f"La tâche « {j.get('name')} » n'a pas de déclencheur (`trigger`).", j.get('name'))
+    return resultat
+
+
+def verifier(spec: dict) -> dict:
+    """Blocages (inchangés) et avertissements de conception (I3)."""
+    return {'blocages': blocages(spec), 'avertissements': avertissements(spec)}

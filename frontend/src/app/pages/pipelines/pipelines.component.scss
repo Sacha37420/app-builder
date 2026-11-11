@@ -231,3 +231,28 @@
   cursor: pointer; font-size: 0.9rem; padding: 0 4px;
   &:hover { color: var(--danger); }
 }
+
+// ── Étapes du métamodèle v2 (tâches de fond, calcul navigateur) ──────────────
+.step-block {
+  &.step-enqueue-job, &.step-poll-job {
+    border-color: color-mix(in srgb, var(--cat-gray) 35%, transparent);
+    background: color-mix(in srgb, var(--cat-gray) 6%, transparent);
+    .step-type-badge { color: var(--cat-gray); }
+    .step-icon { background: color-mix(in srgb, var(--cat-gray) 20%, transparent); }
+  }
+  &.step-client-compute {
+    border-color: color-mix(in srgb, var(--cat-purple) 30%, transparent);
+    background: color-mix(in srgb, var(--cat-cyan) 6%, transparent);
+    .step-type-badge { color: var(--cat-cyan); }
+    .step-icon { background: color-mix(in srgb, var(--cat-purple) 20%, transparent); }
+  }
+}
+
+// ── Sélection portée par l'adresse, cibles tactiles ──────────────────────────
+.pages-sidebar .sidebar-item {
+  min-height: 44px;
+  &:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+}
+.pipeline-card { scroll-margin-top: var(--space-4); }
+.pipeline-header { min-height: 44px; &:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; } }
+.pipelines-main > .ed-note { margin-bottom: var(--space-3); }

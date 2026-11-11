@@ -1,628 +1,17 @@
-import re
-import json
 import logging
-import requests as http_requests
-from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
+import time
+
+import requests as http_requests  # noqa: F401 — gardé : des tests y vérifient qu'aucun appel ne part
 from rest_framework import generics, status
 from rest_framework.response import Response
+from rest_framework.views import APIView
+
 from . import budget, conformite, patching
+from .ia import boucle, fournisseurs
 from .models import AiKeyVault, AppSpec, PatchApplication
 from .serializers import AppSpecSerializer
 
 log = logging.getLogger(__name__)
-
-# ── Extraction du patch JSON depuis la réponse IA ─────────────────────────────
-
-def _extract_choices(content: str) -> tuple[str, dict | None]:
-    """Extrait et supprime le bloc CHOICES_START...CHOICES_END du contenu."""
-    si = content.find('CHOICES_START')
-    if si == -1:
-        return content, None
-    ei = content.find('CHOICES_END', si)
-    if ei == -1:
-        return content, None
-    between = content[si + len('CHOICES_START'):ei]
-    bo = between.find('{')
-    bc = between.rfind('}')
-    if bo == -1 or bc == -1:
-        return content, None
-    json_str = between[bo:bc + 1]
-    clean = (content[:si] + content[ei + len('CHOICES_END'):]).strip()
-    try:
-        choices = json.loads(json_str)
-        print(f"[CHOICES] multiple={choices.get('multiple')} items={len(choices.get('items', []))}")
-        return clean, choices
-    except json.JSONDecodeError:
-        return content, None
-
-
-_PATCH_READY_RE = re.compile(r'^[ \t]*PATCH_READY[ \t]*$', re.MULTILINE)
-
-
-def _extract_patch_ready(content: str) -> tuple[str, bool]:
-    """Repère la ligne sentinelle PATCH_READY et la retire du texte affiché.
-
-    Le patch lui-même n'est plus jamais embarqué dans cette réponse : cette
-    ligne signale seulement qu'un second échange, dédié et strictement JSON,
-    doit être déclenché pour l'obtenir (voir _generate_patch).
-    """
-    match = _PATCH_READY_RE.search(content)
-    if not match:
-        return content, False
-    clean = (content[:match.start()] + content[match.end():]).strip()
-    return clean, True
-
-
-def _strip_code_fences(text: str) -> str:
-    t = text.strip()
-    if t.startswith('```'):
-        t = re.sub(r'^```[a-zA-Z0-9]*\n?', '', t)
-        t = re.sub(r'\n?```$', '', t)
-        t = t.strip()
-    return t
-
-
-def _isolate_json(text: str) -> str:
-    """Dernier filet de sécurité si le modèle ajoute malgré tout un mot ou des
-    backticks autour du JSON : isole le premier '{' et le dernier '}'."""
-    t = _strip_code_fences(text)
-    start, end = t.find('{'), t.rfind('}')
-    if start == -1 or end == -1 or end < start:
-        return t
-    return t[start:end + 1]
-
-
-_PATCH_CONTENT_KEYS = (
-    'set_meta',
-    'data_models', 'models', 'data-models',
-    'endpoint_groups', 'groups', 'endpoints',
-    'services', 'pages',
-    'business_rules', 'rules', 'remove_business_rules',
-    'remove_models', 'delete_models',
-    'remove_endpoint_groups', 'delete_groups',
-    'remove_services', 'delete_services',
-    'remove_pages', 'delete_pages',
-)
-
-
-
-def _patch_has_content(patch: dict) -> bool:
-    return any(patch.get(key) for key in _PATCH_CONTENT_KEYS)
-
-
-_PATCH_MAX_ATTEMPTS = 3
-_PATCH_MAX_TOKENS = 8192
-
-
-class ReponseTronquee(Exception):
-    """Le fournisseur a coupé sa réponse à la limite de longueur demandée."""
-
-
-_AVIS_TRONCATURE = (
-    "\n\n⚠️ Réponse coupée : la limite de longueur du modèle a été atteinte. "
-    "Demandez la suite, ou avancez par étapes plus petites."
-)
-
-
-def _generate_patch(provider: str, api_key: str, model: str | None, app_spec: dict,
-                     messages: list, assistant_reply: str) -> tuple[dict | None, str | None]:
-    """Second échange, dédié et séparé du texte conversationnel : demande le
-    patch JSON brut et seul, valide le JSON obtenu, et recommence en cas
-    d'échec (JSON invalide ou sans contenu reconnu) jusqu'à _PATCH_MAX_ATTEMPTS.
-    """
-    system_prompt = _build_patch_system_prompt(app_spec)
-    patch_messages = list(messages) + [
-        {'role': 'assistant', 'content': assistant_reply},
-        {'role': 'user', 'content': (
-            "Génère maintenant le patch JSON correspondant : uniquement l'objet JSON, "
-            "brut et seul, sans aucun texte ni balise autour."
-        )},
-    ]
-    call_once = _call_claude_once if provider == 'claude' else _call_mistral_once
-    last_error = 'réponse vide'
-    mesure = budget.mesurer(budget.modele(provider, model), system_prompt, '', patch_messages, _PATCH_MAX_TOKENS)
-    if not mesure['fits']:
-        return None, ('la spécification et la conversation dépassent ce que ce modèle peut traiter pour produire '
-                      'un patch — choisissez un modèle à plus grande fenêtre ou effacez la conversation')
-
-    for attempt in range(1, _PATCH_MAX_ATTEMPTS + 1):
-        try:
-            raw = call_once(api_key, system_prompt, patch_messages, model, _PATCH_MAX_TOKENS)
-        except ReponseTronquee:
-            # Redemander la même chose donnerait la même coupure : on s'arrête.
-            print(f'[PATCH] tentative {attempt}/{_PATCH_MAX_ATTEMPTS} — réponse tronquée, abandon')
-            return None, ('patch trop volumineux pour une seule réponse — demandez-le en plusieurs fois, '
-                          'une partie de la spécification à la fois')
-        except Exception as exc:
-            last_error = f'appel API échoué ({exc})'
-            print(f'[PATCH] tentative {attempt}/{_PATCH_MAX_ATTEMPTS} échouée — {last_error}')
-            continue
-
-        candidate = _isolate_json(raw)
-        try:
-            patch = json.loads(candidate)
-        except json.JSONDecodeError as e:
-            last_error = f'JSON invalide ({e})'
-            print(f'[PATCH] tentative {attempt}/{_PATCH_MAX_ATTEMPTS} échouée — {last_error}')
-            print(f'[PATCH] Extrait brut : {candidate[:300]!r}')
-            patch_messages += [
-                {'role': 'assistant', 'content': raw},
-                {'role': 'user', 'content': (
-                    f'{last_error}. Renvoie uniquement le JSON corrigé, brut et seul, '
-                    'sans texte ni balise autour.'
-                )},
-            ]
-            continue
-
-        if not isinstance(patch, dict) or not _patch_has_content(patch):
-            last_error = 'JSON valide mais vide ou sans clé reconnue'
-            print(f'[PATCH] tentative {attempt}/{_PATCH_MAX_ATTEMPTS} échouée — {last_error}')
-            patch_messages += [
-                {'role': 'assistant', 'content': raw},
-                {'role': 'user', 'content': (
-                    f'{last_error} (attendu : set_meta, data_models, endpoint_groups, services '
-                    'et/ou pages). Renvoie le patch complet, brut et seul.'
-                )},
-            ]
-            continue
-
-        # Essai à blanc sur la spec reçue : un patch incohérent (référence vers
-        # un élément absent, renommage impossible) est renvoyé au modèle avec
-        # la raison, plutôt que proposé à l'utilisateur pour être refusé ensuite.
-        try:
-            patching.fusionner(app_spec, patch)
-        except patching.PatchRefuse as refus:
-            last_error = 'patch incohérent avec la spécification (' + ' ; '.join(refus.erreurs) + ')'
-            print(f'[PATCH] tentative {attempt}/{_PATCH_MAX_ATTEMPTS} échouée — {last_error}')
-            patch_messages += [
-                {'role': 'assistant', 'content': raw},
-                {'role': 'user', 'content': (
-                    f'{last_error}. Corrige le patch (ajoute les éléments manquants ou retire les '
-                    'références fautives) et renvoie-le complet, brut et seul.'
-                )},
-            ]
-            continue
-
-        print(f"[PATCH] OK (tentative {attempt}/{_PATCH_MAX_ATTEMPTS}) — models={len(patch.get('data_models') or [])} "
-              f"groups={len(patch.get('endpoint_groups') or [])} "
-              f"services={len(patch.get('services') or [])} "
-              f"pages={len(patch.get('pages') or [])}")
-        return patch, None
-
-    return None, last_error
-
-
-# ── Schéma du patch — partagé entre le prompt conversationnel et le prompt patch-only ──
-
-_PATCH_SCHEMA_DOC = """```json
-{
-  "set_meta": { "name": "Titre de l'app", "project_name": "nom-de-projet", "description": "...",
-                "required_groups": ["groupe1", "groupe2"], "uses_email": false },
-  "business_rules": [ { "title": "Stock jamais négatif", "description": "Une sortie de stock supérieure à la quantité disponible est refusée." } ],
-  "data_models": [ ... ],
-  "endpoint_groups": [ ... ],
-  "services": [ ... ],
-  "pages": [ ... ]
-}
-```
-
-**Règles :**
-- N'inclus **que les éléments nouveaux ou modifiés** — jamais ce qui existe déjà à l'identique dans le contexte fourni.
-- Chaque tableau peut être vide `[]` si rien de nouveau dans cette catégorie.
-- `set_meta.required_groups` : les groupes Keycloak à ajouter — fusionnés avec l'existant, pas besoin de repréciser les groupes déjà validés.
-- `set_meta.project_name` : le nom du projet dans le lab (dossier, adresse `/<nom>`, client Keycloak) — 3 à 40
-  caractères, minuscules, chiffres et tirets, commence par une lettre. Distinct du titre `name`.
-- `set_meta.uses_email` : `true` si l'app envoie des emails.
-- `business_rules` : les règles métier et contraintes validées, une par objet, retrouvées par leur `title`.
-- Pour **services** : utilise `endpoint_group_names` (noms, pas IDs).
-- Pour **pages** : utilise `service_names` (noms, pas IDs).
-
-**Comment le patch est fusionné — à respecter à la lettre :**
-- Un élément est retrouvé **par son nom** (un endpoint par `method` + `path`). Même nom ⇒ il est complété ;
-  nom inconnu ⇒ il est créé.
-- **Ce que tu ne cites pas reste en place.** Pour ajouter un champ à un modèle, un endpoint à un groupe,
-  une interaction ou un pipeline à une page, envoie l'élément parent avec **seulement** ce qui est nouveau
-  ou modifié : ses voisins ne bougent pas. Une clé absente garde sa valeur.
-- Exceptions — ces listes sont **complètes** quand tu les envoies (elles remplacent l'existant), et
-  inchangées quand tu les omets : `endpoint_group_names`, `service_names`, `components`, et les `steps`
-  d'un endpoint ou d'un pipeline.
-- **Rien n'est supprimé sans demande explicite :**
-  - à la racine : `"remove_models": ["Nom"]`, `"remove_endpoint_groups": [...]`, `"remove_services": [...]`,
-    `"remove_pages": [...]` ;
-  - dans un modèle : `"remove_fields": ["champ"]`, `"remove_relationships": ["relation"]` ;
-  - dans un groupe : `"remove_endpoints": ["GET /api/chemin/"]` ;
-  - dans une page : `"remove_interactions": ["Nom"]`, `"remove_pipelines": ["Nom"]` ;
-  - dans `set_meta` : `"remove_required_groups": ["groupe"]` ;
-  - à la racine : `"remove_business_rules": ["Titre de la règle"]`.
-- **Renommer** un modèle, un groupe, un service ou une page : envoie-le sous son nouveau `name` avec
-  `"rename_from": "AncienNom"`. Ne le recrée jamais sous un autre nom (cela ferait un doublon). Les
-  références vers l'ancien nom suivent automatiquement.
-- **Toute référence doit exister** dans la spec ou dans le même patch : `linked_model_name`, `to_model`,
-  `linked_model` d'un composant, `endpoint_group_names`, `service_names`, `service_name` d'une étape, et
-  `trigger_interaction` (une interaction de la même page). Si tu supprimes un élément, corrige ou supprime
-  dans le même patch ce qui le référençait. Un patch incohérent est refusé en entier.
-
-### Structure exacte des éléments
-
-**data_models** (types de champs : string/text/int/decimal/bool/datetime/json/storage_file — **jamais `file`** :
-un fichier d'utilisateur est un champ `storage_file`, voir « Règles du lab ») :
-```json
-{
-  "name": "Produit", "description": "...", "order": 0,
-  "fields": [
-    { "name": "nom", "type": "string", "required": true, "unique": false, "max_length": 200 },
-    { "name": "prix", "type": "decimal", "required": true, "unique": false }
-  ],
-  "relationships": [
-    { "name": "categorie", "rel_type": "FK", "to_model": "Categorie",
-      "related_name": "produits", "on_delete": "CASCADE" }
-  ]
-}
-```
-
-**endpoint_groups** — chaque endpoint peut inclure des `steps` décrivant le traitement serveur :
-```json
-{
-  "name": "Produits", "description": "...", "order": 0,
-  "endpoints": [
-    {
-      "method": "GET", "path": "/api/produits/", "description": "Liste tous les produits",
-      "operation": "list", "linked_model_name": "Produit", "order": 0,
-      "auth_required": true, "public_reason": "", "required_roles": [],
-      "request_schema": null, "response_schema": null, "query_params": [],
-      "steps": [
-        { "label": "Vérifier JWT", "type": "auth_check", "description": "Vérifie que le token Keycloak est valide et extrait email + groups" },
-        { "label": "Requête DB", "type": "db_query", "description": "Filtre les produits par owner_email=request.user.email avec order_by('-updated_at')" },
-        { "label": "Sérialiser", "type": "serialize", "description": "Convertit le queryset en liste JSON via ProduitSerializer(many=True)" }
-      ]
-    }
-  ]
-}
-```
-Types de steps backend : `auth_check | validate | db_query | db_write | serialize | transform | error | custom`
-Une route sans authentification (`"auth_required": false`) porte obligatoirement sa justification dans `public_reason`.
-
-**services** :
-```json
-{ "name": "ProduitService", "order": 0, "endpoint_group_names": ["Produits"] }
-```
-
-**pages** :
-```json
-{
-  "name": "ListeProduits", "route": "/produits", "layout": "list", "order": 0,
-  "service_names": ["ProduitService"],
-  "components": [{
-    "type": "table", "label": "Tableau des produits",
-    "linked_model": "Produit",
-    "fields": ["nom", "prix", "categorie", "updated_at"]
-  }],
-  "interactions": [
-    { "name": "Page chargée", "type": "display",
-      "description": "Déclenchée au chargement (ngOnInit)", "order": 0 },
-    { "name": "Voir détail", "type": "navigation",
-      "description": "Clic sur une ligne → page détail du produit", "order": 1 }
-  ],
-  "pipelines": [
-    {
-      "name": "Chargement produits", "description": "Au chargement de la page", "order": 0,
-      "trigger_interaction": "Page chargée",
-      "steps": [
-        { "label": "Page initialisée", "type": "trigger",
-          "description": "Événement ngOnInit" },
-        { "label": "ProduitService.getAll()", "type": "service_call",
-          "service_name": "ProduitService",
-          "service_method": "ProduitService.getAll()", "data_flow": "void → Produit[]",
-          "description": "Appelle GET /api/produits/ et stocke le résultat dans le signal produits$" },
-        { "label": "produits$ mis à jour", "type": "state_update",
-          "description": "Signal produits$ = résultat de l'appel API" }
-      ]
-    }
-  ]
-}
-```"""
-
-
-# ── Prompt système structuré ───────────────────────────────────────────────────
-
-_AGENT_SYSTEM = """Tu es un assistant expert en architecture logicielle fullstack (Django REST + Angular).
-Tu aides l'utilisateur à concevoir son application pour qu'elle soit entièrement génératable en code.
-Tu t'adresses à des utilisateurs de tous niveaux : un utilisateur non-technique doit pouvoir te décrire
-son besoin en français courant et obtenir une architecture complète sans connaître Django ou Angular.
-
-## Contexte technique du système
-
-L'application sera créée et déployée par le **moteur du lab** (lab-admin → Projets → « Lancer la
-construction ») à partir de cette spécification : il crée le dépôt, le squelette Django + Angular, le
-client Keycloak et la base, puis un agent de développement réalise la feuille de route lot par lot.
-La spécification doit donc décrire une app que ce moteur sait construire.
-
-Le lab utilise **Keycloak** comme fournisseur d'identité (SSO).
-Règles impératives à respecter dans toute spécification :
-
-- **Ne jamais modéliser `User`, `Role` ou `Permission`** — ces entités existent déjà dans Keycloak.
-- Les **groupes/rôles** sont des claims JWT : `request.user.claims.get('groups', [])`. Ne pas créer
-  de table Django pour ça.
-- Les **`required_roles`** d'un endpoint sont des noms de groupes Keycloak (ex : `["admin", "editor"]`).
-- L'authentification est toujours via JWT Keycloak, jamais via session Django ni `django.contrib.auth`.
-
-## Règles du lab — la spécification ne les contredit jamais
-
-- **Type d'app** : Django + Angular (par défaut), Django seul (API sans interface) ou Angular seul
-  (interface sans API propre). Rien d'autre : pas de Spring, pas d'autre base que PostgreSQL.
-- **Nom de projet** (`set_meta.project_name`) : demande-le tôt. C'est l'adresse de l'app (`/<nom>` et
-  `/<nom>-api`), son dossier et son client Keycloak — minuscules, chiffres et tirets, 3 à 40 caractères.
-- **Fichiers des utilisateurs** (photos, documents, pièces jointes) : ils sont déposés dans le service
-  **storage** du lab par son API. Le modèle n'en garde que le chemin : champ de type `storage_file`.
-  **Jamais** de `FileField`, de volume média ni de fichier en base — n'utilise jamais le type `file`.
-- **Email** : envoyé par `send_mail` de Django ; le compte d'envoi se règle dans lab-admin. Si l'app
-  envoie des emails, pose `set_meta.uses_email: true` ; ne modélise ni serveur SMTP ni table de comptes.
-- **Route publique** : toute route d'API est derrière l'authentification. Une route sans jeton
-  (`auth_required: false`) est une **décision** : demande confirmation, puis écris pourquoi dans
-  `public_reason`. Elle sera reportée telle quelle dans la feuille de route.
-- **Interface** : identité « Foyer » du lab (navigation verticale, thème clair/sombre). Ne spécifie ni
-  couleurs ni bibliothèque de composants : décris les pages, leurs composants et leurs interactions.
-- **Règles métier** : toute contrainte validée (« le stock ne peut pas être négatif », « une commande
-  payée ne se modifie plus ») va dans `business_rules`, pas seulement dans la conversation.
-- **Tests** : chaque endpoint sera testé (membre accepté, non-membre refusé, rôle requis respecté) ;
-  précise donc toujours les rôles et qui a le droit de voir ou modifier les données de qui.
-
-## Cloisonnement — règles de sécurité non négociables
-
-Le lab est **exposé sur Internet**, et être authentifié dans le realm ne doit donner accès à RIEN.
-Toute application est réservée à un ou plusieurs **groupes** Keycloak.
-
-- Demande **systématiquement**, dès la phase 1 : « Quel(s) groupe(s) ont le droit d'utiliser cette
-  application ? ». Le résultat alimente `set_meta.required_groups` (liste de noms de groupes) dans le
-  patch. Une app sans `required_groups` accepterait n'importe quel compte du realm — y compris un
-  inconnu auto-inscrit. **Ne jamais laisser cette liste vide sans que l'utilisateur l'ait explicitement
-  voulu**, et ne jamais laisser cette décision seulement dans le texte de la conversation (voir plus
-  bas « Mémoire durable ») : c'est le patch qui la fait survivre à un effacement du chat.
-- Le cloisonnement repose sur **deux verrous**, et la spec doit toujours prévoir les deux :
-  1. **Barrière navigateur** — un flow Keycloak `require-<client>` refuse la connexion à qui n'a pas
-     le rôle `<client>-access`. Il est posé automatiquement par `create-app-client.sh` à partir de
-     `--require-group`, il n'y a rien à générer côté code.
-  2. **Serrure API** — le backend Django DOIT vérifier lui-même, dans `api/authentication.py` :
-     - **`azp`** (client émetteur du token) == `settings.KEYCLOAK_CLIENT_ID` ;
-     - le claim **`groups`** croise `settings.KEYCLOAK_REQUIRED_GROUPS`.
-- ⚠️ **Le flow ne voit jamais un appel direct à l'API.** Le realm expose `admin-cli` en client public
-  avec le password grant : sans le contrôle de `azp`, tout compte du realm obtient un token et appelle
-  n'importe quelle API en contournant complètement le flow. **Ne jamais proposer une app qui s'en
-  remet au seul flow Keycloak**, ni retirer le contrôle `azp` / `groups` du backend.
-- Les `required_roles` d'un endpoint viennent **en plus** de ce cloisonnement global, pour restreindre
-  certaines routes à un sous-ensemble des groupes autorisés.
-
----
-
-## Ton objectif
-
-Guider l'utilisateur à travers 4 phases de définition, dans l'ordre. Ne passe pas à la phase suivante
-tant que la phase courante n'est pas complète. Identifie toujours la phase en cours au début de ta réponse.
-
-Adapte ton vocabulaire au niveau de l'utilisateur :
-- S'il parle en termes métier ("des produits", "un panier") → traduis toi-même en termes techniques
-  sans lui imposer la syntaxe Django
-- S'il est développeur → tu peux utiliser le vocabulaire technique directement
-
----
-
-### Phase 1 — Modèles de données
-Demande et fais préciser toutes les entités métier :
-- Nom de chaque entité (singulier, PascalCase — ex : `Produit`, `Commande`)
-- Pour chaque entité : ses champs (nom, type parmi string/text/int/decimal/bool/datetime/json/storage_file,
-  requis ou non, unicité, valeur par défaut si applicable) — `storage_file` pour tout fichier d'utilisateur
-- Relations entre entités (ForeignKey, ManyToMany, OneToOne) avec le sens et le `related_name`
-- Règles métier importantes (ex : stock ne peut pas être négatif) → `business_rules`
-- À qui appartient chaque donnée : un utilisateur ne voit-il que les siennes, ou tout le groupe voit tout ?
-
-⚠ Signale les incohérences : une relation M2M entre A et B sans table intermédiaire peut cacher
-un troisième modèle.
-⚠ Ne jamais proposer de modèle `User`, `Profil utilisateur` ou `Permission` — Keycloak les gère.
-
----
-
-### Phase 2 — API Backend (endpoints)
-Pour chaque endpoint identifié :
-- Méthode + chemin (ex : `POST /api/produits/`)
-- Opération Django REST : list / create / retrieve / update / partial_update / delete / custom
-- Modèle manipulé (lien vers Phase 1)
-- Authentification requise ? (par défaut oui ; « non » est une décision à justifier dans `public_reason`)
-- **Rôles requis** : demander systématiquement "Cet endpoint est-il accessible à tous les utilisateurs
-  connectés, ou réservé à certains rôles ?" — si des rôles sont nécessaires, les lister dans `required_roles`
-- Corps de la requête : quels champs, quels types ?
-- Corps de la réponse : quels champs retournés ?
-- **Paramètres de filtre/tri/pagination** : demander systématiquement "Y a-t-il des filtres, une
-  recherche par texte ou une pagination ?" — si oui, définir chaque `query_param` (nom, type, requis)
-
-⚠ Vérifie la cohérence REST : un GET de liste ne doit pas retourner tous les champs d'un modèle lourd.
-
----
-
-### Phase 3 — Frontend : pages et services Angular
-Pour chaque page :
-- Nom du composant (PascalCase) et route (`/chemin/:param`)
-- Type de layout : list / detail / form / dashboard / mixed
-- **Composants UI** : pour chaque composant, préciser impérativement :
-  - Tableau (`table`) → quelles colonnes afficher ? (noms des champs du modèle)
-  - Formulaire (`form`) → quels champs inclure ? validation ? action de soumission ?
-  - Graphique (`chart`) → quel type ? quelles données en X et Y ?
-  - Carte (`card`) → quels champs afficher ?
-  → Toujours renseigner `linked_model` (modèle source) et `fields` (liste des champs visibles)
-- Quel(s) service(s) Angular appelle-t-elle ?
-- Interactions utilisateur : clics, soumissions, navigations
-
-Pour chaque service Angular :
-- Méthodes concrètes liées aux endpoints de la Phase 2
-
----
-
-### Phase 4 — Pipelines et flux de données
-Pour chaque pipeline par page :
-- **Interaction déclencheure** : quel événement de la page déclenche ce pipeline ?
-  (utiliser le `name` d'une interaction définie en Phase 3, champ `trigger_interaction`)
-- Séquence d'étapes typées : trigger → service_call → transform → state_update → navigate → error
-- Pour les étapes `service_call` : préciser `service_name` (nom de la classe Angular, ex : `ProduitService`)
-  ET `service_method` (appel complet, ex : `ProduitService.create(formData)`)
-
----
-
-## Règles de dialogue
-
-1. Pose **une question à la fois**, précise et ciblée.
-2. Si une réponse est vague (ex : "il y a des utilisateurs"), reformule en demandant les champs exacts.
-3. Résume ce qui est validé avant de passer à la question suivante.
-4. Si tu détectes une incohérence, signale-la avant de continuer.
-5. Quand une phase est complète, récapitule-la et demande confirmation.
-
----
-
-## Format de réponse avec choix proposés
-
-Quand tu poses une question à laquelle l'utilisateur peut choisir parmi des options,
-inclus un bloc **immédiatement après ta question** entre ces balises :
-
-CHOICES_START
-{
-  "multiple": false,
-  "items": ["Option A", "Option B", "Option C"]
-}
-CHOICES_END
-
-- `multiple: false` → une seule réponse attendue (ex : type de relation, layout de page, opération REST)
-- `multiple: true` → plusieurs réponses possibles (ex : liste de champs, liste de pages, rôles autorisés)
-- Propose 2 à 6 options concrètes et pertinentes pour le contexte
-- L'interface ajoute automatiquement un bouton "Autre..." — ne l'inclus pas dans tes options
-- N'inclus **pas** ce bloc pour les récapitulatifs, confirmations ou questions ouvertes sans choix naturels
-
----
-
-## Génération du patch de spécification
-
-Le patch JSON n'est **jamais** inclus directement dans cette réponse conversationnelle — pour éviter
-les erreurs de format, il est produit séparément, dans un second échange dédié où tu ne renverras
-QUE l'objet JSON, brut et seul.
-
-Quand tu proposes des éléments **concrets et validés** (après confirmation de l'utilisateur, ou en
-réponse à une description complète), termine ta réponse — après le texte lisible et un éventuel bloc
-CHOICES_START/CHOICES_END — par une ligne contenant **exactement** :
-
-PATCH_READY
-
-Rien d'autre sur cette ligne : pas de JSON, pas de texte, pas de ponctuation. Omets-la entièrement
-pour les questions, demandes de clarification ou récapitulatifs sans nouveauté — dans ce cas aucun
-second échange n'est déclenché.
-
-Le patch que tu produiras ensuite, dans cet échange séparé, devra suivre cette structure :
-
-{SCHEMA_DOC}
-
-**Mémoire durable :** l'utilisateur peut effacer l'historique de cette conversation à tout moment —
-seule la spécification structurée (le patch, une fois appliqué) survit alors. Toute information à
-retenir durablement, en particulier les **groupes Keycloak requis** (`set_meta.required_groups`), le
-**nom de projet** (`set_meta.project_name`) et toute contrainte métier (`business_rules`), doit être
-répercutée dans le patch — jamais laissée seulement
-dans le texte de la conversation.
-
----
-
-## Contexte de l'application en cours de définition
-
-```json
-{APP_SPEC}
-```
-"""
-
-
-def _sans_vide(v):
-    if isinstance(v, dict):
-        propre = {k: _sans_vide(x) for k, x in v.items() if k not in ('id', 'order')}
-        return {k: x for k, x in propre.items() if x not in (None, '', [], {})}
-    if isinstance(v, list):
-        return [_sans_vide(x) for x in v]
-    return v
-
-
-def _spec_compacte(app_spec) -> str:
-    """La spec telle qu'elle part vers l'IA : liens par nom, sans identifiants ni
-    valeurs vides, sans indentation — et JAMAIS la conversation (`chat_history`),
-    que l'interface joignait à la spec à chaque message."""
-    if not isinstance(app_spec, dict):
-        return '{}'
-    etat = patching._vers_noms(app_spec)
-    if not app_spec.get('name'):
-        etat.pop('name', None)
-    return json.dumps(_sans_vide(etat), ensure_ascii=False)
-
-
-def _build_system_prompt(app_spec: dict) -> str:
-    return (_AGENT_SYSTEM
-            .replace('{SCHEMA_DOC}', _PATCH_SCHEMA_DOC)
-            .replace('{APP_SPEC}', _spec_compacte(app_spec)))
-
-
-# ── Prompt système du second échange, dédié au patch JSON brut ─────────────────
-
-_PATCH_SYSTEM = """Tu réponds STRICTEMENT par un objet JSON, rien d'autre : pas de texte avant ou après,
-pas de balises markdown, pas de bloc ```json, pas de commentaire. Ta réponse entière doit être un JSON
-valide unique, commençant par { et finissant par }.
-
-Ce JSON est le patch de spécification correspondant à ta réponse précédente dans la conversation
-(le texte que tu viens d'envoyer à l'utilisateur). Il respecte cette structure :
-
-{SCHEMA_DOC}
-
-Contexte actuel de l'application — n'inclus dans le patch QUE les éléments NOUVEAUX ou MODIFIÉS par
-rapport à ce contexte, jamais ce qui y figure déjà à l'identique :
-
-```json
-{APP_SPEC}
-```
-"""
-
-
-def _build_patch_system_prompt(app_spec: dict) -> str:
-    return (_PATCH_SYSTEM
-            .replace('{SCHEMA_DOC}', _PATCH_SCHEMA_DOC)
-            .replace('{APP_SPEC}', _spec_compacte(app_spec)))
-
-
-# ── Appels API en un coup (non streamés) — utilisés pour le patch JSON ─────────
-
-def _call_claude_once(api_key: str, system_prompt: str, messages: list,
-                       model: str | None, max_tokens: int) -> str:
-    import anthropic
-    client = anthropic.Anthropic(api_key=api_key)
-    resp = client.messages.create(
-        model=model or 'claude-sonnet-4-6',
-        max_tokens=max_tokens,
-        system=system_prompt,
-        messages=messages,
-    )
-    if resp.stop_reason == 'max_tokens':
-        raise ReponseTronquee()
-    return ''.join(block.text for block in resp.content if block.type == 'text')
-
-
-def _call_mistral_once(api_key: str, system_prompt: str, messages: list,
-                        model: str | None, max_tokens: int) -> str:
-    payload = {
-        'model': model or 'mistral-small-latest',
-        'messages': [{'role': 'system', 'content': system_prompt}] + messages,
-        'max_tokens': max_tokens,
-    }
-    resp = http_requests.post(
-        'https://api.mistral.ai/v1/chat/completions',
-        headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
-        json=payload,
-        timeout=(10, 60),
-    )
-    resp.raise_for_status()
-    choix = resp.json()['choices'][0]
-    if choix.get('finish_reason') == 'length':
-        raise ReponseTronquee()
-    return choix['message']['content']
-
 
 # ── Vues ───────────────────────────────────────────────────────────────────────
 
@@ -651,30 +40,48 @@ class AppSpecDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         return AppSpec.objects.filter(owner_email=self.request.user.email)
 
+    def retrieve(self, request, *args, **kwargs):
+        # `version` (I4) : lue ici, pas dans le sérialiseur — elle sert de
+        # `base_version` aux opérations (409 si la spec a changé entre-temps).
+        app = self.get_object()
+        return Response({**self.get_serializer(app).data, 'version': patching.version_de(app)})
 
-_CHAT_MAX_TOKENS = 4096
+
+def _spec_de_l_appelant(request, pk):
+    """La spec `pk` si elle appartient à l'appelant, sinon None (⇒ 404)."""
+    try:
+        return AppSpec.objects.get(pk=int(pk), owner_email=request.user.email)
+    except (AppSpec.DoesNotExist, TypeError, ValueError):
+        return None
+
 
 _TROP_LONG = ("La spécification et la conversation dépassent ce que le modèle « {modele} » peut traiter "
               "(environ {total} jetons pour {disponible} disponibles). Choisissez un modèle à plus grande "
               "fenêtre, effacez la conversation, ou réduisez la spécification.")
+_INTROUVABLE = {'error': 'Spécification introuvable.'}
 
 
-def _preparer(donnees) -> dict:
-    """Ce qui partirait vers le fournisseur pour cette demande, et ce que ça pèse."""
+def _preparer(donnees, spec: dict) -> dict:
+    """Ce qui partirait vers le fournisseur pour cette demande, et ce que ça pèse.
+    `spec` est lue EN BASE par l'appelant ; `app_spec` du corps n'est jamais lu."""
+    donnees = donnees if isinstance(donnees, dict) else {}
     provider = budget.fournisseur(donnees.get('provider', 'claude'))
     model = donnees.get('model')
     model = (model.strip() or None) if isinstance(model, str) else None
-    app_spec = donnees.get('app_spec') if isinstance(donnees.get('app_spec'), dict) else {}
-    # La conversation ne voyage pas dans la spec : elle est dans `messages`.
-    app_spec = {k: v for k, v in app_spec.items() if k != 'chat_history'}
     fiche = budget.modele(provider, model)
-    system_prompt = _build_system_prompt(app_spec)
     tous = budget.nettoyer(donnees.get('messages'))
-    place = fiche['context_window'] - _CHAT_MAX_TOKENS - budget.MARGE_JETONS - budget.estimer_jetons(system_prompt)
+    vide = boucle.mesure(fiche, spec, [])
+    place = vide['available_tokens'] - vide['system_tokens']
     messages, retires = budget.borner(tous, place)
-    mesure = budget.mesurer(fiche, system_prompt, _spec_compacte(app_spec), messages, _CHAT_MAX_TOKENS, retires)
-    return {'provider': provider, 'model': model, 'app_spec': app_spec, 'system_prompt': system_prompt,
-            'messages': messages, 'context': mesure}
+    return {'provider': provider, 'model': fiche['id'], 'fiche': fiche, 'messages': messages,
+            'context': boucle.mesure(fiche, spec, messages, retires)}
+
+
+def _spec_de_la_demande(request):
+    """(app, spec) d'après `app_id` du corps ; (None, None) si absente ou d'autrui."""
+    donnees = request.data if isinstance(request.data, dict) else {}
+    app = _spec_de_l_appelant(request, donnees.get('app_id'))
+    return (app, patching.spec_de(app)) if app else (None, None)
 
 
 class ModelsView(APIView):
@@ -686,10 +93,18 @@ class ModelsView(APIView):
 
 class ChatEstimateView(APIView):
     """POST /api/chat/estimate/ — la place qu'occuperait un envoi, sans rien envoyer.
-    Même corps que /api/chat/, sans clé d'API. Aucun appel à un fournisseur."""
+    Même corps que /api/chat/, sans clé d'API. Aucun appel à un fournisseur. Sans
+    `app_id` : estimation pour une spec vide ; `app_id` d'autrui ou inconnu : 404."""
 
     def post(self, request):
-        return Response({'context': _preparer(request.data)['context']})
+        donnees = request.data if isinstance(request.data, dict) else {}
+        if donnees.get('app_id') is None:
+            spec = {}
+        else:
+            app, spec = _spec_de_la_demande(request)
+            if app is None:
+                return Response(_INTROUVABLE, status=status.HTTP_404_NOT_FOUND)
+        return Response({'context': _preparer(request.data, spec)['context']})
 
 
 # ── Coffre des clés d'API (contrat « failles », I3) ───────────────────────────
@@ -733,6 +148,12 @@ class AiKeysView(APIView):
             valeur = valeur.strip()
             if len(valeur) > _KEY_MAX_LEN or any(c.isspace() or not c.isprintable() for c in valeur):
                 return Response({'error': f'{champ} : clé mal formée.'}, status=status.HTTP_400_BAD_REQUEST)
+            if valeur.startswith('sk-ant-oat'):
+                # Jeton d'abonnement Claude (`claude setup-token`) : les conditions d'Anthropic
+                # interdisent à une application tierce de le stocker ou de s'en servir.
+                return Response({'error': "Jeton d'abonnement Claude : utilisez-le dans Claude Code (par le MCP "
+                                          "d'App Builder), pas ici. Ce coffre attend une clé d'API (sk-ant-api…).",
+                                 'code': 'oauth_token_refused'}, status=status.HTTP_400_BAD_REQUEST)
             valeurs[champ] = valeur
         coffre, _ = AiKeyVault.objects.get_or_create(owner_email=request.user.email)
         for champ, valeur in valeurs.items():
@@ -742,27 +163,29 @@ class AiKeysView(APIView):
 
 
 class AIChatView(APIView):
-    """POST /api/chat/ — proxy structuré vers Mistral ou Claude.
+    """POST /api/chat/ — un tour de conversation avec outils (I4).
 
-    La clé est celle du coffre de l'utilisateur connecté (`/api/ai-keys/`) ; un
-    `api_key` éventuellement présent dans le corps est ignoré."""
+    La spec est lue EN BASE (`app_id`, spec de l'appelant, sinon 404) ; `app_spec`
+    du corps est ignoré. La clé est celle du coffre de l'appelant (`/api/ai-keys/`) ;
+    un `api_key` du corps est ignoré. Les opérations proposées ne sont jamais
+    appliquées ici : l'utilisateur les applique (`POST /api/apps/<id>/operations/`)."""
 
     def post(self, request):
-        envoi = _preparer(request.data)
-        provider, model, app_spec = envoi['provider'], envoi['model'], envoi['app_spec']
-        messages, contexte = envoi['messages'], envoi['context']
-        self._contexte = contexte
+        debut = time.monotonic()
+        app, spec = _spec_de_la_demande(request)
+        if app is None:
+            return Response(_INTROUVABLE, status=status.HTTP_404_NOT_FOUND)
+        envoi = _preparer(request.data, spec)
+        provider, fiche, messages, contexte = envoi['provider'], envoi['fiche'], envoi['messages'], envoi['context']
         api_key = cle_du_coffre(request.user.email, provider)
-
-        print(f"[CHAT] provider={provider} model={model} messages={len(messages)} "
-              f"jetons≈{contexte['estimated_tokens']}/{contexte['available_tokens']}")
-
+        # Journal : des comptes, jamais de contenu (ni spec, ni message, ni clé).
+        log.info('Chat : spec=%s provider=%s modèle=%s messages=%d jetons≈%d/%d', app.pk, provider, fiche['id'],
+                 len(messages), contexte['estimated_tokens'], contexte['available_tokens'])
         if not api_key:
             return Response(
                 {'error': f'Clé API {provider} non configurée. Enregistrez-la dans les paramètres (⚙).',
                  'code': 'key_not_configured'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+                status=status.HTTP_400_BAD_REQUEST)
         if not messages:
             return Response({'error': 'Aucun message à envoyer.', 'context': contexte},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -774,116 +197,92 @@ class AIChatView(APIView):
         # Refus AVANT l'appel : une requête qui ne tient pas est perdue d'avance.
         if not contexte['fits']:
             return trop_long
-
-        system_prompt = envoi['system_prompt']
         try:
-            if provider == 'mistral':
-                return self._call_mistral(api_key, system_prompt, messages, model, app_spec)
-            return self._call_claude(api_key, system_prompt, messages, model, app_spec)
-        except http_requests.exceptions.Timeout:
-            return Response(
-                {'error': 'Impossible de joindre l\'API Mistral (timeout de connexion). Vérifiez votre clé ou réessayez dans quelques instants.'},
-                status=status.HTTP_504_GATEWAY_TIMEOUT,
-            )
-        except Exception as exc:
-            if budget.est_un_depassement(exc):
-                # Notre estimation était trop basse : même réponse que le refus local.
+            tour = boucle.tour(fiche=fiche, cle=api_key, spec=spec, messages=messages,
+                               base_version=patching.version_de(app), debut=debut)
+        except fournisseurs.ErreurFournisseur as exc:
+            if exc.depassement:
                 return trop_long
-            # Message générique : le texte d'une exception du fournisseur n'est pas
-            # rendu au client (il pourrait citer la requête envoyée).
-            log.warning('Chat : appel au fournisseur %s échoué (%s).', provider, type(exc).__name__)
-            return Response({'error': f'L\'appel au fournisseur {provider} a échoué. Vérifiez votre clé ou réessayez.'},
-                            status=status.HTTP_502_BAD_GATEWAY)
-
-    def _finish(self, provider, content, choices, patch_ready, api_key, model, app_spec, messages,
-                tronquee=False):
-        """Commun aux deux providers : extrait le marqueur PATCH_READY et déclenche,
-        le cas échéant, le second échange dédié qui produit le patch JSON."""
-        patch, patch_error = (None, None)
-        if patch_ready:
-            patch, patch_error = _generate_patch(provider, api_key, model, app_spec, messages, content)
-        if patch_error:
-            content += (
-                f"\n\n⚠️ Le patch structuré n'a pas pu être généré après plusieurs tentatives "
-                f"({patch_error}). Redemandez-le si besoin."
-            )
-        if tronquee:
-            content += _AVIS_TRONCATURE
-        return Response({
-            'content': content, 'provider': provider, 'spec_patch': patch, 'choices': choices,
-            'patch_summary': patching.resume(patch) if patch else None,
-            'context': getattr(self, '_contexte', None),
-        })
-
-    def _call_mistral(self, api_key, system_prompt, messages, model, app_spec):
-        payload = {
-            'model': model or 'mistral-small-latest',
-            'messages': [{'role': 'system', 'content': system_prompt}] + messages,
-            'stream': True,
-        }
-        # Streaming : timeout connect=10s, pas de read timeout (le flux arrive en continu)
-        with http_requests.post(
-            'https://api.mistral.ai/v1/chat/completions',
-            headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
-            json=payload,
-            stream=True,
-            timeout=(10, None),
-        ) as resp:
-            resp.raise_for_status()
-            full_text = ''
-            tronquee = False
-            for line in resp.iter_lines():
-                if not line:
-                    continue
-                decoded = line.decode('utf-8')
-                if not decoded.startswith('data: '):
-                    continue
-                data = decoded[6:]
-                if data == '[DONE]':
-                    break
-                try:
-                    chunk = json.loads(data)
-                    if chunk['choices'][0].get('finish_reason') == 'length':
-                        tronquee = True
-                    delta = chunk['choices'][0]['delta'].get('content', '')
-                    if delta:
-                        full_text += delta
-                except (json.JSONDecodeError, KeyError, IndexError):
-                    pass
-
-        content, patch_ready = _extract_patch_ready(full_text)
-        content, choices     = _extract_choices(content)
-        return self._finish('mistral', content, choices, patch_ready, api_key, model, app_spec, messages,
-                            tronquee=tronquee)
-
-    def _call_claude(self, api_key, system_prompt, messages, model, app_spec):
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        full_text = ''
-        with client.messages.stream(
-            model=model or 'claude-sonnet-4-6',
-            max_tokens=4096,
-            system=system_prompt,
-            messages=messages,
-        ) as stream:
-            for text in stream.text_stream:
-                full_text += text
-            tronquee = stream.get_final_message().stop_reason == 'max_tokens'
-        content, patch_ready = _extract_patch_ready(full_text)
-        content, choices     = _extract_choices(content)
-        return self._finish('claude', content, choices, patch_ready, api_key, model, app_spec, messages,
-                            tronquee=tronquee)
+            log.warning('Chat : fournisseur %s en échec (%d).', provider, exc.statut)
+            return Response({'error': exc.message}, status=exc.statut)
+        contexte = {**contexte, 'tool_results_tokens': tour['tool_results_tokens']}
+        return Response({'content': tour['content'], 'provider': provider, 'model': fiche['id'],
+                         'choices': tour['choices'], 'proposal': tour['proposal'],
+                         'truncated': tour['truncated'], 'context': contexte, 'usage': tour['usage']})
 
 
 class AppSpecChatHistoryView(APIView):
+    """PATCH /api/apps/<id>/chat/ {"chat_history": [...]} — une liste, sinon 400."""
+
     def patch(self, request, pk):
-        try:
-            app = AppSpec.objects.get(pk=pk, owner_email=request.user.email)
-        except AppSpec.DoesNotExist:
+        app = _spec_de_l_appelant(request, pk)
+        if app is None:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        app.chat_history = request.data.get('chat_history', [])
+        donnees = request.data if isinstance(request.data, dict) else {}
+        historique = donnees.get('chat_history', [])
+        if not isinstance(historique, list):
+            return Response({'error': 'chat_history : une liste est attendue.'}, status=status.HTTP_400_BAD_REQUEST)
+        app.chat_history = historique
         app.save(update_fields=['chat_history'])
         return Response({'ok': True})
+
+
+def _operations_du_corps(request):
+    donnees = request.data if isinstance(request.data, dict) else {}
+    operations = donnees.get('operations')
+    if (not isinstance(operations, list) or not operations or len(operations) > 200
+            or not all(isinstance(o, dict) for o in operations)):
+        return None, donnees
+    return operations, donnees
+
+
+class AppSpecOperationsView(APIView):
+    """POST /api/apps/<id>/operations/ {"operations": [...], "base_version": "v:…"} — applique (I4).
+    Tout ou rien ; 409 `version_perimee` si la spec a changé depuis `base_version`."""
+
+    def post(self, request, pk):
+        app = _spec_de_l_appelant(request, pk)
+        if app is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        operations, donnees = _operations_du_corps(request)
+        if operations is None:
+            return Response({'error': 'Corps attendu : {"operations": [...], "base_version": "v:…"}.',
+                             'erreurs': ['operations : une liste non vide d’objets est attendue.']},
+                            status=status.HTTP_400_BAD_REQUEST)
+        base = donnees.get('base_version')
+        base = base if isinstance(base, str) and base else None
+        try:
+            application = patching.appliquer_operations(app, operations, base)
+        except patching.VersionPerimee:
+            app.refresh_from_db()
+            return Response({'error': 'La spécification a changé depuis cette proposition : relisez-la.',
+                             'code': 'version_perimee', 'version': patching.version_de(app)},
+                            status=status.HTTP_409_CONFLICT)
+        except patching.PatchRefuse as refus:
+            return Response({'error': 'Opérations refusées — la spécification n’a pas été modifiée.',
+                             'erreurs': list(refus.erreurs)}, status=status.HTTP_400_BAD_REQUEST)
+        app.refresh_from_db()
+        return Response({'application': _application(application), 'version': patching.version_de(app),
+                         'spec': AppSpecSerializer(app).data})
+
+
+class AppSpecOperationsEssaiView(APIView):
+    """POST /api/apps/<id>/operations/essai/ {"operations": [...]} — essai à blanc, rien d'écrit (I4)."""
+
+    def post(self, request, pk):
+        app = _spec_de_l_appelant(request, pk)
+        if app is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        operations, _ = _operations_du_corps(request)
+        if operations is None:
+            return Response({'ok': False, 'erreurs': ['operations : une liste non vide d’objets est attendue.'],
+                             'resume': None})
+        avant = patching.spec_de(app)
+        try:
+            apres = patching.essayer_operations(avant, operations)
+        except patching.PatchRefuse as refus:
+            return Response({'ok': False, 'erreurs': list(refus.erreurs), 'resume': None})
+        return Response({'ok': True, 'erreurs': [], 'resume': patching.resume_operations(avant, operations, apres)})
 
 
 class AppSpecPatchView(APIView):

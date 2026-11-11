@@ -1,5 +1,5 @@
 import {
-  afterNextRender, Component, computed, effect, inject, Injector, OnDestroy, signal, untracked, ViewEncapsulation,
+  afterNextRender, Component, computed, effect, HostListener, inject, Injector, OnDestroy, signal, untracked, ViewEncapsulation,
 } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { Subscription } from 'rxjs';
@@ -11,6 +11,18 @@ import { ScaleArchitectureComponent } from './scale-architecture.component';
 import { ScaleDataComponent } from './scale-data.component';
 import { ScalePipelinesComponent } from './scale-pipelines.component';
 import { ScaleRoadmapComponent } from './scale-roadmap.component';
+import { ScaleApiComponent } from './scale-api.component';
+import { ScaleSecurityComponent } from './scale-security.component';
+import { ScalePagesComponent } from './scale-pages.component';
+import { ScaleLifecyclesComponent } from './scale-lifecycles.component';
+import { ScaleJobsComponent } from './scale-jobs.component';
+import { ErDiagramComponent } from './er-diagram.component';
+import { SequencesComponent } from './sequences.component';
+import { InspectorComponent } from './inspector.component';
+import { GotoComponent } from './goto.component';
+
+/** Vues qui ont un schéma et un mode liste distincts (bouton « Schéma / Liste »). */
+const WITH_DIAGRAM = ['data', 'pipelines', 'security', 'lifecycles'];
 
 /**
  * Page « Vue d'ensemble » (route `/overview`) : la spec enregistrée vue à cinq
@@ -27,7 +39,9 @@ import { ScaleRoadmapComponent } from './scale-roadmap.component';
   standalone: true,
   imports: [
     DatePipe, ScaleLabComponent, ScaleArchitectureComponent, ScaleDataComponent,
-    ScalePipelinesComponent, ScaleRoadmapComponent,
+    ScalePipelinesComponent, ScaleRoadmapComponent, ScaleApiComponent, ScaleSecurityComponent,
+    ScalePagesComponent, ScaleLifecyclesComponent, ScaleJobsComponent, ErDiagramComponent,
+    SequencesComponent, InspectorComponent, GotoComponent,
   ],
   providers: [OverviewStore],
   templateUrl: './overview.component.html',
@@ -42,6 +56,11 @@ export class OverviewPageComponent implements OnDestroy {
 
   loading = signal(false);
   failed = signal(false);
+  /** « Aller à… » ouvert. */
+  gotoOpen = signal(false);
+
+  readonly hasDiagram = computed(() => WITH_DIAGRAM.includes(this.store.scale()));
+  readonly graphIssues = computed(() => this.store.graph()?.issues ?? []);
 
   /** Le graphe est celui de la dernière version enregistrée : le dire quand la spec a bougé depuis. */
   unsaved = computed(() => {
@@ -82,6 +101,36 @@ export class OverviewPageComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void { this.request?.unsubscribe(); }
+
+  /** Échap désélectionne (et ferme l'inspecteur) ; Ctrl+K ouvre « Aller à… ». */
+  @HostListener('document:keydown', ['$event'])
+  onKey(e: KeyboardEvent): void {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      if (!this.store.graph()) return;
+      e.preventDefault();
+      this.gotoOpen.set(true);
+      return;
+    }
+    if (e.key === 'Escape' && !this.gotoOpen() && this.store.focus()) {
+      this.store.select(null);
+    }
+  }
+
+  /**
+   * Un clic sur une carte d'une échelle (hors bouton, lien ou champ) la sélectionne :
+   * les cartes des échelles v1 portent l'id DOM de leur nœud.
+   */
+  onSceneClick(e: MouseEvent): void {
+    const target = e.target as HTMLElement | null;
+    if (!target || target.closest('button, a, input, select, textarea, summary, label')) return;
+    const card = target.closest<HTMLElement>('[id^="ov-n-"]');
+    const n = card ? this.store.fromDom(card.id) : null;
+    if (n) this.store.select(n);
+  }
+
+  closeInspector(): void { this.store.select(null); }
+
+  setLot(v: string): void { this.store.setParam('lot', v === '' ? null : Number(v)); }
 
   reload(): void { this.load(this.state.savedId()); }
 

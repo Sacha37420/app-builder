@@ -117,11 +117,11 @@ du lab). [C] constaté, [D] déduit.
 - 2026-11-08 (relecture, code inchangé) : `chat_history` est toujours pris tel quel (`views.py:884`) ;
   il reste un seul extrait brut, `views.py:148` (`[PATCH] Extrait brut`).
 **Tâches :**
-- [ ] `chat_history` validé : une liste, sinon 400
+- [x] `chat_history` validé : une liste, sinon 400 (chantier app-builder-v2) ; plus aucun `print` (journal par `logging`, sans contenu utilisateur)
 - [x] Message générique au client (502) ; `logging` du seul type d'exception — fait avec le lot 8 (le texte d'une exception du fournisseur pouvait citer la requête). Les `print` d'extraits bruts restent
 **Tests à passer avant de clore le lot :**
-- [ ] `null` → 400 ; une exception du fournisseur donne un corps sans détail ; `bash chantiers/tests/essai.sh app-builder` vert
-**Vérifié le :**
+- [x] `null` → 400 ; une exception du fournisseur donne un corps sans détail ; `bash chantiers/tests/essai.sh app-builder` vert
+**Vérifié le :** 2026-11-11 — `api.tests.ia.OperationsVuesTests.test_chat_history_doit_etre_une_liste` et `ChatGardeFousTests` (pannes 502/504 à message fixe) ; suite complète 253 OK par `essai.sh`, puis `scripts/app-test.sh app-builder` vert sur l'image du commit `b6f7d10`. **Non mis en service** (mise en service refusée à l'agent de nuit, à faire par le propriétaire) : le lot passera « livré » à la mise en service.
 
 ## Lot 8 — Clés IA hors de `localStorage`   ·   statut : en cours
 **Objectif :** une XSS sur le domaine commun du lab ne suffit plus à lire les clés Claude et Mistral.
@@ -157,6 +157,28 @@ du lab). [C] constaté, [D] déduit.
 **Tests à passer avant de clore le lot :**
 - [ ] Le projet créé passe `validate-app.sh --quality-only` et se déploie
 **Vérifié le :** 2026-11-01 — gabarit front : `npx ng build` sans erreur — non déployé (PKCE côté Keycloak posé par l'architecte après déploiement). Mis en service le 2026-11-01 (section suivante).
+
+## Lot 11 — App Builder v2 : forme universelle, outils IA, Claude Code, vues   ·   statut : en cours
+**Objectif :** toute app constructible sur le cadriciel se décrit dans la spécification (qui voit quoi, rôles, cycles de vie, tâches de fond, intégrations du lab), l'IA la construit par des outils plutôt que par du JSON en texte — avec Mistral, une clé Claude, ou Claude Code / Vibe de l'utilisateur —, et la personne la voit du global au détail. Contrat et études : `chantiers/app-builder-v2/` à la racine du lab.
+**Tâches :**
+- [x] Métamodèle additif (migrations `0011`, `0012`) : `roles`, `jobs`, `integrations`, `external_apis`, `extensions`, règles métier typées ; par modèle `kind`, `access`, `states`, `constraints` ; types de champ `date email url enum secret geo_point geometry` ; `Endpoint.auth` ; `Page.public`/`public_reason`/`required_roles` ; composants, interactions et étapes élargis
+- [x] Opérations atomiques (`patching.essayer_operations`, `appliquer_operations`, `version_de`, `resume_operations`) : essai à blanc par le sérialiseur, refus en bloc avec erreurs indexées, version (409), historique et annulation
+- [x] Lecture compacte pour l'IA (`api/lecture.py` : index de la spec, lecture d'éléments à la demande) ; `conformite.verifier` (blocages + avertissements de qualité)
+- [x] Chat par outils (`api/ia/`) commun Claude et Mistral : boucle bornée, propositions appliquées par l'utilisateur (`POST /api/apps/<id>/operations/`), repli en sortie structurée, prompt unique réécrit, cache Anthropic, table des modèles à jour ; protocole `PATCH_READY`/`CHOICES_*` retiré ; spec lue en base
+- [x] Jeton d'abonnement Claude (`sk-ant-oat…`) refusé au coffre (conditions d'Anthropic) ; Claude Code et Vibe passent par le serveur MCP (`POST /api/mcp/`, jetons personnels `abt_…`, page `/connexion-ia`)
+- [x] Graphe v2 (`ref`, `edit`, `issues`, matrices CRUD et sécurité, séquences, nouvelles échelles) ; vue d'ensemble avec inspecteur, ER, API, sécurité, plan du site, cycles de vie, tâches ; éditeurs des nouvelles structures ; `schema-canvas` retiré
+- [x] Remise : cahier sans troncature, empreinte `sha256` (liste, détail, kit, ligne du cahier), tests de lot dérivés des règles d'accès et des transitions
+- [ ] Ⓟ Mise en service, puis parcours en navigateur réel (`chantiers/app-builder-v2/rapports/C.md`, « Parcours navigateur ») et un vrai appel Claude et Mistral avec outils
+- [ ] Claude Code relié par MCP depuis un espace de travail (`claude mcp add …` de `/connexion-ia`), un tour lecture + application
+**Tests à passer avant de clore le lot :**
+- [x] `python manage.py test api.tests.MetamodeleSerialiseurTests api.tests.MetamodelePatchTests api.tests.VerifierTests api.tests.MigrationMetamodeleV2Tests` (forme v2, migration sans perte)
+- [x] `python manage.py test api.tests.OperationsTests api.tests.OperationsEnregistrementTests api.tests.LectureTests`
+- [x] `python manage.py test api.tests.ChatOutilsClaudeTests api.tests.ChatOutilsMistralTests api.tests.ChatGardeFousTests api.tests.PromptTests api.tests.OperationsVuesTests`
+- [x] `python manage.py test api.tests.McpJetonsTests api.tests.McpProtocoleTests api.tests.McpCloisonnementTests` (jeton expiré, révoqué, d'autrui, portée, `abt_` refusé hors `/api/mcp/`, jeton Keycloak refusé sur `/api/mcp/`)
+- [x] `python manage.py test api.tests.VueEnsembleTests api.tests.FeuilleDeRouteGenereeTests api.tests.CahierDesChargesTests api.tests.RemiseAuLabTests`
+- [x] `npm run build` du frontend sans erreur ; aucune couleur en dur dans les fichiers touchés
+- [ ] Test de cloisonnement vert après mise en service
+**Vérifié le :** 2026-11-11 — `bash chantiers/tests/essai.sh app-builder` : 253 tests OK ; image du commit `b6f7d10` construite pendant que l'ancienne tournait, `scripts/app-test.sh app-builder` : 253 tests OK sur cette image ; `npx ng build` sans erreur (avertissements de budget de style). **Non mis en service** : rien n'a été vu en navigateur ni essayé contre une vraie IA.
 
 ## Mise en service — chantier « failles » (2026-11-01)
 Les mentions « non déployé » ci-dessus datent d'avant cette mise en service. Image construite pendant

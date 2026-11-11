@@ -6,10 +6,12 @@
       <span>Groupes d'endpoints</span>
       <span class="count">{{ state.spec().endpoint_groups.length }}</span>
     </div>
-    @for (g of state.spec().endpoint_groups; track g.id) {
-      <div class="sidebar-item"
-           [class.active]="selectedGroupId() === g.id"
-           (click)="selectGroup(g.id!)">
+    <!-- `track $index` : les identifiants changent à chaque enregistrement -->
+    @for (g of state.spec().endpoint_groups; track $index) {
+      <div class="sidebar-item" role="button" tabindex="0"
+           [class.active]="groupSel.id() === g.id"
+           [attr.aria-current]="groupSel.id() === g.id ? 'true' : null"
+           (click)="selectGroup(g.id!)" (keydown.enter)="selectGroup(g.id!)">
         <span class="group-name">{{ g.name }}</span>
         <span class="ep-count">{{ g.endpoints.length }} endpoint(s)</span>
       </div>
@@ -22,6 +24,14 @@
 
   <!-- ── Contenu principal ──────────────────────────────────────────────── -->
   <main class="endpoints-main">
+    <app-back-link />
+
+    @if (missingGroup()) {
+      <p class="ed-note ed-warn" role="status">
+        Le groupe demandé par l'adresse n'existe plus dans cette spécification (supprimé ou renommé
+        puis réenregistré). Choisissez-le dans la liste.
+      </p>
+    }
 
     @if (!selectedGroup) {
       <div class="select-hint">
@@ -47,31 +57,39 @@
         </div>
       </div>
 
+      @if (missingEndpoint()) {
+        <p class="ed-note ed-warn" role="status">
+          L'endpoint demandé par l'adresse n'existe plus dans ce groupe. Choisissez-le dans la liste.
+        </p>
+      }
+
       @if (selectedGroup.endpoints.length === 0) {
         <div class="empty-msg">Aucun endpoint dans ce groupe.</div>
       }
 
       <!-- ── Liste des endpoints ── -->
-      @for (ep of selectedGroup.endpoints; track ep.id) {
-        <div class="endpoint-card" [class.expanded]="expandedEndpointId() === ep.id">
+      <!-- `track $index` : la saisie en cours ne doit pas perdre le focus après enregistrement -->
+      @for (ep of selectedGroup.endpoints; track $index) {
+        <div class="endpoint-card" [class.expanded]="isExpanded(ep.id!)" [id]="'endpoint-' + ep.id">
 
           <!-- En-tête (toujours visible) -->
-          <div class="ep-header" (click)="toggleEndpoint(ep.id!)">
+          <div class="ep-header" (click)="toggleEndpoint(ep.id!)" role="button" tabindex="0"
+               [attr.aria-expanded]="isExpanded(ep.id!)" (keydown.enter)="toggleEndpoint(ep.id!)">
             <span class="method-badge m-{{ ep.method.toLowerCase() }}">{{ ep.method }}</span>
             <span class="ep-path">{{ ep.path || '/chemin' }}</span>
             <span class="ep-desc">{{ ep.description }}</span>
             @if (ep.required_roles.length > 0) {
               <span class="roles-badge">🔒 {{ ep.required_roles.join(', ') }}</span>
             }
-            @if (!ep.auth_required) {
-              <span class="public-badge">public</span>
+            @if (authMode(ep) !== 'jwt') {
+              <span class="public-badge">{{ authLabel(ep) }}</span>
             }
             <button class="btn-remove" (click)="$event.stopPropagation(); state.removeEndpoint(selectedGroup.id!, ep.id!)">✕</button>
-            <span class="chevron">{{ expandedEndpointId() === ep.id ? '▲' : '▼' }}</span>
+            <span class="chevron">{{ isExpanded(ep.id!) ? '▲' : '▼' }}</span>
           </div>
 
           <!-- Corps expandé -->
-          @if (expandedEndpointId() === ep.id) {
+          @if (isExpanded(ep.id!)) {
             <div class="ep-body">
 
               <!-- Ligne 1 : méthode + chemin + description -->
@@ -115,24 +133,47 @@
                     }
                   </select>
                 </label>
-                <label class="field-group auth-toggle">
-                  <span>Auth requise</span>
-                  <input type="checkbox" [checked]="ep.auth_required"
-                         (change)="setAuthRequired(selectedGroup.id!, ep.id!, $event)" />
+                <label class="field-group flex2">
+                  <span>Authentification</span>
+                  <select (change)="setAuthMode(selectedGroup.id!, ep, $event)">
+                    @for (m of authModes; track m.id) {
+                      <option [value]="m.id" [selected]="m.id === authMode(ep)">{{ m.label }}</option>
+                    }
+                  </select>
                 </label>
               </div>
 
-              <!-- Route publique : une décision, pas un oubli -->
-              @if (!ep.auth_required) {
+              <!-- Route sans jeton de connexion : une décision, pas un oubli -->
+              @if (authMode(ep) !== 'jwt') {
                 <div class="public-warning" role="note">
-                  <strong>Route publique : décision à justifier</strong>
-                  <span>Sans authentification, cette route répond à n'importe qui sur Internet. La justification est reportée dans la feuille de route du projet.</span>
-                  <label class="public-reason">
-                    <span>Justification</span>
-                    <input type="text" [value]="ep.public_reason || ''"
-                           (input)="setPublicReason(selectedGroup.id!, ep.id!, $event)"
-                           placeholder="Pourquoi cette route doit répondre sans connexion…" />
-                  </label>
+                  <strong>Route sans jeton de connexion : décision à justifier</strong>
+                  <span>
+                    @if (authMode(ep) === 'public') {
+                      Sans authentification, cette route répond à n'importe qui sur Internet.
+                    } @else {
+                      Cette route n'accepte pas le jeton Keycloak : c'est l'appelant décrit ici qui prouve son identité.
+                    }
+                    La justification est reportée dans la feuille de route du projet.
+                  </span>
+                  <div class="ed-grid">
+                    @if (authMode(ep) !== 'public') {
+                      <label class="ed-field">Appelant
+                        <input type="text" [value]="ep.auth?.caller ?? ''"
+                               (input)="setAuthText(selectedGroup.id!, ep, 'caller', $event)"
+                               placeholder="stripe, lab-media…" />
+                      </label>
+                      <label class="ed-field">Source de la clé
+                        <input type="text" [value]="ep.auth?.key_source ?? ''"
+                               (input)="setAuthText(selectedGroup.id!, ep, 'key_source', $event)"
+                               placeholder="variable .env, en-tête…" />
+                      </label>
+                    }
+                    <label class="ed-field ed-wide">Justification
+                      <input type="text" [value]="authReason(ep)"
+                             (input)="setAuthText(selectedGroup.id!, ep, 'reason', $event)"
+                             placeholder="Pourquoi cette route se passe du jeton de connexion…" />
+                    </label>
+                  </div>
                 </div>
               }
 
@@ -149,7 +190,7 @@
                   @if (ep.required_roles.length === 0) {
                     <span class="roles-empty">Accessible à tous les utilisateurs connectés</span>
                   }
-                  <input class="role-input" placeholder="Ajouter un rôle (Entrée)"
+                  <input class="role-input" placeholder="Ajouter un rôle (Entrée)" list="ep-role-names"
                          (keydown)="onRoleKeydown(selectedGroup.id!, ep, $event)" />
                 </div>
               </div>
@@ -160,7 +201,7 @@
                   <span class="section-title">🔍 Paramètres de filtre / recherche</span>
                   <button class="btn-add-sm" (click)="addQueryParam(selectedGroup.id!, ep)">+ Param</button>
                 </div>
-                @if ((ep.query_params ?? []).length === 0) {
+                @if (ep.query_params.length === 0) {
                   <div class="empty-sm">Aucun paramètre de filtre défini</div>
                 }
                 @for (qp of ep.query_params; track $index) {
@@ -198,7 +239,7 @@
                     <span class="step-num">{{ $index + 1 }}</span>
                     <select [value]="step.type" (change)="setStepType(selectedGroup.id!, ep, $index, $event)">
                       @for (st of stepTypes; track st) {
-                        <option [value]="st" [selected]="st === step.type">{{ st }}</option>
+                        <option [value]="st" [selected]="st === step.type">{{ stepTypeLabels[st] }}</option>
                       }
                     </select>
                     <input [value]="step.label" (input)="updateStep(selectedGroup.id!, ep, $index, { label: val($event) })"
@@ -217,4 +258,9 @@
       }
     }
   </main>
+
+  <datalist id="ep-role-names">
+    @for (r of roleNames(); track r) { <option [value]="r"></option> }
+    @for (g of state.spec().required_groups; track g) { <option [value]="g"></option> }
+  </datalist>
 </div>

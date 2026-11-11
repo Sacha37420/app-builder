@@ -72,14 +72,14 @@
     </div>
   }
 
-  <!-- ── Bascule Canevas / Chat (mobile uniquement) ──────────────────── -->
+  <!-- ── Bascule Résumé / Chat (mobile uniquement) ──────────────────── -->
   <div class="mobile-view-switch">
     <button
       type="button"
       class="mv-btn"
       [class.active]="mobileView() === 'canvas'"
       (click)="mobileView.set('canvas')"
-    >&#128202; Canevas</button>
+    >Résumé</button>
     <button
       type="button"
       class="mv-btn"
@@ -91,7 +91,7 @@
   <!-- ── Corps principal ─────────────────────────────────────────────── -->
   <div class="main-body">
     <div class="canvas-pane" [class.mobile-hidden]="mobileView() !== 'canvas'">
-      <app-schema-canvas />
+      <app-spec-summary />
     </div>
     <div class="chat-pane" [class.mobile-hidden]="mobileView() !== 'chat'">
       <app-ai-chat />

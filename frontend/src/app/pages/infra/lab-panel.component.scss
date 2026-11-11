@@ -97,9 +97,7 @@ code {
 
 .add-row { display: flex; gap: var(--space-2); max-width: 420px; }
 
-.rules { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
-.rule  { display: flex; align-items: flex-start; gap: var(--space-2); }
-.rule-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.rules-summary { margin: 0; padding-left: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--text-sm); }
 
 .muted { margin: 0 0 var(--space-2); font-size: var(--text-sm); color: var(--text-mute); }
 .muted-inline { color: var(--text-mute); }

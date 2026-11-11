@@ -1,0 +1,17 @@
+// Inspecteur — tokens Foyer uniquement.
+.ov-insp-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.ov-insp-close { padding: 0; }
+.ov-insp-name { font-size: var(--text-lg); font-weight: 800; }
+.ov-insp-issues { list-style: none; display: flex; flex-direction: column; gap: var(--space-1);
+  li { padding: var(--space-1) var(--space-2); border-left: 3px solid var(--warning); background: var(--warning-tint); }
+}
+.ov-insp-attrs { display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-3);
+  dt { color: var(--text-mute); font-size: var(--text-xs); font-weight: 600; }
+  dd { font-size: var(--text-xs); }
+}
+.ov-insp-group {
+  summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; }
+  ul { list-style: none; padding-left: var(--space-2); }
+}
+.ov-insp-edit { align-self: flex-start; background: var(--accent); color: var(--accent-on); border-color: var(--accent-deep); }
+

@@ -58,7 +58,7 @@
             <span class="field-label">Modèle</span>
             <select (change)="claudeModel.set($any($event.target).value)">
               @for (m of claudeModels(); track m.id) {
-                <option [value]="m.id" [selected]="m.id === claudeModel()">{{ m.label }}</option>
+                <option [value]="m.id" [selected]="m.id === claudeModel()">{{ modelLabel(m) }}</option>
               }
             </select>
           </label>
@@ -98,7 +98,7 @@
             <span class="field-label">Modèle</span>
             <select (change)="mistralModel.set($any($event.target).value)">
               @for (m of mistralModels(); track m.id) {
-                <option [value]="m.id" [selected]="m.id === mistralModel()">{{ m.label }}</option>
+                <option [value]="m.id" [selected]="m.id === mistralModel()">{{ modelLabel(m) }}</option>
               }
             </select>
           </label>
@@ -108,6 +108,16 @@
       @if (keyMessage()) {
         <p class="models-ko" role="status">{{ keyMessage() }}</p>
       }
+
+      <div class="ia-ways">
+        <p>
+          <strong>Clé API au coffre</strong> : elle sert au chat intégré ci-dessous, et chaque échange est
+          facturé à cette clé par Anthropic ou Mistral.
+          <strong>Claude Code ou Mistral Vibe</strong> : vous gardez votre propre abonnement et pilotez la
+          spécification depuis votre outil, par le serveur MCP d'App Builder.
+        </p>
+        <a routerLink="/connexion-ia" class="ia-ways-link">Connecter Claude Code ou Vibe →</a>
+      </div>
 
       @if (modelsUnavailable()) {
         <p class="models-ko" role="status">Liste des modèles indisponible — le modèle mémorisé reste utilisé.</p>
@@ -227,8 +237,8 @@
       <div class="intro">
         <p class="intro-main">
           Décrivez votre application en quelques phrases.<br>
-          <strong>L'agent construira un premier brouillon complet</strong> que vous pourrez appliquer
-          en un clic — sans connaître Django ou Angular.
+          <strong>L'agent propose des modifications</strong> que vous relisez puis appliquez d'un clic
+          (et annulez si besoin) — sans connaître Django ou Angular.
         </p>
         @if (!activeKeyConfigured) {
           <div class="intro-warning">
@@ -248,26 +258,87 @@
         <div class="msg-role">{{ msg.role === 'user' ? 'Vous' : 'Agent' }}</div>
         <div class="msg-content" [innerHTML]="formatContent(msg.content)"></div>
 
-        @if (msg.role === 'assistant' && msg.spec_patch) {
-          <div class="patch-panel" [class.applied]="isApplied(msg)">
-            @if (!isApplied(msg)) {
-              <div class="patch-header">
-                <span class="patch-icon">&#128196;</span>
-                <span class="patch-summary">Propositions : {{ patchSummary(msg) }}</span>
-              </div>
-              <div class="patch-actions">
-                <button class="btn-merge"   (click)="merge($index)"   [disabled]="patchBusy()">&#43; Fusionner dans le spec</button>
-                <button class="btn-replace" (click)="replace($index)" [disabled]="patchBusy()">&#8635; Remplacer le spec</button>
-              </div>
-              <p class="patch-hint">
-                <em>Fusionner</em> complète les éléments existants sans rien retirer d'autre que ce qui est demandé.
-                <em>Remplacer</em> repart de zéro.
+        @if (msg.truncated) {
+          <p class="msg-truncated">Réponse tronquée : la limite de longueur ou d'appels a été atteinte.</p>
+        }
+
+        @if (isLegacyPatch(msg)) {
+          <div class="patch-panel legacy">
+            <p class="patch-hint">Proposition de l'ancien format : elle ne s'applique plus. Redemandez-la à l'agent.</p>
+          </div>
+        }
+
+        @if (msg.role === 'assistant' && msg.proposal; as p) {
+          @let etat = msg.proposal_state ?? 'proposed';
+          <div class="patch-panel" [class.applied]="etat === 'applied'" [class.destructive]="p.resume.destructive"
+               role="group" aria-label="Proposition de l'agent">
+            <div class="patch-header">
+              <span class="patch-summary">
+                @switch (etat) {
+                  @case ('applied') { ✓ Appliquée — }
+                  @case ('undone')  { ↶ Annulée — }
+                  @case ('stale')   { Périmée — }
+                  @case ('refused') { Refusée — }
+                  @default          { Proposition — }
+                }
+                {{ p.resume.texte || (p.operations.length + ' opération(s)') }}
+              </span>
+            </div>
+
+            @if (p.resume.destructive && etat === 'proposed') {
+              <p class="patch-destructive" role="note">
+                <strong>⚠ Attention :</strong> cette proposition retire, renomme ou raccourcit des éléments existants.
               </p>
             }
-            @if (msg.applied === 'merged')   { <div class="patch-applied">&#10003; Fusionné dans le spec — {{ patchSummary(msg) }}</div> }
-            @if (msg.applied === 'replaced') { <div class="patch-applied">&#10003; Spec remplacé — {{ patchSummary(msg) }}</div> }
-            @if (canUndo($index)) {
-              <button class="btn-undo" (click)="undo($index)" [disabled]="patchBusy()">&#8630; Annuler ce patch</button>
+
+            @if (p.resume.details.length) {
+              <details class="patch-details">
+                <summary>Détail ({{ p.resume.details.length }})</summary>
+                <ol>
+                  @for (d of p.resume.details; track d.index) {
+                    <li [class.destructive]="d.destructive">
+                      {{ d.texte }}
+                      @if (d.destructive) { <span class="tag-destructive">retire ou remplace</span> }
+                    </li>
+                  }
+                </ol>
+              </details>
+            }
+
+            @if (p.erreurs.length) {
+              <div class="patch-errors" role="alert">
+                <strong>Le contrôle du serveur refuse cette proposition :</strong>
+                <ul>@for (e of p.erreurs; track $index) { <li>{{ e }}</li> }</ul>
+              </div>
+            }
+            @if (etat === 'refused' && msg.proposal_errors?.length) {
+              <div class="patch-errors" role="alert">
+                <strong>Refusée à l'application :</strong>
+                <ul>@for (e of msg.proposal_errors; track $index) { <li>{{ e }}</li> }</ul>
+              </div>
+            }
+
+            <div class="patch-actions">
+              @if (etat === 'proposed' && !p.erreurs.length) {
+                <button type="button" class="btn-merge" (click)="apply($index)" [disabled]="patchBusy() || loading()">
+                  Appliquer
+                </button>
+              }
+              @if ((etat === 'proposed' && p.erreurs.length) || etat === 'refused') {
+                <button type="button" class="btn-undo" (click)="askFix($index)" [disabled]="loading()">Demander une correction</button>
+              }
+              @if (etat === 'stale' && $last) {
+                <button type="button" class="btn-undo" (click)="askAgain()" [disabled]="loading()">Redemander sur la version actuelle</button>
+              }
+              @if (canUndo($index)) {
+                <button type="button" class="btn-undo" (click)="undo($index)" [disabled]="patchBusy()">↶ Annuler</button>
+              }
+            </div>
+            @if (etat === 'stale') {
+              <p class="patch-hint">La spécification a changé depuis cette proposition : elle a été rechargée, rien n'a été appliqué.</p>
+            }
+            @if (etat === 'proposed') {
+              <p class="patch-hint">Rien n'est modifié tant que vous n'appliquez pas. Toute application s'annule.</p>
             }
           </div>
         }
@@ -275,6 +346,7 @@
         <!-- Panneau de choix : visible uniquement sur le dernier message assistant -->
         @if ($last && msg.role === 'assistant' && msg.choices && !loading()) {
           <div class="choices-panel">
+            @if (msg.choices.question) { <p class="choices-question">{{ msg.choices.question }}</p> }
             @if (!msg.choices.multiple) {
               <!-- Choix unique : boutons pills -->
               <div class="choices-list">
@@ -343,12 +415,33 @@
           <dd>{{ nombre(c.system_tokens) }}</dd>
           <dt class="sub">dont spécification</dt>
           <dd>{{ nombre(c.spec_tokens) }}</dd>
+          @if (c.index_tokens != null) {
+            <dt class="sub">dont index de la spécification</dt>
+            <dd>{{ nombre(c.index_tokens) }}</dd>
+          }
+          @if (c.tools_tokens != null) {
+            <dt>Outils</dt>
+            <dd>{{ nombre(c.tools_tokens) }}</dd>
+          }
+          @if (c.tool_results_tokens != null) {
+            <dt>Résultats d'outils</dt>
+            <dd>{{ nombre(c.tool_results_tokens) }}</dd>
+          }
+          @if (c.reserved_tool_tokens != null) {
+            <dt>Réservé aux appels d'outils</dt>
+            <dd>{{ nombre(c.reserved_tool_tokens) }}</dd>
+          }
           <dt>Conversation</dt>
           <dd>{{ nombre(c.history_tokens) }}</dd>
           <dt>Réservé à la réponse</dt>
           <dd>{{ nombre(c.reserved_output_tokens) }}</dd>
           <dt>Fenêtre du modèle</dt>
           <dd>{{ nombre(c.context_window) }}</dd>
+          @if (usage(); as u) {
+            <dt>Dernier tour</dt>
+            <dd>{{ nombre(u.calls) }} appel(s) · {{ nombre(u.input_tokens) }} lus · {{ nombre(u.output_tokens) }} écrits
+              @if (u.cache_read_tokens) { · {{ nombre(u.cache_read_tokens) }} en cache }</dd>
+          }
         </dl>
       </details>
       @if (c.messages_dropped > 0) {

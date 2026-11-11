@@ -1,4 +1,5 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { BuilderStateService } from '../../core/builder-state.service';
 import { AppType, CONSTRUCTIBLE_APP_TYPES, projectNameError } from '../../models/app-spec.model';
 
@@ -24,6 +25,8 @@ const APP_TYPE_LABELS: Record<AppType, string> = {
 })
 export class LabPanelComponent {
   state = inject(BuilderStateService);
+  private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
   readonly constructibleTypes = CONSTRUCTIBLE_APP_TYPES;
 
@@ -33,9 +36,6 @@ export class LabPanelComponent {
     const draft = this.projectNameDraft();
     return draft === null ? null : projectNameError(draft);
   });
-
-  /** Index des règles métier dont le titre saisi est vide (le serveur le refuserait). */
-  emptyRuleTitles = signal<ReadonlySet<number>>(new Set());
 
   /** Ancien type (Spring…) porté par la spec : affiché, mais plus sélectionnable. */
   legacyType = computed<AppType | null>(() => {
@@ -48,7 +48,6 @@ export class LabPanelComponent {
     effect(() => {
       this.state.specSessionId();
       this.projectNameDraft.set(null);
-      this.emptyRuleTitles.set(new Set());
     });
   }
 
@@ -89,26 +88,11 @@ export class LabPanelComponent {
     this.addGroup(input);
   }
 
-  // ── Règles métier ───────────────────────────────────────────────────────────
+  // ── Règles métier : éditées dans la section « rules » de la page ─────────────
 
-  setRuleTitle(idx: number, e: Event): void {
-    const title = this.val(e);
-    const empty = new Set(this.emptyRuleTitles());
-    if (title.trim() === '') {
-      empty.add(idx);               // titre obligatoire : on n'envoie pas un titre vide
-    } else {
-      empty.delete(idx);
-      this.state.updateBusinessRule(idx, { title });
-    }
-    this.emptyRuleTitles.set(empty);
-  }
-
-  setRuleDescription(idx: number, e: Event): void {
-    this.state.updateBusinessRule(idx, { description: this.val(e) });
-  }
-
-  removeRule(idx: number): void {
-    this.state.removeBusinessRule(idx);
-    this.emptyRuleTitles.set(new Set());   // les index ont glissé
+  openSection(section: string): void {
+    this.router.navigate([], {
+      relativeTo: this.route, queryParams: { section }, queryParamsHandling: 'merge', replaceUrl: true,
+    });
   }
 }

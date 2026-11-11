@@ -1,4 +1,5 @@
 <div class="models-page">
+  <app-back-link />
 
   <div class="page-header">
     <div class="header-left">
@@ -17,12 +18,21 @@
     </div>
   }
 
+  @if (missing()) {
+    <p class="ed-note ed-warn" role="status">
+      Le modèle demandé par l'adresse n'existe plus dans cette spécification (supprimé ou renommé
+      puis réenregistré). Choisissez-le dans la liste.
+    </p>
+  }
+
   <div class="models-grid">
-    @for (model of state.spec().data_models; track model.id) {
-      <div class="model-card" [class.expanded]="isExpanded(model.id!)">
+    <!-- `track $index` : les identifiants changent à chaque enregistrement, la saisie en cours ne doit pas perdre le focus -->
+    @for (model of state.spec().data_models; track $index) {
+      <div class="model-card" [class.expanded]="isExpanded(model.id!)" [id]="'model-' + model.id">
 
         <!-- ── Entête modèle ── -->
-        <div class="model-header" (click)="toggle(model.id!)">
+        <div class="model-header" (click)="toggle(model.id!)" role="button" tabindex="0"
+             [attr.aria-expanded]="isExpanded(model.id!)" (keydown.enter)="toggle(model.id!)">
           <span class="model-icon">&#9723;</span>
           <div class="model-title-block">
             <input class="model-name-input" [value]="model.name"
@@ -35,6 +45,8 @@
                    placeholder="Description courte…" />
           </div>
           <div class="model-stats">
+            @if (model.kind && model.kind !== 'entity') { <span class="stat">{{ model.kind }}</span> }
+            @if (!model.access?.scope) { <span class="stat stat-warn" title="Accès non décrit : propriétaire seul par défaut">accès ?</span> }
             <span class="stat">{{ model.fields.length }} champ(s)</span>
             <span class="stat">{{ model.relationships.length }} relation(s)</span>
           </div>
@@ -43,6 +55,19 @@
         </div>
 
         @if (isExpanded(model.id!)) {
+
+          <!-- ── Type de modèle (I1 `kind`) ── -->
+          <div class="ed-block">
+            <div class="ed-grid">
+              <label class="ed-field">Type de modèle
+                <select (change)="setModelKind(model.id!, $event)">
+                  @for (k of kinds; track k.id) {
+                    <option [value]="k.id" [selected]="k.id === (model.kind ?? 'entity')">{{ k.label }}</option>
+                  }
+                </select>
+              </label>
+            </div>
+          </div>
 
           <!-- ── Champs ── -->
           <div class="section">
@@ -54,7 +79,7 @@
               <thead>
                 <tr>
                   <th>Nom</th><th>Type</th><th>Requis</th><th>Unique</th>
-                  <th>Max len</th><th>Défaut</th><th>Aperçu Django</th><th></th>
+                  <th>Max len</th><th>Défaut</th><th>Options</th><th>Aperçu Django</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -103,6 +128,49 @@
                       <input [value]="field.default ?? ''"
                              (change)="setFieldDefault(model.id!, $index, $event)"
                              placeholder="aucun" />
+                    </td>
+                    <td class="opts-cell">
+                      @switch (field.type) {
+                        @case ('enum') {
+                          <input [value]="joinCsv(field.values)" (change)="fieldCsv(model.id!, $index, 'values', $event)"
+                                 placeholder="valeurs, séparées, par des virgules" aria-label="Valeurs de la liste"
+                                 [class.invalid]="!field.values?.length" />
+                        }
+                        @case ('int') {
+                          <input type="number" [value]="field.min ?? ''" (change)="fieldNum(model.id!, $index, 'min', $event)" placeholder="min" aria-label="Minimum" />
+                          <input type="number" [value]="field.max ?? ''" (change)="fieldNum(model.id!, $index, 'max', $event)" placeholder="max" aria-label="Maximum" />
+                        }
+                        @case ('decimal') {
+                          <input type="number" [value]="field.min ?? ''" (change)="fieldNum(model.id!, $index, 'min', $event)" placeholder="min" aria-label="Minimum" />
+                          <input type="number" [value]="field.max ?? ''" (change)="fieldNum(model.id!, $index, 'max', $event)" placeholder="max" aria-label="Maximum" />
+                        }
+                        @case ('string') {
+                          <input [value]="field.pattern ?? ''" (change)="fieldText(model.id!, $index, 'pattern', $event)" placeholder="motif (regex)" aria-label="Motif" />
+                          <label class="opt-check"><input type="checkbox" [checked]="field.unique_ci" (change)="fieldBool(model.id!, $index, 'unique_ci', $event)" /> unique sans casse</label>
+                        }
+                        @case ('email') {
+                          <label class="opt-check"><input type="checkbox" [checked]="field.unique_ci" (change)="fieldBool(model.id!, $index, 'unique_ci', $event)" /> unique sans casse</label>
+                        }
+                        @case ('storage_file') {
+                          <input type="number" [value]="field.max_bytes ?? ''" (change)="fieldNum(model.id!, $index, 'max_bytes', $event)" placeholder="taille max (octets)" aria-label="Taille maximale en octets" />
+                          <input [value]="field.accept ?? ''" (change)="fieldText(model.id!, $index, 'accept', $event)" placeholder="types acceptés (image/*,.pdf)" aria-label="Types acceptés" />
+                        }
+                        @case ('geometry') {
+                          <input type="number" [value]="field.srid ?? ''" (change)="fieldNum(model.id!, $index, 'srid', $event)" placeholder="SRID (4326)" aria-label="SRID" />
+                          <input [value]="field.geometry_kind ?? ''" (change)="fieldText(model.id!, $index, 'geometry_kind', $event)" placeholder="Polygon, LineString…" aria-label="Genre de géométrie" />
+                        }
+                        @case ('geo_point') {
+                          <input type="number" [value]="field.srid ?? ''" (change)="fieldNum(model.id!, $index, 'srid', $event)" placeholder="SRID (4326)" aria-label="SRID" />
+                        }
+                        @case ('secret') {
+                          <select (change)="fieldText(model.id!, $index, 'secret_scope', $event)" aria-label="Portée du secret">
+                            <option value="" [selected]="!field.secret_scope">portée…</option>
+                            <option value="user" [selected]="field.secret_scope === 'user'">par utilisateur</option>
+                            <option value="app" [selected]="field.secret_scope === 'app'">de l'app</option>
+                          </select>
+                        }
+                        @default { <span class="na">—</span> }
+                      }
                     </td>
                     <td class="preview-cell">
                       <code>{{ djField(field.type, field.max_length) }}</code>
@@ -185,6 +253,186 @@
             @if (model.relationships.length === 0) {
               <div class="table-empty">Aucune relation</div>
             }
+          </div>
+
+          <!-- ── Accès : qui voit quoi (I1 `access`) ── -->
+          @let acc = access(model);
+          <div class="ed-block">
+            <div class="ed-title"><span>Accès — qui voit quoi</span></div>
+            @if (!acc.scope) {
+              <p class="ed-note ed-warn">Accès non décrit : le lab appliquera « propriétaire seul ». Décrivez-le pour lever l'avertissement.</p>
+            }
+            <div class="ed-grid">
+              <label class="ed-field">Portée
+                <select (change)="setScope(model, $event)">
+                  <option value="" [selected]="!acc.scope">— non décrite —</option>
+                  @for (sc of scopes; track sc.id) {
+                    <option [value]="sc.id" [selected]="sc.id === acc.scope">{{ sc.label }}</option>
+                  }
+                </select>
+              </label>
+              @if (acc.scope === 'owner' || acc.scope === 'shared') {
+                <label class="ed-field">Champ propriétaire
+                  <input [value]="acc.owner_field ?? ''" (change)="accessText(model, 'owner_field', $event)" placeholder="owner_email" [attr.list]="'fields-' + model.id" />
+                </label>
+              }
+              @if (acc.scope === 'shared') {
+                <label class="ed-field">Modèle de partage
+                  <select (change)="accessText(model, 'share_model', $event)">
+                    <option value="" [selected]="!acc.share_model">— choisir —</option>
+                    @for (mn of state.getModelNames(); track mn) {
+                      @if (mn !== model.name) { <option [value]="mn" [selected]="mn === acc.share_model">{{ mn }}</option> }
+                    }
+                  </select>
+                </label>
+              }
+              @if (acc.scope === 'parent') {
+                <label class="ed-field">Relation vers le parent
+                  <select (change)="accessText(model, 'parent', $event)">
+                    <option value="" [selected]="!acc.parent">— choisir —</option>
+                    @for (rn of relationNames(model); track rn) { <option [value]="rn" [selected]="rn === acc.parent">{{ rn }}</option> }
+                  </select>
+                </label>
+              }
+              @if (acc.scope === 'public_read' || acc.public_flag) {
+                <label class="ed-field">Champ « public » (oui/non)
+                  <select (change)="accessText(model, 'public_flag', $event)">
+                    <option value="" [selected]="!acc.public_flag">— aucun —</option>
+                    @for (bf of boolFields(model); track bf) { <option [value]="bf" [selected]="bf === acc.public_flag">{{ bf }}</option> }
+                  </select>
+                </label>
+              }
+              <label class="ed-field ed-wide">Justification (obligatoire pour une lecture publique)
+                <textarea rows="2" [value]="acc.reason ?? ''" (change)="accessText(model, 'reason', $event)"></textarea>
+              </label>
+            </div>
+            <datalist [id]="'fields-' + model.id">
+              @for (f of model.fields; track $index) { <option [value]="f.name"></option> }
+            </datalist>
+
+            <div class="ed-title"><span>Règles par action</span>
+              <button type="button" class="ed-btn" (click)="addAccessRule(model)">+ Règle</button></div>
+            <p class="ed-help">Qui : <code>owner</code>, <code>member</code>, <code>public</code>, <code>share:&lt;rôle&gt;</code>, <code>role:&lt;rôle&gt;</code>, <code>group:&lt;groupe&gt;</code> — séparés par des virgules.</p>
+            <ul class="ed-list">
+              @for (r of acc.rules ?? []; track $index) {
+                <li class="ed-item">
+                  <label class="ed-field">Action
+                    <select (change)="setRuleAction(model, $index, $event)">
+                      @for (a of actions; track a) { <option [value]="a" [selected]="a === r.action">{{ actionLabels[a] }}</option> }
+                    </select>
+                  </label>
+                  <label class="ed-field">Qui
+                    <input [value]="joinCsv(r.who)" (change)="setRuleWho(model, $index, $event)" placeholder="owner, role:manager" />
+                  </label>
+                  <button type="button" class="ed-btn ed-danger" (click)="removeAccessRule(model, $index)" aria-label="Retirer la règle">✕</button>
+                </li>
+              }
+            </ul>
+
+            <div class="ed-title"><span>Champs masqués</span>
+              <button type="button" class="ed-btn" (click)="addHidden(model)" [disabled]="model.fields.length === 0">+ Champ masqué</button></div>
+            <ul class="ed-list">
+              @for (h of acc.hidden_fields ?? []; track $index) {
+                <li class="ed-item">
+                  <label class="ed-field">Champ
+                    <select (change)="setHidden(model, $index, 'field', $event)">
+                      @for (f of model.fields; track $index) { <option [value]="f.name" [selected]="f.name === h.field">{{ f.name }}</option> }
+                    </select>
+                  </label>
+                  <label class="ed-field">Visible seulement pour
+                    <input [value]="h.unless" (change)="setHidden(model, $index, 'unless', $event)" placeholder="owner ou role:<rôle>" />
+                  </label>
+                  <button type="button" class="ed-btn ed-danger" (click)="removeHidden(model, $index)" aria-label="Retirer le champ masqué">✕</button>
+                </li>
+              }
+            </ul>
+          </div>
+
+          <!-- ── Cycle de vie (I1 `states`) ── -->
+          @let st = states(model);
+          <div class="ed-block">
+            <div class="ed-title"><span>Cycle de vie (états)</span>
+              @if (hasStates(model)) {
+                <button type="button" class="ed-btn ed-danger" (click)="clearStates(model)">Retirer</button>
+              } @else {
+                <button type="button" class="ed-btn" (click)="startStates(model)">+ Décrire des états</button>
+              }
+            </div>
+            @if (hasStates(model)) {
+              <div class="ed-grid">
+                <label class="ed-field">Champ d'état
+                  <input [value]="st.field ?? ''" (change)="statesText(model, 'field', $event)" [attr.list]="'fields-' + model.id" />
+                </label>
+                <label class="ed-field">État initial
+                  <input [value]="st.initial ?? ''" (change)="statesText(model, 'initial', $event)" />
+                </label>
+                <label class="ed-field ed-wide">Valeurs (séparées par des virgules)
+                  <input [value]="joinCsv(st.values)" (change)="statesCsv(model, 'values', $event)" placeholder="brouillon, payee, annulee" />
+                </label>
+                <label class="ed-field ed-wide">Figé dans (aucune modification possible)
+                  <input [value]="joinCsv(st.frozen_in)" (change)="statesCsv(model, 'frozen_in', $event)" />
+                </label>
+              </div>
+              <div class="ed-title"><span>Transitions</span>
+                <button type="button" class="ed-btn" (click)="addTransition(model)">+ Transition</button></div>
+              <ul class="ed-list">
+                @for (t of st.transitions ?? []; track $index) {
+                  <li class="ed-item">
+                    <label class="ed-field">De
+                      <input [value]="joinCsv(t.from)" (change)="transCsv(model, $index, 'from', $event)" placeholder="brouillon" />
+                    </label>
+                    <label class="ed-field">Vers
+                      <input [value]="t.to" (change)="transText(model, $index, 'to', $event)" placeholder="payee" />
+                    </label>
+                    <label class="ed-field">Par
+                      <input [value]="joinCsv(t.by)" (change)="transCsv(model, $index, 'by', $event)" placeholder="owner, role:manager" />
+                    </label>
+                    <label class="ed-field">Route
+                      <input [value]="t.action ?? ''" (change)="transText(model, $index, 'action', $event)" placeholder="POST /api/commandes/{id}/payer/" />
+                    </label>
+                    <label class="ed-field">Effets
+                      <input [value]="joinCsv(t.side_effects)" (change)="transCsv(model, $index, 'side_effects', $event)" placeholder="notify:owner" />
+                    </label>
+                    <button type="button" class="ed-btn ed-danger" (click)="removeTransition(model, $index)" aria-label="Retirer la transition">✕</button>
+                  </li>
+                } @empty {
+                  <li class="ed-help">Aucune transition : l'état ne change jamais.</li>
+                }
+              </ul>
+            }
+          </div>
+
+          <!-- ── Contraintes (I1 `constraints`) ── -->
+          <div class="ed-block">
+            <div class="ed-title"><span>Contraintes</span>
+              <button type="button" class="ed-btn" (click)="addConstraint(model)">+ Contrainte</button></div>
+            <ul class="ed-list">
+              @for (c of model.constraints ?? []; track $index) {
+                <li class="ed-item">
+                  <label class="ed-field">Genre
+                    <select (change)="constraintKind(model, $index, $event)">
+                      <option value="unique" [selected]="c.kind === 'unique'">unicité</option>
+                      <option value="check" [selected]="c.kind === 'check'">condition</option>
+                    </select>
+                  </label>
+                  @if (c.kind === 'unique') {
+                    <label class="ed-field">Champs
+                      <input [value]="joinCsv(c.fields)" (change)="constraintFields(model, $index, $event)" placeholder="a, b" />
+                    </label>
+                  } @else {
+                    <label class="ed-field">Condition
+                      <input [value]="c.condition ?? ''" (change)="constraintText(model, $index, 'condition', $event)" placeholder="quantite >= 0" />
+                    </label>
+                  }
+                  <label class="ed-field">Nom
+                    <input [value]="c.name ?? ''" (change)="constraintText(model, $index, 'name', $event)" />
+                  </label>
+                  <button type="button" class="ed-btn ed-danger" (click)="removeConstraint(model, $index)" aria-label="Retirer la contrainte">✕</button>
+                </li>
+              } @empty {
+                <li class="ed-help">Aucune contrainte.</li>
+              }
+            </ul>
           </div>
 
         }

@@ -8,7 +8,8 @@ import {
 /** Libellé et teinte (palette `--cat-*`) d'un genre de nœud : jamais la couleur seule. */
 export interface KindMeta { label: string; cat: string; }
 
-export const KINDS: Record<GraphNodeKind, KindMeta> = {
+/** Repli client des genres (le serveur v2 les donne dans `kinds`, qui prime). */
+export const KINDS: Record<string, KindMeta> = {
   groups:         { label: 'Accès',              cat: 'k-amber' },
   keycloak:       { label: 'Connexion',          cat: 'k-purple' },
   frontend:       { label: 'Interface',          cat: 'k-green' },
@@ -26,10 +27,24 @@ export const KINDS: Record<GraphNodeKind, KindMeta> = {
   pipeline:       { label: 'Pipeline',           cat: 'k-green' },
   step:           { label: 'Étape',              cat: 'k-gray' },
   lot:            { label: 'Lot',                cat: 'k-purple' },
+  role:           { label: 'Rôle',               cat: 'k-amber' },
+  job:            { label: 'Tâche de fond',      cat: 'k-purple' },
+  integration:    { label: 'Service du lab',     cat: 'k-gray' },
+  external_api:   { label: 'API externe',        cat: 'k-gray' },
+  state:          { label: 'État',               cat: 'k-cyan' },
+  transition:     { label: 'Transition',         cat: 'k-cyan' },
+};
+
+/** Libellés des genres de lien, pour l'inspecteur (« lu par », « appelle »…). */
+export const LINK_WORDS: Record<string, [string, string]> = {
+  flow: ['mène à', 'vient de'], contains: ['contient', 'fait partie de'], uses: ['utilise', 'utilisé par'],
+  calls: ['appelle', 'appelé par'], reads: ['lit', 'lu par'], relation: ['pointe vers', 'référencé par'],
+  triggers: ['déclenche', 'déclenché par'], next: ['précède', 'suit'], invokes: ['invoque', 'invoqué par'],
+  builds: ['construit', 'construit par'],
 };
 
 /** Ce que compte `count` selon le genre (singulier, pluriel). */
-const COUNT_WORDS: Partial<Record<GraphNodeKind, [string, string]>> = {
+const COUNT_WORDS: Partial<Record<string, [string, string]>> = {
   groups:         ['groupe', 'groupes'],
   frontend:       ['page', 'pages'],
   api:            ['route', 'routes'],
@@ -50,10 +65,19 @@ export interface Crumb {
 
 interface Index {
   byId: Map<string, GraphNode>;
+  /** `"<collection>#<id>"` (I6 `ref`) → nœud : le lien partagé survit à un renommage. */
+  byRef: Map<string, GraphNode>;
+  byKind: Map<string, GraphNode[]>;
+  byParent: Map<string, GraphNode[]>;
   dom: Map<string, string>;
+  domToId: Map<string, string>;
   out: Map<string, GraphLink[]>;
   in: Map<string, GraphLink[]>;
 }
+
+export type ViewMode = 'carte' | 'liste';
+
+const FILTERED_SCALES: GraphScaleId[] = ['architecture', 'data', 'pipelines'];
 
 /**
  * État partagé de la page « Vue d'ensemble » : le graphe reçu du serveur, et la
@@ -70,10 +94,21 @@ export class OverviewStore {
   readonly graph = signal<SpecGraph | null>(null);
 
   private index = computed<Index>(() => {
-    const idx: Index = { byId: new Map(), dom: new Map(), out: new Map(), in: new Map() };
+    const idx: Index = {
+      byId: new Map(), byRef: new Map(), byKind: new Map(), byParent: new Map(),
+      dom: new Map(), domToId: new Map(), out: new Map(), in: new Map(),
+    };
     const g = this.graph();
     if (!g) return idx;
-    g.nodes.forEach((n, i) => { idx.byId.set(n.id, n); idx.dom.set(n.id, `ov-n-${i}`); });
+    const push = <K, V>(m: Map<K, V[]>, k: K, v: V) => { const l = m.get(k); if (l) l.push(v); else m.set(k, [v]); };
+    g.nodes.forEach((n, i) => {
+      idx.byId.set(n.id, n);
+      idx.dom.set(n.id, `ov-n-${i}`);
+      idx.domToId.set(`ov-n-${i}`, n.id);
+      if (n.ref && n.ref.id !== null && n.ref.id !== undefined) idx.byRef.set(`${n.ref.collection}#${n.ref.id}`, n);
+      push(idx.byKind, n.kind, n);
+      if (n.parent) push(idx.byParent, n.parent, n);
+    });
     for (const l of g.links) {
       if (!idx.out.has(l.source)) idx.out.set(l.source, []);
       if (!idx.in.has(l.target)) idx.in.set(l.target, []);
@@ -83,15 +118,45 @@ export class OverviewStore {
     return idx;
   });
 
-  /** Échelle courante ; une valeur inconnue dans l'URL retombe sur la plus large. */
+  /**
+   * Vue courante : `vue`, ou l'ancien `echelle` (liens existants) ; une valeur
+   * inconnue retombe sur la plus large.
+   */
   readonly scale = computed<GraphScaleId>(() => {
-    const e = this.params()?.get('echelle');
+    const p = this.params();
+    const e = p?.get('vue') ?? p?.get('echelle');
     return this.graph()?.scales.some(s => s.id === e) ? (e as GraphScaleId) : 'overview';
   });
 
-  /** Nœud en focus (celui dans lequel on est entré, ou que l'on regarde). */
-  readonly focus = computed<GraphNode | null>(() =>
-    this.index().byId.get(this.params()?.get('noeud') ?? '') ?? null);
+  /**
+   * Nœud sélectionné — la sélection unique, partagée par toutes les vues. `noeud`
+   * accepte l'id du nœud et la référence stable `<collection>#<id>`.
+   */
+  readonly focus = computed<GraphNode | null>(() => {
+    const raw = this.params()?.get('noeud') ?? '';
+    const idx = this.index();
+    return idx.byId.get(raw) ?? idx.byRef.get(raw) ?? null;
+  });
+
+  /** Curseur « l'app après le lot N » (`lot`) ; `null` = tous les lots. */
+  readonly lotCursor = computed<number | null>(() => {
+    const v = this.params()?.get('lot');
+    return v && /^[0-9]{1,4}$/.test(v) ? Number(v) : null;
+  });
+
+  /** Numéros de lots connus (nœuds `lot`), dans l'ordre. */
+  readonly lotNumbers = computed<number[]>(() =>
+    (this.index().byKind.get('lot') ?? []).map(n => n.order ?? 0).sort((a, b) => a - b));
+
+  /** `carte` (diagramme) ou `liste` ; par défaut liste sous 900 px. */
+  readonly mode = computed<ViewMode>(() => {
+    const m = this.params()?.get('mode');
+    if (m === 'carte' || m === 'liste') return m;
+    try { return window.matchMedia('(max-width: 899px)').matches ? 'liste' : 'carte'; } catch { return 'carte'; }
+  });
+
+  /** L'échelle courante telle que le serveur la décrit (notation, disponibilité). */
+  readonly scaleInfo = computed(() => this.graph()?.scales.find(s => s.id === this.scale()) ?? null);
 
   /**
    * Quand le focus est un nœud d'une échelle plus large, l'échelle courante est
@@ -101,7 +166,9 @@ export class OverviewStore {
   readonly filter = computed<GraphNode | null>(() => {
     const f = this.focus();
     const s = this.scale();
-    return f && f.scale !== s && s !== 'overview' && s !== 'roadmap' ? f : null;
+    // Seulement pour les échelles v1 qui descendent l'une de l'autre ; les vues v2
+    // (API, sécurité…) montrent la sélection dans l'inspecteur sans rien masquer.
+    return f && f.scale !== s && FILTERED_SCALES.includes(s) ? f : null;
   });
 
   readonly crumbs = computed<Crumb[]>(() => {
@@ -125,9 +192,30 @@ export class OverviewStore {
 
   // ── Navigation (toujours par l'URL) ────────────────────────────────────────
 
+  /** Change de vue (entrée d'historique) ; garde le curseur de lot et le mode. */
   open(scale: GraphScaleId, node: string | null = null): void {
-    this.router.navigate([], { relativeTo: this.route, queryParams: { echelle: scale, noeud: node } });
+    this.router.navigate([], {
+      relativeTo: this.route, queryParamsHandling: 'merge',
+      queryParams: { vue: scale, echelle: null, noeud: node },
+    });
   }
+
+  /** Sélectionne un nœud sans changer de vue ni empiler d'entrée (sinon « retour » devient inutilisable). */
+  select(n: GraphNode | null): void {
+    this.router.navigate([], {
+      relativeTo: this.route, queryParamsHandling: 'merge', replaceUrl: true,
+      queryParams: { noeud: n?.id ?? null },
+    });
+  }
+
+  setParam(key: 'lot' | 'mode', value: string | number | null): void {
+    this.router.navigate([], {
+      relativeTo: this.route, queryParamsHandling: 'merge', replaceUrl: true, queryParams: { [key]: value },
+    });
+  }
+
+  /** Adresse courante (pour le retour depuis une page d'édition). */
+  currentUrl(): string { return this.router.url; }
 
   /** Va au nœud, dans sa propre échelle (défilé et mis en avant). */
   goNode(n: GraphNode): void { this.open(n.scale, n.id); }
@@ -150,6 +238,36 @@ export class OverviewStore {
     return id ? this.index().byId.get(id) ?? null : null;
   }
 
+  /** Nœud désigné par l'id d'un élément du DOM (`ov-n-<rang>`), pour la sélection au clic. */
+  fromDom(domId: string): GraphNode | null { return this.node(this.index().domToId.get(domId)); }
+
+  /** Premier nœud d'un genre portant ce libellé (lignes et colonnes des matrices). */
+  byLabel(kind: string, label: string): GraphNode | null {
+    return (this.index().byKind.get(kind) ?? []).find(n => n.label === label) ?? null;
+  }
+
+  /** Un identifiant de ligne/colonne rendu par le serveur : id de nœud, ou libellé d'un genre attendu. */
+  resolve(key: string, kinds: string[] = []): GraphNode | null {
+    const direct = this.node(key) ?? this.index().byRef.get(key) ?? null;
+    if (direct) return direct;
+    for (const k of kinds) { const n = this.byLabel(k, key); if (n) return n; }
+    return null;
+  }
+
+  all(): GraphNode[] { return this.graph()?.nodes ?? []; }
+
+  /** Construit après le lot du curseur : affiché en fantôme. */
+  isGhost(n: GraphNode | null | undefined): boolean {
+    const cur = this.lotCursor();
+    if (cur === null || !n?.lots?.length) return false;
+    return Math.min(...n.lots) > cur;
+  }
+
+  /** Les nœuds qui appartiennent à une vue : leur échelle, ou les vues où le serveur les projette. */
+  inScale(n: GraphNode, scale: GraphScaleId): boolean {
+    return n.scale === scale || (n.appears_in ?? []).includes(scale);
+  }
+
   /** Ancêtres, du plus proche au plus lointain. */
   ancestors(n: GraphNode): GraphNode[] {
     const out: GraphNode[] = [];
@@ -168,12 +286,15 @@ export class OverviewStore {
 
   /** Nœuds d'un genre, dans l'ordre du serveur, filtre appliqué. */
   ofKind(kind: GraphNodeKind): GraphNode[] {
-    return (this.graph()?.nodes ?? []).filter(n => n.kind === kind && this.visible(n));
+    return (this.index().byKind.get(kind) ?? []).filter(n => this.visible(n));
   }
 
   children(id: string, kind: GraphNodeKind): GraphNode[] {
-    return (this.graph()?.nodes ?? []).filter(n => n.parent === id && n.kind === kind);
+    return (this.index().byParent.get(id) ?? []).filter(n => n.kind === kind);
   }
+
+  /** Tous les liens d'un nœud, dans un sens. */
+  allLinks(id: string, dir: 'out' | 'in'): GraphLink[] { return this.index()[dir].get(id) ?? []; }
 
   links(id: string, kind: GraphLinkKind, dir: 'out' | 'in'): GraphLink[] {
     return (this.index()[dir].get(id) ?? []).filter(l => l.kind === kind);
@@ -187,7 +308,12 @@ export class OverviewStore {
   }
 
   /** Les lots de la feuille de route qui construisent ce nœud. */
-  lots(id: string): GraphNode[] { return this.linked(id, 'builds', 'in'); }
+  lots(id: string): GraphNode[] {
+    const viaLinks = this.linked(id, 'builds', 'in');
+    if (viaLinks.length) return viaLinks;
+    const n = this.node(id);
+    return (n?.lots ?? []).map(k => this.node(`lot:${k}`)).filter((x): x is GraphNode => x !== null);
+  }
 
   // ── Affichage ──────────────────────────────────────────────────────────────
 
@@ -195,7 +321,11 @@ export class OverviewStore {
 
   isFocus(id: string): boolean { return this.focus()?.id === id; }
 
-  kind(n: GraphNode): KindMeta { return KINDS[n.kind] ?? { label: n.kind, cat: 'k-gray' }; }
+  kind(n: GraphNode): KindMeta {
+    const server = this.graph()?.kinds?.[n.kind];
+    if (server?.label) return { label: server.label, cat: /^k-[a-z]+$/.test(server.cat ?? '') ? server.cat : (KINDS[n.kind]?.cat ?? 'k-gray') };
+    return KINDS[n.kind] ?? { label: n.kind, cat: 'k-gray' };
+  }
 
   scaleLabel(id: GraphScaleId): string {
     return this.graph()?.scales.find(s => s.id === id)?.label ?? id;
