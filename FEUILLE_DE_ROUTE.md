@@ -195,7 +195,7 @@ du lab). [C] constaté, [D] déduit.
 - [ ] Ⓟ Un vrai échange avec outils sur Albert, avec la clé du propriétaire
 **Vérifié le :** 2026-11-11 — `bash chantiers/tests/essai.sh app-builder` : 264 tests OK, dont `AlbertTests` (11 : adresse, en-tête, `tool_choice` explicite, boucle complète, contenu vide de Gemma, clé du seul appelant, erreurs 401/404/429 à message fixe, catalogue filtré et mis en cache, panne ⇒ table prudente). Le chat ne propose Albert qu'avec le lot 13 (interface) ; l'essai réel attend la clé du propriétaire.
 
-## Lot 13 — Une page « Intelligence artificielle » unique   ·   statut : en cours
+## Lot 13 — Une page « Intelligence artificielle » unique   ·   statut : livré
 **Objectif :** un seul endroit pour régler l'IA (fournisseurs, clés, modèles, Claude Code et Vibe) ; le chat de l'accueil n'en garde qu'un sélecteur rapide, et les choix sont gardés sur le serveur.
 **Tâches :**
 - [x] `GET/PUT /api/ai-settings/` : fournisseurs (clé configurée ou non, modèles, modèle par défaut) et préférences de l'appelant (fournisseur et modèle par fournisseur), gardées en base
@@ -203,10 +203,10 @@ du lab). [C] constaté, [D] déduit.
 - [x] ⚙ du chat : sélecteur fournisseur + modèle, limité aux fournisseurs qui ont une clé, et lien vers `/ia` ; plus de saisie de clé dans le chat ; plus de préférence dans `localStorage`
 **Tests à passer avant de clore le lot :**
 - [x] `python manage.py test api.tests.PreferencesIATests` (préférences de l'appelant seulement, fournisseur ou modèle inconnu refusé, jamais de clé rendue)
-- [ ] `npx ng build` sans erreur ; navigateur réel : la page montre l'état des clés, le chat ne propose que les fournisseurs configurés
-**Vérifié le :**
+- [x] `npx ng build` sans erreur ; navigateur réel : la page montre l'état des clés, le chat ne propose que les fournisseurs configurés
+**Vérifié le :** 2026-11-11 — suite 271 OK (`PreferencesIATests` 5) ; mis en service (image construite pendant que l'ancienne tournait, `app-test.sh` vert, migrations `0013`/`0014`, cloisonnement 3/3). Navigateur réel (`e2edev`) : `/connexion-ia` redirige vers `/ia` ; une clé Albert déposée passe « clé enregistrée » et « utilisée par le chat » ; le ⚙ de l'accueil ne propose qu'Albert, avec ses modèles ; un message part vers le vrai serveur d'Albert, qui refuse la fausse clé : message fixe, sans la clé ; « Retirer » efface la clé. Défaut vu et corrigé : le ⚙ et l'en-tête débordaient du panneau étroit.
 
-## Lot 14 — Claude Code des utilisateurs, par le MCP, fiabilisé   ·   statut : en cours
+## Lot 14 — Claude Code des utilisateurs, par le MCP, fiabilisé   ·   statut : livré
 **Objectif :** un utilisateur relie son propre Claude Code (son abonnement, sur son poste ou dans son espace de travail du lab) à App Builder sans tâtonner, et Claude Code y travaille avec les mêmes garde-fous que le chat.
 **Tâches :**
 - [x] Configuration prête : `.mcp.json` de projet sans secret (`${APP_BUILDER_MCP_TOKEN}`), en plus de la commande `claude mcp add`
@@ -214,8 +214,8 @@ du lab). [C] constaté, [D] déduit.
 - [x] La page montre la dernière connexion de chaque jeton (« Claude Code s'est connecté le … »)
 **Tests à passer avant de clore le lot :**
 - [x] `python manage.py test api.tests.McpProtocoleTests` (invites comprises)
-- [ ] Un vrai Claude Code relié par `--mcp-config` lit une spec et y applique une opération
-**Vérifié le :**
+- [x] Un vrai Claude Code relié par `--mcp-config` lit une spec et y applique une opération
+**Vérifié le :** 2026-11-11 — Claude Code 2.1.322 de l'hôte (abonnement du propriétaire, avec son accord), `--mcp-config` sur le `.mcp.json` proposé par la page (jeton lu dans `APP_BUILDER_MCP_TOKEN`), `--strict-mcp-config`, jeton d'essai d'`e2edev` limité à la spec 22 puis révoqué : `lire_index` puis `appliquer_operations` → « 1 champ ajouté à Livre », visible dans `patch_applications` (mode `ops`) ; `/mcp__app-builder__verifier 22` : relecture complète, corrections vérifiées par `essayer_operations`, rien d'appliqué sans accord. Il a relevé que les consignes ne décrivaient pas `query_params` : ligne ajoutée au prompt, mise en service.
 
 ## Lot 15 — Claude Code ouvert depuis App Builder, dans le lab   ·   statut : à faire
 **Objectif :** un bouton « Concevoir avec Claude Code » ouvre une conversation avec le Claude Code de l'utilisateur, dans le lab, déjà reliée à sa spec.
