@@ -3,6 +3,7 @@
 Les jetons Keycloak sont de vrais RS256 (socle.Base) ; les jetons `abt_` sont créés
 par l'API de gestion, comme le ferait un utilisateur. Aucun appel réseau.
 """
+import json
 from datetime import timedelta
 from unittest import mock
 
@@ -152,6 +153,38 @@ class McpProtocoleTests(_McpBase):
         self.assertEqual(resp.json()['error']['code'], -32700)
         self.assertEqual(self.mcp_client(self.lire).get('/api/mcp/').status_code, 405)
         self.assertEqual(self.client.get('/api/mcp/').status_code, 405)
+
+    def test_invites_pour_claude_code(self):
+        # Lot 14 : dans Claude Code, /mcp__app-builder__concevoir et /mcp__app-builder__verifier.
+        caps = self.rpc(self.lire, 'initialize', {'protocolVersion': '2025-06-18'})['result']['capabilities']
+        self.assertIn('prompts', caps)
+        invites = {p['name']: p for p in self.rpc(self.lire, 'prompts/list')['result']['prompts']}
+        self.assertEqual(set(invites), {'concevoir', 'verifier'})
+        self.assertTrue(all(a['name'] for p in invites.values() for a in p['arguments']))
+        r = self.rpc(self.lire, 'prompts/get', {'name': 'concevoir', 'arguments': {'spec_id': str(self.spec),
+                                                                                   'demande': 'ajouter des factures'}})
+        texte = r['result']['messages'][0]['content']['text']
+        self.assertEqual(r['result']['messages'][0]['role'], 'user')
+        self.assertIn(f'n° {self.spec}', texte)
+        self.assertIn('ajouter des factures', texte)
+        self.assertIn("qu'après mon accord", texte)
+        sans = self.rpc(self.lire, 'prompts/get', {'name': 'concevoir'})['result']['messages'][0]['content']['text']
+        self.assertIn('lister_specs', sans)
+        verif = self.rpc(self.lire, 'prompts/get', {'name': 'verifier', 'arguments': {'spec_id': str(self.spec)}})
+        self.assertIn('verifier_spec', verif['result']['messages'][0]['content']['text'])
+        self.assertEqual(self.rpc(self.lire, 'prompts/get', {'name': 'verifier'})['error']['code'], -32602)
+        self.assertEqual(self.rpc(self.lire, 'prompts/get', {'name': 'pirate'})['error']['code'], -32602)
+        long = self.rpc(self.lire, 'prompts/get', {'name': 'concevoir', 'arguments': {'demande': 'x' * 10_000}})
+        self.assertLess(len(long['result']['messages'][0]['content']['text']), 3_000)
+
+    def test_configuration_prete_sans_secret(self):
+        info = self.alice.get('/api/mcp/info/').json()
+        conf = json.loads(info['mcp_json'])
+        serveur = conf['mcpServers']['app-builder']
+        self.assertEqual((serveur['type'], serveur['url']), ('http', info['url']))
+        self.assertEqual(serveur['headers']['Authorization'], 'Bearer ${APP_BUILDER_MCP_TOKEN}')
+        self.assertNotIn('abt_', info['mcp_json'])
+        self.assertIn('<JETON>', info['env'])
 
     def test_tools_list_selon_la_portee(self):
         tous = {'lister_specs', 'creer_spec', 'lire_index', 'lire_elements', 'verifier_spec', 'essayer_operations',

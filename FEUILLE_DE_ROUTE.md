@@ -198,22 +198,22 @@ du lab). [C] constaté, [D] déduit.
 ## Lot 13 — Une page « Intelligence artificielle » unique   ·   statut : en cours
 **Objectif :** un seul endroit pour régler l'IA (fournisseurs, clés, modèles, Claude Code et Vibe) ; le chat de l'accueil n'en garde qu'un sélecteur rapide, et les choix sont gardés sur le serveur.
 **Tâches :**
-- [ ] `GET/PUT /api/ai-settings/` : fournisseurs (clé configurée ou non, modèles, modèle par défaut) et préférences de l'appelant (fournisseur et modèle par fournisseur), gardées en base
-- [ ] Page `/ia` (l'ancienne `/connexion-ia` y redirige) : fournisseurs (clé, état, modèle par défaut), fournisseur par défaut du chat, puis Claude Code et Vibe
-- [ ] ⚙ du chat : sélecteur fournisseur + modèle, limité aux fournisseurs qui ont une clé, et lien vers `/ia` ; plus de saisie de clé dans le chat ; plus de préférence dans `localStorage`
+- [x] `GET/PUT /api/ai-settings/` : fournisseurs (clé configurée ou non, modèles, modèle par défaut) et préférences de l'appelant (fournisseur et modèle par fournisseur), gardées en base
+- [x] Page `/ia` (l'ancienne `/connexion-ia` y redirige) : fournisseurs (clé, état, modèle par défaut), fournisseur par défaut du chat, puis Claude Code et Vibe
+- [x] ⚙ du chat : sélecteur fournisseur + modèle, limité aux fournisseurs qui ont une clé, et lien vers `/ia` ; plus de saisie de clé dans le chat ; plus de préférence dans `localStorage`
 **Tests à passer avant de clore le lot :**
-- [ ] `python manage.py test api.tests.PreferencesIATests` (préférences de l'appelant seulement, fournisseur ou modèle inconnu refusé, jamais de clé rendue)
+- [x] `python manage.py test api.tests.PreferencesIATests` (préférences de l'appelant seulement, fournisseur ou modèle inconnu refusé, jamais de clé rendue)
 - [ ] `npx ng build` sans erreur ; navigateur réel : la page montre l'état des clés, le chat ne propose que les fournisseurs configurés
 **Vérifié le :**
 
-## Lot 14 — Claude Code des utilisateurs, par le MCP, fiabilisé   ·   statut : à faire
+## Lot 14 — Claude Code des utilisateurs, par le MCP, fiabilisé   ·   statut : en cours
 **Objectif :** un utilisateur relie son propre Claude Code (son abonnement, sur son poste ou dans son espace de travail du lab) à App Builder sans tâtonner, et Claude Code y travaille avec les mêmes garde-fous que le chat.
 **Tâches :**
-- [ ] Configuration prête : `.mcp.json` de projet sans secret (`${APP_BUILDER_MCP_TOKEN}`), en plus de la commande `claude mcp add`
-- [ ] Consignes du lab servies en invites MCP (`prompts/list`, `prompts/get`) : `/mcp__app-builder__concevoir`, `…__verifier`
-- [ ] La page montre la dernière connexion de chaque jeton (« Claude Code s'est connecté le … »)
+- [x] Configuration prête : `.mcp.json` de projet sans secret (`${APP_BUILDER_MCP_TOKEN}`), en plus de la commande `claude mcp add`
+- [x] Consignes du lab servies en invites MCP (`prompts/list`, `prompts/get`) : `/mcp__app-builder__concevoir`, `…__verifier`
+- [x] La page montre la dernière connexion de chaque jeton (« Claude Code s'est connecté le … »)
 **Tests à passer avant de clore le lot :**
-- [ ] `python manage.py test api.tests.McpProtocoleTests` (invites comprises)
+- [x] `python manage.py test api.tests.McpProtocoleTests` (invites comprises)
 - [ ] Un vrai Claude Code relié par `--mcp-config` lit une spec et y applique une opération
 **Vérifié le :**
 

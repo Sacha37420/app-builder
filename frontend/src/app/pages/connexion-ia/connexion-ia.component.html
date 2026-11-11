@@ -106,11 +106,33 @@
       <p class="cx-mute">Adresse du serveur MCP : <code>{{ c.url }}</code>.
         @if (!c.withToken) { Remplacez <code>&lt;JETON&gt;</code> par un jeton créé ci-dessous. }
       </p>
-      <h3 class="cx-h3">Claude Code</h3>
+      <h3 class="cx-h3">Claude Code — pour tous vos projets</h3>
       <div class="cx-cmd">
         <pre class="cx-code">{{ c.claude }}</pre>
         <button type="button" class="ed-btn" (click)="copy('claude', c.claude)">{{ copied() === 'claude' ? 'Copié ✓' : 'Copier' }}</button>
       </div>
+      @if (c.mcpJson) {
+        <h3 class="cx-h3">Claude Code — pour un seul dossier, sans jeton écrit dans un fichier</h3>
+        <p class="cx-mute">
+          Enregistrez ceci dans un fichier <code>.mcp.json</code> à la racine du dossier, puis lancez Claude Code
+          avec le jeton dans la variable <code>APP_BUILDER_MCP_TOKEN</code> (la ligne en dessous). Le fichier ne
+          contient aucun secret : il peut être partagé.
+        </p>
+        <div class="cx-cmd">
+          <pre class="cx-code">{{ c.mcpJson }}</pre>
+          <button type="button" class="ed-btn" (click)="copy('json', c.mcpJson)">{{ copied() === 'json' ? 'Copié ✓' : 'Copier' }}</button>
+        </div>
+        <div class="cx-cmd">
+          <pre class="cx-code">{{ c.env }}</pre>
+          <button type="button" class="ed-btn" (click)="copy('env', c.env)">{{ copied() === 'env' ? 'Copié ✓' : 'Copier' }}</button>
+        </div>
+      }
+      <p class="cx-mute">
+        Dans Claude Code, deux commandes toutes prêtes : <code>/mcp__app-builder__concevoir</code> (travailler une
+        spécification avec vous, question par question, sans rien appliquer sans votre accord) et
+        <code>/mcp__app-builder__verifier</code> (la relire comme le lab la relira). La colonne « dernier usage » de
+        vos jetons, plus bas, dit si votre outil s'est bien connecté.
+      </p>
       <h3 class="cx-h3">Mistral Vibe</h3>
       <div class="cx-cmd">
         <pre class="cx-code">{{ c.vibe }}</pre>

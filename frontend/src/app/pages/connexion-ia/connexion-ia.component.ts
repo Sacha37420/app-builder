@@ -65,7 +65,8 @@ export class ConnexionIaPageComponent implements OnInit {
     if (!i) return null;
     const t = this.fresh()?.token;
     const sub = (c: string) => (t ? c.split(JETON).join(t) : c);
-    return { url: i.url, claude: sub(i.claude), vibe: sub(i.vibe), withToken: !!t };
+    return { url: i.url, claude: sub(i.claude), vibe: sub(i.vibe), env: sub(i.env ?? ''),
+             mcpJson: i.mcp_json ?? '', withToken: !!t };
   });
 
   ngOnInit(): void {

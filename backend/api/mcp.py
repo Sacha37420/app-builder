@@ -123,7 +123,51 @@ class McpInfoView(APIView):
             'vibe': ("export APP_BUILDER_MCP_TOKEN='<JETON>' && VIBE_CLI=python vibe mcp add "
                      f"{NOM_SERVEUR} --url {url} --transport streamable-http --api-key-env APP_BUILDER_MCP_TOKEN "
                      "--api-key-header Authorization --api-key-format 'Bearer {token}'"),
+            # Lot 14 : configuration de projet pour Claude Code, SANS secret — le jeton est lu dans
+            # la variable d'environnement APP_BUILDER_MCP_TOKEN au lancement de Claude Code.
+            'mcp_json': json.dumps({'mcpServers': {NOM_SERVEUR: {
+                'type': 'http', 'url': url,
+                'headers': {'Authorization': 'Bearer ${APP_BUILDER_MCP_TOKEN}'}}}}, indent=2),
+            'env': "export APP_BUILDER_MCP_TOKEN='<JETON>'",
         })
+
+
+# ── Invites MCP (lot 14) : dans Claude Code, /mcp__app-builder__concevoir et …__verifier ──
+
+INVITES = {
+    'concevoir': {
+        'description': 'Concevoir ou compléter une spécification App Builder avec moi, pas à pas.',
+        'arguments': [
+            {'name': 'spec_id', 'description': 'Numéro de la spécification (vide : je choisis dans la liste).',
+             'required': False},
+            {'name': 'demande', 'description': 'Ce que je veux obtenir, en quelques mots.', 'required': False},
+        ],
+    },
+    'verifier': {
+        'description': 'Relire une spécification comme le lab la relira : blocages, avertissements, corrections proposées.',
+        'arguments': [{'name': 'spec_id', 'description': 'Numéro de la spécification.', 'required': True}],
+    },
+}
+
+
+def _invite(nom: str, args: dict) -> str:
+    sid = str(args.get('spec_id') or '').strip()[:20]
+    if nom == 'verifier':
+        return (f"Relis la spécification App Builder n° {sid} comme le lab la relira avant de construire l'app. "
+                "Appelle verifier_spec, puis lire_livrables. Présente-moi les blocages, puis les avertissements de "
+                "qualité, puis ce que le cahier des charges ne dit pas clairement (qui voit quoi, rôles, règles "
+                "métier sans endpoint). Pour chaque point, propose les opérations qui le corrigeraient et vérifie-les "
+                "avec essayer_operations, mais n'applique rien sans mon accord explicite.")
+    demande = str(args.get('demande') or '').strip()[:2000]
+    cible = (f"la spécification App Builder n° {sid}" if sid else
+             "une spécification App Builder : appelle lister_specs et demande-moi laquelle (ou s'il faut en créer une)")
+    return (f"Travaillons sur {cible}. "
+            + (f"Ce que je veux : {demande}. " if demande else "")
+            + "Lis d'abord l'index (lire_index), puis pose-moi une question à la fois sur ce qui manque, dans "
+              "l'ordre des règles du lab (nom et type, groupes requis, données et qui les voit, règles métier, API, "
+              "pages, enchaînements). Quand une décision est prise, prépare les opérations, vérifie-les avec "
+              "essayer_operations, montre-moi leur résumé, et ne les applique (appliquer_operations, avec la version "
+              "lue) qu'après mon accord. Termine par verifier_spec.")
 
 
 # ── Outils MCP ────────────────────────────────────────────────────────────────
@@ -337,13 +381,27 @@ class McpView(APIView):
             version = demandee if demandee in VERSIONS_PROTOCOLE else VERSIONS_PROTOCOLE[1]
             return Response({'jsonrpc': '2.0', 'id': ident, 'result': {
                 'protocolVersion': version,
-                'capabilities': {'tools': {'listChanged': False}},
+                'capabilities': {'tools': {'listChanged': False}, 'prompts': {'listChanged': False}},
                 'serverInfo': {'name': NOM_SERVEUR, 'version': '2'},
                 'instructions': INSTRUCTIONS}})
         if methode == 'ping':
             return Response({'jsonrpc': '2.0', 'id': ident, 'result': {}})
         if methode == 'tools/list':
             return Response({'jsonrpc': '2.0', 'id': ident, 'result': {'tools': _liste_outils(user)}})
+        if methode == 'prompts/list':
+            return Response({'jsonrpc': '2.0', 'id': ident, 'result': {'prompts': [
+                {'name': n, **d} for n, d in INVITES.items()]}})
+        if methode == 'prompts/get':
+            nom = params.get('name')
+            args = params.get('arguments') if isinstance(params.get('arguments'), dict) else {}
+            if nom not in INVITES:
+                return Response(_rpc_erreur(ident, -32602, 'Invite inconnue.'))
+            manquants = [a['name'] for a in INVITES[nom]['arguments'] if a['required'] and not args.get(a['name'])]
+            if manquants:
+                return Response(_rpc_erreur(ident, -32602, 'Argument manquant : ' + ', '.join(manquants) + '.'))
+            return Response({'jsonrpc': '2.0', 'id': ident, 'result': {
+                'description': INVITES[nom]['description'],
+                'messages': [{'role': 'user', 'content': {'type': 'text', 'text': _invite(nom, args)}}]}})
         if methode != 'tools/call':
             return Response(_rpc_erreur(ident, -32601, 'Method not found'))
 

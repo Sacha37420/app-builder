@@ -427,7 +427,8 @@ export interface McpToken {
 }
 
 /** `GET /api/mcp/info/` : les commandes portent `<JETON>` littéral. */
-export interface McpInfo { url: string; claude: string; vibe: string; }
+/** `GET /api/mcp/info/` — commandes avec `<JETON>` littéral ; `mcp_json` : config de projet SANS secret (lot 14). */
+export interface McpInfo { url: string; claude: string; vibe: string; mcp_json: string; env: string; }
 
 /** Un modèle proposé par `GET /api/models/` et ce qu'il peut tenir. */
 export interface ModelInfo {
