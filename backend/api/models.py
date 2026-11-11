@@ -247,6 +247,10 @@ class AiKeyVault(models.Model):
     claude_key = EncryptedTextField(blank=True, default='')
     mistral_key = EncryptedTextField(blank=True, default='')
     albert_key = EncryptedTextField(blank=True, default='')
+    # Préférences du chat (lot 13), gardées sur le serveur plutôt que dans le navigateur :
+    # fournisseur choisi, et modèle choisi pour chaque fournisseur ({"albert": "openweight-large"}).
+    preferred_provider = models.CharField(max_length=20, blank=True, default='')
+    preferred_models = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

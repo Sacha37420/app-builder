@@ -3,16 +3,21 @@ import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { BuilderApiService } from '../../core/builder-api.service';
 import { BuilderStateService } from '../../core/builder-state.service';
-import { AppSpec, McpInfo, McpScope, McpToken } from '../../models/app-spec.model';
+import { AiProvider, AiProviderSettings, AppSpec, McpInfo, McpScope, McpToken } from '../../models/app-spec.model';
+import { AiSettingsService, MESSAGE_JETON_ABONNEMENT } from '../../core/ai-settings.service';
 import { val } from '../../core/form-utils';
 
 const JETON = '<JETON>';
 
 /**
- * Page « Connexion IA » (route `/connexion-ia`) : jetons personnels du serveur MCP
- * d'App Builder (contrat I5), pour piloter une spécification depuis Claude Code ou
- * Mistral Vibe avec son propre abonnement. Le jeton complet n'est montré qu'une
- * fois, juste après sa création ; il n'est gardé nulle part dans le navigateur.
+ * Page « Intelligence artificielle » (route `/ia`, ancienne `/connexion-ia`) — lot 13 :
+ * le seul endroit où se règle l'IA.
+ *  1. Fournisseurs du chat intégré (Claude, Mistral, Albert) : clé au coffre du serveur
+ *     (jamais relue), modèle par défaut, fournisseur choisi pour le chat — préférences
+ *     gardées sur le serveur (`/api/ai-settings/`), partagées avec le ⚙ du chat.
+ *  2. Claude Code et Vibe : jetons personnels du serveur MCP d'App Builder (contrat I5),
+ *     pour piloter une spécification avec son propre abonnement. Le jeton complet n'est
+ *     montré qu'une fois, juste après sa création ; il n'est gardé nulle part dans le navigateur.
  */
 @Component({
   selector: 'app-connexion-ia-page',
@@ -24,6 +29,14 @@ const JETON = '<JETON>';
 export class ConnexionIaPageComponent implements OnInit {
   private api = inject(BuilderApiService);
   state = inject(BuilderStateService);
+  ai = inject(AiSettingsService);
+
+  // ── Fournisseurs (lot 13) ──
+  /** Saisie en cours, par fournisseur : jamais gardée, vidée après l'envoi au coffre. */
+  keyInput = signal<Partial<Record<AiProvider, string>>>({});
+  keyVisible = signal<Partial<Record<AiProvider, boolean>>>({});
+  keyBusy = signal<AiProvider | null>(null);
+  keyMessage = signal<{ provider: AiProvider; text: string; ok: boolean } | null>(null);
 
   tokens = signal<McpToken[]>([]);
   specs = signal<AppSpec[]>([]);
@@ -56,6 +69,7 @@ export class ConnexionIaPageComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    this.ai.load(true);
     this.refresh();
     this.api.getMcpInfo().subscribe({ next: i => this.info.set(i), error: () => this.info.set(null) });
     this.api.listApps().subscribe({ next: a => this.specs.set(a), error: () => this.specs.set([]) });
@@ -105,6 +119,45 @@ export class ConnexionIaPageComponent implements OnInit {
         const e = err.error;
         this.formError.set(typeof e?.error === 'string' ? e.error
           : (e && typeof e === 'object' ? Object.values(e).flat().map(String).join(' ') : '') || 'Création refusée.');
+      },
+    });
+  }
+
+  // ── Fournisseurs ────────────────────────────────────────────────────────────
+
+  setKeyInput(p: AiProvider, e: Event): void { this.keyInput.update(k => ({ ...k, [p]: val(e) })); }
+  toggleKeyVisible(p: AiProvider): void { this.keyVisible.update(k => ({ ...k, [p]: !k[p] })); }
+
+  saveKey(p: AiProviderSettings, retirer = false): void {
+    const valeur = retirer ? '' : (this.keyInput()[p.id] ?? '').trim();
+    if (!retirer && !valeur) return;
+    if (retirer && !confirm(`Retirer la clé ${p.label} enregistrée sur le serveur ?`)) return;
+    this.keyBusy.set(p.id);
+    this.keyMessage.set(null);
+    this.ai.saveKey(p.id, valeur).subscribe({
+      next: () => {
+        this.keyBusy.set(null);
+        this.keyInput.update(k => ({ ...k, [p.id]: '' }));
+        this.keyMessage.set({ provider: p.id, ok: true, text: retirer ? 'Clé retirée.' : 'Clé enregistrée sur le serveur.' });
+      },
+      error: (err: HttpErrorResponse | { error?: { code?: string; error?: string } }) => {
+        this.keyBusy.set(null);
+        if (err?.error?.code === 'oauth_token_refused') this.keyInput.update(k => ({ ...k, [p.id]: '' }));
+        this.keyMessage.set({ provider: p.id, ok: false, text: err?.error?.code === 'oauth_token_refused'
+          ? MESSAGE_JETON_ABONNEMENT : `Clé non enregistrée : ${err?.error?.error ?? 'erreur du serveur'}` });
+      },
+    });
+  }
+
+  setDefaultModel(p: AiProvider, e: Event): void { this.pref(this.ai.setModel(p, val(e)), p); }
+  useForChat(p: AiProvider): void { this.pref(this.ai.setProvider(p), p); }
+
+  private pref(appel: ReturnType<AiSettingsService['setProvider']>, p: AiProvider): void {
+    this.keyMessage.set(null);
+    appel.subscribe({
+      error: (err: HttpErrorResponse) => {
+        this.keyMessage.set({ provider: p, ok: false, text: err?.error?.error ?? 'Choix non enregistré.' });
+        this.ai.load(true);
       },
     });
   }

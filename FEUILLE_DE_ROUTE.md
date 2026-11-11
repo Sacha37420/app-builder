@@ -195,7 +195,7 @@ du lab). [C] constaté, [D] déduit.
 - [ ] Ⓟ Un vrai échange avec outils sur Albert, avec la clé du propriétaire
 **Vérifié le :** 2026-11-11 — `bash chantiers/tests/essai.sh app-builder` : 264 tests OK, dont `AlbertTests` (11 : adresse, en-tête, `tool_choice` explicite, boucle complète, contenu vide de Gemma, clé du seul appelant, erreurs 401/404/429 à message fixe, catalogue filtré et mis en cache, panne ⇒ table prudente). Le chat ne propose Albert qu'avec le lot 13 (interface) ; l'essai réel attend la clé du propriétaire.
 
-## Lot 13 — Une page « Intelligence artificielle » unique   ·   statut : à faire
+## Lot 13 — Une page « Intelligence artificielle » unique   ·   statut : en cours
 **Objectif :** un seul endroit pour régler l'IA (fournisseurs, clés, modèles, Claude Code et Vibe) ; le chat de l'accueil n'en garde qu'un sélecteur rapide, et les choix sont gardés sur le serveur.
 **Tâches :**
 - [ ] `GET/PUT /api/ai-settings/` : fournisseurs (clé configurée ou non, modèles, modèle par défaut) et préférences de l'appelant (fournisseur et modèle par fournisseur), gardées en base

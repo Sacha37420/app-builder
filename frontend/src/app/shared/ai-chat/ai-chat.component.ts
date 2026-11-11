@@ -4,21 +4,15 @@ import { RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { BuilderApiService } from '../../core/builder-api.service';
 import { BuilderStateService } from '../../core/builder-state.service';
+import { AiSettingsService } from '../../core/ai-settings.service';
 import { Subscription, switchMap } from 'rxjs';
 import {
-  AiProvider, ChatContext, ChatMessage, ChatUsage, ModelCatalogue, PersistedChatMessage, ProposalState,
+  AiProvider, ChatContext, ChatMessage, ChatUsage, PersistedChatMessage, ProposalState,
 } from '../../models/app-spec.model';
 
 type DisplayMessage = PersistedChatMessage;
 
 interface ModelOption { id: string; label: string; tools?: boolean; }
-
-/** Préfixe d'un jeton d'abonnement Claude : il ne s'utilise que dans Claude Code (contrat §7). */
-const PREFIXE_JETON_ABONNEMENT = 'sk-ant-oat';
-const MESSAGE_JETON_ABONNEMENT =
-  "Ce jeton d'abonnement Claude (sk-ant-oat…) ne s'utilise que dans Claude Code : App Builder ne le garde pas. "
-  + 'Déposez ici une clé API (sk-ant-api…), ou pilotez la spécification depuis votre Claude Code '
-  + '(page « Connexion IA »).';
 
 /** Ce que l'agent sait d'une de ses propositions au tour suivant : du texte, jamais les opérations. */
 const ETAT_POUR_IA: Record<ProposalState, string> = {
@@ -43,19 +37,6 @@ const STARTER_PROMPTS = [
   'Je veux une app de réservation (créneaux, clients, confirmations)',
 ];
 
-const LS = {
-  provider:      'ai_provider',
-  claudeModel:   'ai_claude_model',
-  mistralModel:  'ai_mistral_model',
-};
-
-/**
- * Anciennes entrées où les clés étaient gardées en clair dans le navigateur.
- * Effacées à l'ouverture, SANS être envoyées au serveur : l'utilisateur ressaisit
- * sa clé une fois, elle va alors au coffre du serveur (`/api/ai-keys/`).
- */
-const ANCIENNES_CLES = ['ai_claude_key', 'ai_mistral_key'];
-
 @Component({
   selector: 'app-ai-chat',
   standalone: true,
@@ -76,31 +57,16 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
   patchBusy   = signal(false);
   error       = signal('');
   showSettings  = signal(false);
-  showTutorial  = signal(false);
-  showClaudeKey = signal(false);
-  showMistralKey = signal(false);
 
-  provider     = signal<AiProvider>('claude');
-  // Saisie en cours seulement (jamais persistée, vidée après l'envoi au coffre).
-  claudeKey    = signal('');
-  claudeModel  = signal('claude-sonnet-4-6');
-  mistralKey   = signal('');
-  mistralModel = signal('mistral-small-latest');
-  // Ce que dit le coffre du serveur : une clé est-elle enregistrée ? (jamais la clé)
-  claudeConfigured  = signal(false);
-  mistralConfigured = signal(false);
-  keysKnown         = signal(false);
-  keySaving         = signal(false);
-  keyMessage        = signal('');
+  /** Réglages de l'IA (fournisseurs, clés configurées ou non, préférences) : serveur, partagés avec la page /ia. */
+  ai = inject(AiSettingsService);
+  readonly provider = computed<AiProvider>(() => this.ai.provider());
+  prefSaving  = signal(false);
+  prefMessage = signal('');
 
   // State pour les choix du dernier message assistant
   selectedChoices = signal<Set<string>>(new Set());
 
-  // Liste des modèles : servie par l'API. Tant qu'elle manque, le modèle mémorisé reste seul proposé.
-  catalogue       = signal<ModelCatalogue | null>(null);
-  modelsUnavailable = signal(false);
-  readonly claudeModels  = computed(() => this.modelsOf('claude',  this.claudeModel()));
-  readonly mistralModels = computed(() => this.modelsOf('mistral', this.mistralModel()));
   readonly starters      = STARTER_PROMPTS;
 
   // Mesure du contexte : dernière réponse de /api/chat/ ou dernière estimation.
@@ -114,7 +80,7 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
     const etat: EtatJauge = c.ratio >= 1 || !c.fits ? 'alerte' : c.ratio >= 0.7 ? 'attention' : 'normal';
     const max = Math.max(c.available_tokens, 1);
     const pourcent = (c.ratio * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
-    const modele = this.catalogue()?.providers[c.provider]?.models.find(m => m.id === c.model);
+    const modele = this.ai.modelsOf(c.provider).find(m => m.id === c.model);
     return {
       etat,
       mot: { normal: '✓ À l\'aise', attention: '⚠ Presque plein', alerte: '⛔ Trop long' }[etat],
@@ -131,10 +97,6 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
   private mesureSeq = 0;
 
   constructor() {
-    effect(() => localStorage.setItem(LS.provider,     this.provider()));
-    effect(() => localStorage.setItem(LS.claudeModel,  this.claudeModel()));
-    effect(() => localStorage.setItem(LS.mistralModel, this.mistralModel()));
-
     // Recharge le chat depuis le state (lui-même alimenté par le backend) à chaque changement de spec
     effect(() => {
       const _sid = this.state.specSessionId();
@@ -147,7 +109,7 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
     effect(onCleanup => {
       const spec = this.state.spec();
       const provider = this.provider();
-      const model = provider === 'claude' ? this.claudeModel() : this.mistralModel();
+      const model = this.ai.model();
       const brouillon = this.inputText().trim();
       const envoi: ChatMessage[] = brouillon
         ? [...this.messages(), { role: 'user', content: brouillon }]
@@ -166,31 +128,7 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
   }
 
   ngOnInit(): void {
-    this.provider.set((localStorage.getItem(LS.provider) ?? 'claude') as AiProvider);
-    this.claudeModel.set(localStorage.getItem(LS.claudeModel)  ?? 'claude-sonnet-4-6');
-    for (const ancienne of ANCIENNES_CLES) {
-      try { localStorage.removeItem(ancienne); } catch { /* stockage indisponible : rien à effacer */ }
-    }
-    this.refreshKeys();
-    this.mistralModel.set(localStorage.getItem(LS.mistralModel) ?? 'mistral-small-latest');
-
-    this.api.getModels().subscribe({
-      next: cat => {
-        if (!cat?.providers?.claude?.models || !cat.providers.mistral?.models) { this.modelsUnavailable.set(true); return; }
-        this.catalogue.set(cat);
-        this.modelsUnavailable.set(false);
-        // Un modèle mémorisé qui n'est plus proposé cède la place à celui par défaut.
-        const { claude, mistral } = cat.providers;
-        if (!claude.models.some(m => m.id === this.claudeModel()))   this.claudeModel.set(claude.default);
-        if (!mistral.models.some(m => m.id === this.mistralModel())) this.mistralModel.set(mistral.default);
-      },
-      error: () => this.modelsUnavailable.set(true),
-    });
-  }
-
-  /** Les modèles d'un fournisseur ; sans catalogue, le seul modèle mémorisé. */
-  private modelsOf(provider: AiProvider, memorise: string): ModelOption[] {
-    return this.catalogue()?.providers[provider].models ?? [{ id: memorise, label: memorise }];
+    this.ai.load();
   }
 
   /** Libellé d'un modèle dans la liste : un modèle sans outils passe par une sortie structurée (moins sûre). */
@@ -208,58 +146,28 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
   }
 
   /** Une clé du fournisseur choisi est-elle au coffre ? (inconnu ⇒ on laisse le serveur juger) */
-  get activeKeyConfigured(): boolean {
-    if (!this.keysKnown()) return true;
-    return this.provider() === 'claude' ? this.claudeConfigured() : this.mistralConfigured();
-  }
+  get activeKeyConfigured(): boolean { return this.ai.activeConfigured(); }
 
-  // ── Coffre des clés (serveur) ──────────────────────────────────────────────
+  get activeModel(): string { return this.ai.model(); }
 
-  refreshKeys(): void {
-    this.api.getAiKeys().subscribe({
-      next: etat => {
-        this.claudeConfigured.set(!!etat?.claude_key_configured);
-        this.mistralConfigured.set(!!etat?.mistral_key_configured);
-        this.keysKnown.set(true);
-      },
-      error: () => this.keysKnown.set(false),
-    });
-  }
+  /** Choix rapide, gardé sur le serveur (même préférence que la page « Intelligence artificielle »). */
+  chooseProvider(id: string): void { this.savePref(this.ai.setProvider(id as AiProvider)); }
+  chooseModel(id: string): void { this.savePref(this.ai.setModel(this.provider(), id)); }
 
-  /** Envoie la clé saisie au coffre du serveur ; `''` la retire. */
-  saveKey(provider: AiProvider, retirer = false): void {
-    const saisie = provider === 'claude' ? this.claudeKey : this.mistralKey;
-    const valeur = retirer ? '' : saisie().trim();
-    if (!retirer && !valeur) return;
-    if (!retirer && provider === 'claude' && valeur.startsWith(PREFIXE_JETON_ABONNEMENT)) {
-      // Refusé avant tout envoi : ce jeton ne doit jamais quitter le navigateur vers App Builder.
-      saisie.set('');
-      this.keyMessage.set(MESSAGE_JETON_ABONNEMENT);
-      return;
-    }
-    if (retirer && !confirm('Retirer la clé enregistrée sur le serveur ?')) return;
-    this.keySaving.set(true);
-    this.keyMessage.set('');
-    const corps = provider === 'claude' ? { claude_key: valeur } : { mistral_key: valeur };
-    this.api.putAiKeys(corps).subscribe({
-      next: () => {
-        saisie.set('');
-        this.keySaving.set(false);
-        this.keyMessage.set(retirer ? 'Clé retirée.' : 'Clé enregistrée sur le serveur.');
-        this.refreshKeys();
-      },
-      error: err => {
-        this.keySaving.set(false);
-        this.keyMessage.set(err?.error?.code === 'oauth_token_refused'
-          ? MESSAGE_JETON_ABONNEMENT
-          : `Clé non enregistrée : ${err?.error?.error ?? 'erreur du serveur'}`);
+  private savePref(appel: ReturnType<AiSettingsService['setProvider']>): void {
+    this.prefSaving.set(true);
+    this.prefMessage.set('');
+    appel.subscribe({
+      next: () => this.prefSaving.set(false),
+      error: (err: HttpErrorResponse) => {
+        this.prefSaving.set(false);
+        this.prefMessage.set(err?.error?.error ?? 'Choix non enregistré : erreur du serveur.');
+        this.ai.load(true);
       },
     });
   }
-  get activeModel(): string { return this.provider() === 'claude' ? this.claudeModel() : this.mistralModel(); }
 
   toggleSettings(): void { this.showSettings.update(v => !v); }
-  toggleTutorial(): void { this.showTutorial.update(v => !v); }
 
   useStarter(text: string): void { this.inputText.set(text); this.send(); }
 
@@ -314,7 +222,7 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
     const text = this.inputText().trim();
     if (!text || this.loading()) return;
     if (!this.activeKeyConfigured) {
-      this.error.set('Clé API non enregistrée — ouvrez ⚙ et enregistrez votre clé.');
+      this.error.set(`Aucune clé d'API pour ${this.ai.labelOf(this.provider())} : enregistrez-la sur la page « Intelligence artificielle ».`);
       return;
     }
 
@@ -349,7 +257,7 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
       error: (err: HttpErrorResponse) => {
         const corps = err.error;
         if (corps?.context) { this.mesureSeq++; this.contexte.set(corps.context); }
-        if (corps?.code === 'key_not_configured') this.refreshKeys();
+        if (corps?.code === 'key_not_configured') this.ai.load(true);
         if (err.status === 413 || err.status === 400 || this.state.savedId() === null) {
           // Rien n'est parti : le message refusé quitte la liste et son texte revient dans la saisie.
           const msgs = this.messages();

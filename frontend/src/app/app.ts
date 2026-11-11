@@ -45,7 +45,7 @@ export class AppComponent {
     { path: '/pipelines',    label: '④ Pipelines',  abbr: 'Pi' },
     { path: '/preview',      label: 'Livrables',    abbr: 'Li' },
     { path: '/infra',        label: 'Lab & infra',  abbr: 'La' },
-    { path: '/connexion-ia', label: 'Connexion IA', abbr: 'IA' },
+    { path: '/ia',           label: 'Intelligence artificielle', abbr: 'IA' },
   ];
 
   @ViewChild('closeBtn') private closeBtnRef?: ElementRef<HTMLButtonElement>;

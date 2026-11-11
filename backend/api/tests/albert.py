@@ -16,7 +16,7 @@ from api.ia import catalogue, fournisseurs
 
 from .ia import OP_VALIDE, _ChatBase, rep_mistral
 
-__all__ = ['AlbertTests']
+__all__ = ['AlbertTests', 'PreferencesIATests']
 
 URL_CHAT = 'https://albert.api.etalab.gouv.fr/v1/chat/completions'
 URL_MODELES = 'https://albert.api.etalab.gouv.fr/v1/models'
@@ -177,3 +177,61 @@ class AlbertTests(_ChatBase):
         fiche = budget.modele('albert', 'modele-jamais-vu')
         self.assertEqual(fiche['context_window'], budget._FENETRE_INCONNUE)
         self.assertFalse(fiche['tools'])
+
+
+class PreferencesIATests(_ChatBase):
+    """Lot 13 — GET/PUT /api/ai-settings/ : préférences de l'appelant, gardées en base."""
+
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def test_etat_sans_jamais_de_cle(self):
+        d = self.alice.get('/api/ai-settings/').json()
+        self.assertEqual([p['id'] for p in d['providers']], ['claude', 'mistral', 'albert'])
+        etats = {p['id']: p['configured'] for p in d['providers']}
+        self.assertEqual(etats, {'claude': True, 'mistral': True, 'albert': False})
+        self.assertNotIn('cle-de-alice', json.dumps(d))
+        self.assertNotIn('cle-mistral-de-alice', json.dumps(d))
+        # Sans choix enregistré : le premier fournisseur qui a une clé, son modèle par défaut.
+        self.assertEqual(d['preferences']['provider'], 'claude')
+        self.assertEqual(d['preferences']['models']['albert'], 'openweight-large')
+        self.assertTrue(all(p['help'] and p['models'] for p in d['providers']))
+
+    def test_choix_gardes_et_relus(self):
+        resp = self.alice.put('/api/ai-settings/', {'provider': 'mistral',
+                                                    'models': {'mistral': 'mistral-large-latest'}}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        d = self.alice.get('/api/ai-settings/').json()
+        self.assertEqual(d['preferences']['provider'], 'mistral')
+        self.assertEqual(d['preferences']['models']['mistral'], 'mistral-large-latest')
+        self.assertEqual(d['preferences']['models']['claude'], budget.MODELE_PAR_DEFAUT['claude'])
+        # Un second choix complète le premier, il ne l'efface pas.
+        self.alice.put('/api/ai-settings/', {'models': {'claude': 'claude-opus-5-5'}}, format='json')
+        d = self.alice.get('/api/ai-settings/').json()
+        self.assertEqual((d['preferences']['models']['mistral'], d['preferences']['models']['claude']),
+                         ('mistral-large-latest', 'claude-opus-5-5'))
+
+    def test_valeurs_refusees_rien_n_est_ecrit(self):
+        for corps in ({'provider': 'openai'}, {'models': {'claude': 'gpt-5'}}, {'models': {'inconnu': 'x'}},
+                      {'models': ['claude']}, {'cle': 'x'}, {}):
+            resp = self.alice.put('/api/ai-settings/', corps, format='json')
+            self.assertEqual(resp.status_code, 400, corps)
+        self.assertEqual(self.alice.get('/api/ai-settings/').json()['preferences']['provider'], 'claude')
+
+    def test_modele_lu_chez_albert_accepte(self):
+        self.coffre('alice', claude='cle-de-alice', mistral='cle-mistral-de-alice', albert='cle-albert-de-alice')
+        reponse = rep_modeles({'id': 'gpt-oss-120b', 'type': 'text-generation', 'max_context_length': 131072})
+        with mock.patch.object(catalogue.http_requests, 'get', return_value=reponse):
+            resp = self.alice.put('/api/ai-settings/', {'provider': 'albert', 'models': {'albert': 'gpt-oss-120b'}},
+                                  format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()['preferences']['models']['albert'], 'gpt-oss-120b')
+
+    def test_preferences_de_l_appelant_seulement(self):
+        self.alice.put('/api/ai-settings/', {'provider': 'mistral'}, format='json')
+        bob = self.client_de('bob')
+        d = bob.get('/api/ai-settings/').json()
+        self.assertEqual(d['preferences']['provider'], 'claude')
+        self.assertFalse(any(p['configured'] for p in d['providers']))

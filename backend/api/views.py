@@ -173,6 +173,79 @@ class AiKeysView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class AiSettingsView(APIView):
+    """GET /api/ai-settings/ — tout ce que la page « Intelligence artificielle » et le
+    sélecteur du chat affichent, en un appel :
+      {"providers": [{"id", "label", "help", "configured", "default_model", "models": [...]}],
+       "preferences": {"provider": "...", "models": {"<fournisseur>": "<modèle>"}},
+       "lot_budget_tokens": n}
+    Jamais une clé ni un extrait de clé. `preferences.provider` : celui choisi, sinon le
+    premier fournisseur qui a une clé, sinon `claude`.
+
+    PUT /api/ai-settings/ {"provider"?: "...", "models"?: {"<fournisseur>": "<modèle>"}} → 200,
+    même forme que GET. Fournisseur inconnu, modèle hors de la liste proposée à l'appelant
+    pour ce fournisseur : 400, rien n'est écrit. Les clés se règlent par /api/ai-keys/."""
+
+    def _modeles(self, email: str) -> dict:
+        resultat = {}
+        for p, f in budget.FOURNISSEURS.items():
+            cle = cle_du_coffre(email, p) if f.get('catalogue') == 'dynamique' else ''
+            resultat[p] = catalogue_ia.modeles(p, cle) if cle else budget.modeles_fixes(p)
+        return resultat
+
+    def _etat(self, email: str, modeles: dict | None = None) -> dict:
+        modeles = modeles or self._modeles(email)
+        coffre = AiKeyVault.objects.filter(owner_email=email).first()
+        configures = {p: bool(coffre and getattr(coffre, f['champ'])) for p, f in budget.FOURNISSEURS.items()}
+        choisis = coffre.preferred_models if coffre and isinstance(coffre.preferred_models, dict) else {}
+        par_fournisseur = {}
+        for p in budget.FOURNISSEURS:
+            ids = {m['id'] for m in modeles[p]}
+            m = choisis.get(p)
+            par_fournisseur[p] = m if isinstance(m, str) and m in ids else budget.MODELE_PAR_DEFAUT[p]
+        prefere = coffre.preferred_provider if coffre else ''
+        if not budget.fournisseur_existe(prefere):
+            prefere = next((p for p, ok in configures.items() if ok), 'claude')
+        return {
+            'providers': [{'id': p, 'label': f['label'], 'help': f['aide'], 'configured': configures[p],
+                           'default_model': budget.MODELE_PAR_DEFAUT[p], 'models': modeles[p]}
+                          for p, f in budget.FOURNISSEURS.items()],
+            'preferences': {'provider': prefere, 'models': par_fournisseur},
+            'lot_budget_tokens': budget.LOT_BUDGET_JETONS,
+        }
+
+    def get(self, request):
+        return Response(self._etat(request.user.email))
+
+    def put(self, request):
+        donnees = request.data if isinstance(request.data, dict) else None
+        if not donnees or set(donnees) - {'provider', 'models'}:
+            return Response({'error': 'Corps attendu : {"provider": "…"} et/ou {"models": {"<fournisseur>": "<modèle>"}}.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        modeles = self._modeles(request.user.email)
+        provider = donnees.get('provider')
+        if 'provider' in donnees and not budget.fournisseur_existe(provider):
+            return Response({'error': 'Fournisseur inconnu.'}, status=status.HTTP_400_BAD_REQUEST)
+        choix = donnees.get('models', {})
+        if not isinstance(choix, dict):
+            return Response({'error': 'models : un objet {"<fournisseur>": "<modèle>"} est attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        for p, m in choix.items():
+            if not budget.fournisseur_existe(p):
+                return Response({'error': 'Fournisseur inconnu.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not isinstance(m, str) or m not in {x['id'] for x in modeles[p]}:
+                return Response({'error': f'Modèle non proposé pour {budget.FOURNISSEURS[p]["label"]}.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        coffre, _ = AiKeyVault.objects.get_or_create(owner_email=request.user.email)
+        if 'provider' in donnees:
+            coffre.preferred_provider = provider
+        if choix:
+            actuels = coffre.preferred_models if isinstance(coffre.preferred_models, dict) else {}
+            coffre.preferred_models = {**actuels, **choix}
+        coffre.save()
+        return Response(self._etat(request.user.email, modeles))
+
+
 class AIChatView(APIView):
     """POST /api/chat/ — un tour de conversation avec outils (I4).
 

@@ -4,219 +4,50 @@
   <div class="chat-header">
     <span class="chat-title">&#129302; Agent IA</span>
     <div class="header-right">
-      <span class="provider-badge" [class.claude]="provider() === 'claude'" [class.mistral]="provider() === 'mistral'">
-        {{ provider() === 'claude' ? '🤖 Claude' : '⚡ Mistral' }}
-        <span class="model-short">· {{ activeModel.split('-').slice(0,2).join('-') }}</span>
+      <span class="provider-badge" [class.claude]="provider() === 'claude'" [class.mistral]="provider() !== 'claude'">
+        {{ ai.labelOf(provider()) }}
+        <span class="model-short">· {{ activeModel }}</span>
       </span>
-      <button class="btn-icon" title="Paramètres IA" (click)="toggleSettings()">&#9881;</button>
+      <button class="btn-icon" title="Choisir le fournisseur et le modèle" aria-label="Choisir le fournisseur et le modèle"
+              [attr.aria-expanded]="showSettings()" (click)="toggleSettings()">&#9881;</button>
       <button class="btn-icon" title="Effacer l'historique" (click)="clearHistory()">&#128465;</button>
     </div>
   </div>
 
-  <!-- Panneau paramètres -->
+  <!-- Panneau : choix rapide du fournisseur et du modèle (clés et réglages : page « Intelligence artificielle ») -->
   @if (showSettings()) {
     <div class="settings-panel">
-
-      <!-- Onglets provider -->
-      <div class="provider-tabs">
-        <button class="tab-btn" [class.active]="provider() === 'claude'"
-                (click)="provider.set('claude')">🤖 Claude</button>
-        <button class="tab-btn" [class.active]="provider() === 'mistral'"
-                (click)="provider.set('mistral')">⚡ Mistral</button>
-      </div>
-
-      <!-- Champs Claude -->
-      @if (provider() === 'claude') {
-        <div class="settings-fields">
-          <label class="field-row">
-            <span class="field-label">Clé API</span>
-            <div class="key-input-wrap">
-              <input [type]="showClaudeKey() ? 'text' : 'password'"
-                     [value]="claudeKey()"
-                     (input)="claudeKey.set($any($event.target).value)"
-                     (keydown.enter)="saveKey('claude')"
-                     [placeholder]="claudeConfigured() ? 'Clé enregistrée — saisir pour la remplacer' : 'sk-ant-api03-…'"
-                     autocomplete="off" />
-              <button class="btn-eye" type="button"
-                      (click)="showClaudeKey.update(v => !v)"
-                      [title]="showClaudeKey() ? 'Masquer' : 'Afficher'">
-                {{ showClaudeKey() ? '🙈' : '👁' }}
-              </button>
-              <button class="btn-eye" type="button" (click)="saveKey('claude')"
-                      [disabled]="keySaving() || !claudeKey().trim()">Enregistrer</button>
-            </div>
-          </label>
-          <p class="key-state" role="status">
-            @if (claudeConfigured()) {
-              ✓ Clé enregistrée sur le serveur (chiffrée, jamais renvoyée au navigateur).
-              <button class="btn-eye" type="button" (click)="saveKey('claude', true)" [disabled]="keySaving()">Retirer</button>
-            } @else {
-              Aucune clé enregistrée.
-            }
-          </p>
-          <label class="field-row">
-            <span class="field-label">Modèle</span>
-            <select (change)="claudeModel.set($any($event.target).value)">
-              @for (m of claudeModels(); track m.id) {
-                <option [value]="m.id" [selected]="m.id === claudeModel()">{{ modelLabel(m) }}</option>
-              }
-            </select>
-          </label>
-        </div>
-      }
-
-      <!-- Champs Mistral -->
-      @if (provider() === 'mistral') {
-        <div class="settings-fields">
-          <label class="field-row">
-            <span class="field-label">Clé API</span>
-            <div class="key-input-wrap">
-              <input [type]="showMistralKey() ? 'text' : 'password'"
-                     [value]="mistralKey()"
-                     (input)="mistralKey.set($any($event.target).value)"
-                     (keydown.enter)="saveKey('mistral')"
-                     [placeholder]="mistralConfigured() ? 'Clé enregistrée — saisir pour la remplacer' : 'Votre clé Mistral'"
-                     autocomplete="off" />
-              <button class="btn-eye" type="button"
-                      (click)="showMistralKey.update(v => !v)"
-                      [title]="showMistralKey() ? 'Masquer' : 'Afficher'">
-                {{ showMistralKey() ? '🙈' : '👁' }}
-              </button>
-              <button class="btn-eye" type="button" (click)="saveKey('mistral')"
-                      [disabled]="keySaving() || !mistralKey().trim()">Enregistrer</button>
-            </div>
-          </label>
-          <p class="key-state" role="status">
-            @if (mistralConfigured()) {
-              ✓ Clé enregistrée sur le serveur (chiffrée, jamais renvoyée au navigateur).
-              <button class="btn-eye" type="button" (click)="saveKey('mistral', true)" [disabled]="keySaving()">Retirer</button>
-            } @else {
-              Aucune clé enregistrée.
-            }
-          </p>
-          <label class="field-row">
-            <span class="field-label">Modèle</span>
-            <select (change)="mistralModel.set($any($event.target).value)">
-              @for (m of mistralModels(); track m.id) {
-                <option [value]="m.id" [selected]="m.id === mistralModel()">{{ modelLabel(m) }}</option>
-              }
-            </select>
-          </label>
-        </div>
-      }
-
-      @if (keyMessage()) {
-        <p class="models-ko" role="status">{{ keyMessage() }}</p>
-      }
-
-      <div class="ia-ways">
-        <p>
-          <strong>Clé API au coffre</strong> : elle sert au chat intégré ci-dessous, et chaque échange est
-          facturé à cette clé par Anthropic ou Mistral.
-          <strong>Claude Code ou Mistral Vibe</strong> : vous gardez votre propre abonnement et pilotez la
-          spécification depuis votre outil, par le serveur MCP d'App Builder.
+      @if (ai.unavailable()) {
+        <p class="models-ko" role="status">Réglages de l'IA indisponibles pour l'instant — réessayez plus tard.</p>
+      } @else if (ai.configured().length === 0) {
+        <p class="key-state" role="status">
+          Aucune clé d'API enregistrée : déposez-en une (Claude, Mistral ou Albert) pour utiliser ce chat,
+          ou reliez votre propre Claude Code.
         </p>
-        <a routerLink="/connexion-ia" class="ia-ways-link">Connecter Claude Code ou Vibe →</a>
-      </div>
-
-      @if (modelsUnavailable()) {
-        <p class="models-ko" role="status">Liste des modèles indisponible — le modèle mémorisé reste utilisé.</p>
-      }
-
-      <!-- Tuto -->
-      <button class="tuto-toggle" (click)="toggleTutorial()">
-        {{ showTutorial() ? '▲' : '▼' }} Comment obtenir ma clé API ?
-      </button>
-
-      @if (showTutorial()) {
-        <div class="tutorial">
-
-          @if (provider() === 'claude') {
-            <div class="tuto-section">
-              <p class="tuto-intro">
-                Claude est développé par <strong>Anthropic</strong>. Vous avez besoin d'un compte
-                sur leur console pour obtenir une clé API personnelle.
-                <strong>Les modèles Haiku et Sonnet conviennent parfaitement pour cet outil.</strong>
-              </p>
-              <ol class="tuto-steps">
-                <li>
-                  Rendez-vous sur
-                  <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>
-                  et créez un compte (ou connectez-vous).
-                </li>
-                <li>
-                  Dans le menu de gauche, cliquez sur <strong>API Keys</strong>.
-                </li>
-                <li>
-                  Cliquez sur <strong>Create Key</strong>, donnez-lui un nom (ex : <em>app-builder</em>).
-                </li>
-                <li>
-                  Copiez la clé affichée — elle commence par <code>sk-ant-api03-…</code>.
-                  <strong>Elle n'est affichée qu'une seule fois.</strong>
-                </li>
-                <li>
-                  Collez-la dans le champ "Clé API" ci-dessus.
-                </li>
-              </ol>
-              <div class="tuto-note">
-                <strong>💰 Tarifs indicatifs :</strong>
-                Haiku ~0,80 $ / million de tokens — Sonnet ~3 $ — Opus ~15 $.
-                Une conversation typique consomme quelques centimes.
-              </div>
-              <div class="tuto-note">
-                <strong>🔒 Sécurité :</strong>
-                Votre clé est envoyée une fois au serveur d'App Builder, qui la garde chiffrée et
-                l'utilise pour appeler le fournisseur. Elle n'est jamais renvoyée au navigateur ni
-                gardée dans celui-ci ; vous pouvez la retirer à tout moment (bouton « Retirer »).
-              </div>
-            </div>
-          }
-
-          @if (provider() === 'mistral') {
-            <div class="tuto-section">
-              <p class="tuto-intro">
-                Mistral AI est une entreprise française qui propose une
-                <strong>offre gratuite</strong> avec des modèles performants.
-                Le modèle <em>Nemo</em> est libre d'accès sans carte bancaire.
-              </p>
-              <ol class="tuto-steps">
-                <li>
-                  Rendez-vous sur
-                  <a href="https://console.mistral.ai" target="_blank" rel="noopener">console.mistral.ai</a>
-                  et créez un compte (ou connectez-vous).
-                </li>
-                <li>
-                  Dans le menu de gauche, cliquez sur <strong>API Keys</strong>.
-                </li>
-                <li>
-                  Cliquez sur <strong>Create new key</strong>, donnez-lui un nom.
-                </li>
-                <li>
-                  Copiez la clé affichée.
-                  <strong>Elle n'est affichée qu'une seule fois.</strong>
-                </li>
-                <li>
-                  Collez-la dans le champ "Clé API" ci-dessus.
-                </li>
-              </ol>
-              <div class="tuto-note">
-                <strong>🆓 Tier gratuit :</strong>
-                Le modèle <em>Nemo (open-mistral-nemo)</em> est disponible sans facturation,
-                avec des limites de débit. Pour des usages intensifs, Mistral Small reste très abordable
-                (~0,20 $ / million de tokens).
-              </div>
-              <div class="tuto-note">
-                <strong>🔒 Sécurité :</strong>
-                Votre clé est envoyée une fois au serveur d'App Builder, qui la garde chiffrée et
-                l'utilise pour appeler le fournisseur. Elle n'est jamais renvoyée au navigateur ni
-                gardée dans celui-ci ; vous pouvez la retirer à tout moment (bouton « Retirer »).
-              </div>
-            </div>
-          }
-
+      } @else {
+        <div class="settings-fields">
+          <label class="field-row">
+            <span class="field-label">Fournisseur</span>
+            <select (change)="chooseProvider($any($event.target).value)" [disabled]="prefSaving()">
+              @for (p of ai.configured(); track p.id) {
+                <option [value]="p.id" [selected]="p.id === provider()">{{ p.label }}</option>
+              }
+            </select>
+          </label>
+          <label class="field-row">
+            <span class="field-label">Modèle</span>
+            <select (change)="chooseModel($any($event.target).value)" [disabled]="prefSaving()">
+              @for (m of ai.modelsOf(provider()); track m.id) {
+                <option [value]="m.id" [selected]="m.id === activeModel">{{ modelLabel(m) }}</option>
+              }
+            </select>
+          </label>
         </div>
       }
-
+      @if (prefMessage()) {
+        <p class="models-ko" role="status">{{ prefMessage() }}</p>
+      }
+      <a routerLink="/ia" class="ia-ways-link">Clés, modèles par défaut, Claude Code et Vibe : page « Intelligence artificielle » →</a>
     </div>
   }
 
@@ -242,7 +73,9 @@
         </p>
         @if (!activeKeyConfigured) {
           <div class="intro-warning">
-            ⚙ Enregistrez d'abord votre clé API dans les paramètres (icône ⚙ en haut à droite).
+            Aucune clé d'API pour {{ ai.labelOf(provider()) }} :
+            <a routerLink="/ia">enregistrez-la sur la page « Intelligence artificielle »</a>,
+            ou reliez votre propre Claude Code depuis cette même page.
           </div>
         }
         <div class="starters">

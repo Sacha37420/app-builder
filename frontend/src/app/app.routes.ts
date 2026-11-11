@@ -34,8 +34,10 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/overview/overview.component').then(m => m.OverviewPageComponent),
   },
   {
-    path: 'connexion-ia',
+    path: 'ia',
     loadComponent: () => import('./pages/connexion-ia/connexion-ia.component').then(m => m.ConnexionIaPageComponent),
   },
+  // Ancienne adresse (liée depuis lab-admin) : même page.
+  { path: 'connexion-ia', pathMatch: 'full', redirectTo: 'ia' },
   { path: '**', redirectTo: '' },
 ];
