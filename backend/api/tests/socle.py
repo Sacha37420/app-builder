@@ -688,6 +688,18 @@ class PatchReferencesTests(_PatchBase):
         self.assertEqual(len(apres['data_models']), 2)
 
 
+class PatchCorpsMalFormeTests(_PatchBase):
+
+    def test_corps_qui_n_est_pas_un_objet_refuse_sans_erreur(self):
+        avant = self.relire()
+        for corps in ([1, 2], 'texte', 3):
+            with self.subTest(corps=corps):
+                resp = self.alice.post(self.url, corps, format='json')
+                self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(self.relire()['updated_at'], avant['updated_at'])
+        self.assertFalse(PatchApplication.objects.filter(app_id=self.spec['id']).exists())
+
+
 class PatchHistoriqueTests(_PatchBase):
 
     def setUp(self):
