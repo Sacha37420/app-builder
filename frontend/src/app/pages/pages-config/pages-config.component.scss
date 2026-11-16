@@ -236,11 +236,13 @@
 }
 .btn-remove-icon {
   background: none; border: none; color: color-mix(in srgb, var(--danger) 40%, transparent); cursor: pointer; font-size: 0.85rem;
+  min-width: 44px; min-height: 44px;  // cible tactile Foyer
   &:hover { color: var(--danger); }
 }
 .btn-danger-sm {
   padding: 0.3rem 0.7rem; background: var(--danger-tint); color: var(--danger);
   border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent); border-radius: 5px; cursor: pointer; font-size: 0.78rem;
+  min-height: 44px;  // cible tactile Foyer
   &:hover { background: color-mix(in srgb, var(--danger) 20%, transparent); }
 }
 .empty-sm { font-size: 0.78rem; color: var(--text-mute); font-style: italic; }

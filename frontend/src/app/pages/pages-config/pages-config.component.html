@@ -24,7 +24,7 @@
           <input class="svc-name-input" [value]="svc.name"
                  (input)="setServiceName(svc.id!, $event)"
                  placeholder="NomDuService" />
-          <button class="btn-remove-icon" (click)="state.removeService(svc.id!)">✕</button>
+          <button class="btn-remove-icon" (click)="removeServiceOf(svc)" [attr.aria-label]="'Supprimer le service ' + svc.name" [title]="'Supprimer le service ' + svc.name">✕</button>
         </div>
 
         <div class="svc-groups">
@@ -106,7 +106,7 @@
               <option [value]="l" [selected]="l === selectedPage.layout">{{ layoutLabels[l] }}</option>
             }
           </select>
-          <button class="btn-danger-sm" (click)="state.removePage(selectedPage.id!)">Supprimer</button>
+          <button class="btn-danger-sm" (click)="removePageOf(selectedPage)">Supprimer</button>
         </div>
 
         <!-- Accès à la page (I1) -->
@@ -203,7 +203,7 @@
                     <option [value]="m" [selected]="m === comp.linked_model">{{ m }}</option>
                   }
                 </select>
-                <button class="btn-remove-icon" (click)="state.removeComponent(selectedPage.id!, $index)">✕</button>
+                <button class="btn-remove-icon" (click)="state.removeComponent(selectedPage.id!, $index)" aria-label="Retirer ce composant" title="Retirer ce composant">✕</button>
               </div>
 
               <!-- Champs du composant -->
@@ -235,7 +235,7 @@
                   @for (f of comp.fields ?? []; track $index) {
                     <span class="field-tag">
                       {{ f }}
-                      <button (click)="removeCompField(selectedPage.id!, comp, ci, $index)">×</button>
+                      <button (click)="removeCompField(selectedPage.id!, comp, ci, $index)" aria-label="Retirer ce champ" title="Retirer ce champ">×</button>
                     </span>
                   }
                   @if ((comp.fields ?? []).length === 0 && !comp.linked_model) {
@@ -290,7 +290,7 @@
               <input [value]="inter.description"
                      (input)="setInteractionDesc(selectedPage.id!, inter.id!, $event)"
                      placeholder="Description…" class="inter-desc" />
-              <button class="btn-remove-icon" (click)="state.removeInteraction(selectedPage.id!, inter.id!)">✕</button>
+              <button class="btn-remove-icon" (click)="state.removeInteraction(selectedPage.id!, inter.id!)" aria-label="Retirer cette interaction" title="Retirer cette interaction">✕</button>
             </div>
           }
         </div>

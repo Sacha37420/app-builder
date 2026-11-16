@@ -72,7 +72,7 @@
               }
             </div>
             <span class="steps-count">{{ totalSteps(pipe) }} étape(s)</span>
-            <button class="btn-remove" (click)="$event.stopPropagation(); state.removePipeline(selectedPage.id!, pipe.id!)">✕</button>
+            <button class="btn-remove" (click)="$event.stopPropagation(); removePipelineOf(selectedPage, pipe)" [attr.aria-label]="'Supprimer le pipeline ' + pipe.name" [title]="'Supprimer le pipeline ' + pipe.name">✕</button>
             <span class="chevron">{{ isExpanded(pipe.id!) ? '▲' : '▼' }}</span>
           </div>
 
@@ -164,7 +164,7 @@
                         </label>
                       }
                     </div>
-                    <button class="step-remove" (click)="state.removePipelineStep(selectedPage.id!, pipe.id!, $index)">✕</button>
+                    <button class="step-remove" (click)="state.removePipelineStep(selectedPage.id!, pipe.id!, $index)" aria-label="Retirer cette étape" title="Retirer cette étape">✕</button>
                   </div>
                   @if ($index < pipe.steps.length - 1) {
                     <div class="step-arrow">↓</div>

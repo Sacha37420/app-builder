@@ -248,4 +248,15 @@ export class PagesPageComponent {
   getLinkedServices(page: Page): FrontendService[] {
     return this.state.spec().services.filter(s => page.service_ids.includes(s.id!));
   }
+
+  // Suppression d'un élément entier : confirmée, car l'enregistrement automatique la rend définitive.
+  removeServiceOf(svc: FrontendService): void {
+    if (!confirm(`Supprimer le service « ${svc.name || 'sans nom'} » ? Les pages qui l'utilisent perdent ce lien.`)) return;
+    this.state.removeService(svc.id!);
+  }
+
+  removePageOf(page: Page): void {
+    if (!confirm(`Supprimer la page « ${page.name} », ses interactions et ses pipelines ?`)) return;
+    this.state.removePage(page.id!);
+  }
 }

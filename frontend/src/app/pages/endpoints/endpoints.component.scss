@@ -254,11 +254,13 @@
 .btn-remove {
   background: none; border: none; color: color-mix(in srgb, var(--danger) 50%, transparent); cursor: pointer;
   font-size: 0.85rem; margin-left: auto;
+  min-width: 44px; min-height: 44px;  // cible tactile Foyer
   &:hover { color: var(--danger); }
 }
 .btn-remove-sm {
   background: none; border: none; color: color-mix(in srgb, var(--danger) 40%, transparent); cursor: pointer;
   font-size: 0.82rem; flex-shrink: 0;
+  min-width: 44px; min-height: 44px;  // cible tactile Foyer
   &:hover { color: var(--danger); }
 }
 

@@ -134,4 +134,10 @@ export class PipelinesPageComponent {
   getPageInteractions(page: import('../../models/app-spec.model').Page) {
     return page.interactions;
   }
+
+  // Suppression d'un élément entier : confirmée, car l'enregistrement automatique la rend définitive.
+  removePipelineOf(page: Page, pipe: Pipeline): void {
+    if (!confirm(`Supprimer le pipeline « ${pipe.name} » et ses étapes ?`)) return;
+    this.state.removePipeline(page.id!, pipe.id!);
+  }
 }

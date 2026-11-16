@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import serializers
 from . import conformite
 from .models import (
@@ -384,7 +385,11 @@ class AppSpecSerializer(serializers.ModelSerializer):
                 Pipeline.objects.create(page=page, **pipe)
 
     # ── Create / Update ────────────────────────────────────────────────────────
+    # Tout ou rien : `update` efface puis recrée chaque liste envoyée. Sans
+    # transaction, une erreur de base en cours de route (après validation)
+    # laissait la spec amputée de ce qui avait déjà été effacé.
 
+    @transaction.atomic
     def create(self, validated_data):
         data_models_data = validated_data.pop('data_models', [])
         groups_data = validated_data.pop('endpoint_groups', [])
@@ -401,6 +406,7 @@ class AppSpecSerializer(serializers.ModelSerializer):
         self._build_pages(app, pages_data, raw.get('pages') or [], svc_id_map)
         return app
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         data_models_data = validated_data.pop('data_models', None)
         groups_data      = validated_data.pop('endpoint_groups', None)
@@ -418,12 +424,21 @@ class AppSpecSerializer(serializers.ModelSerializer):
             for dm in data_models_data:
                 DataModel.objects.create(app=instance, **dm)
 
-        group_id_map = {}
+        # Liste absente d'un PATCH : ses éléments restent, et ils gardent leurs liens
+        # vers une liste envoyée (identifiants réels → éléments recréés, comme pour
+        # un PUT complet). Avant, ces liens étaient perdus sans un mot.
+        liens_services = ({sv.pk: list(sv.endpoint_groups.values_list('pk', flat=True))
+                           for sv in instance.services.all()}
+                          if groups_data is not None and services_data is None else {})
+        liens_pages = ({pg.pk: list(pg.services.values_list('pk', flat=True)) for pg in instance.pages.all()}
+                       if services_data is not None and pages_data is None else {})
+
+        group_id_map = {g.pk: g for g in instance.endpoint_groups.all()}
         if groups_data is not None:
             instance.endpoint_groups.all().delete()
             group_id_map = self._build_groups(instance, groups_data, raw.get('endpoint_groups') or [])
 
-        svc_id_map = {}
+        svc_id_map = {sv.pk: sv for sv in instance.services.all()}
         if services_data is not None:
             instance.services.all().delete()
             svc_id_map = self._build_services(instance, services_data, raw.get('services') or [], group_id_map)
@@ -431,5 +446,11 @@ class AppSpecSerializer(serializers.ModelSerializer):
         if pages_data is not None:
             instance.pages.all().delete()
             self._build_pages(instance, pages_data, raw.get('pages') or [], svc_id_map)
+
+        for pk, ids in liens_services.items():
+            FrontendService.objects.get(pk=pk).endpoint_groups.set(
+                [group_id_map[i] for i in ids if i in group_id_map])
+        for pk, ids in liens_pages.items():
+            Page.objects.get(pk=pk).services.set([svc_id_map[i] for i in ids if i in svc_id_map])
 
         return instance

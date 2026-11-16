@@ -19,6 +19,7 @@ export class BuilderComponent implements OnInit {
 
   savedApps = signal<AppSpec[]>([]);
   showAppList = signal(false);
+  listError = signal('');
 
   /** Repliée par défaut sous 900px : évite que la rangée de navigation/actions
    *  n'empiète sur la hauteur, réduite, allouée au canevas de schéma. */
@@ -34,9 +35,10 @@ export class BuilderComponent implements OnInit {
   }
 
   private loadList(): void {
+    this.listError.set('');
     this.api.listApps().subscribe({
       next: apps => this.savedApps.set(apps),
-      error: () => {},
+      error: () => this.listError.set("La liste de vos applications n'a pas pu être chargée : réessayez."),
     });
   }
 
@@ -47,9 +49,22 @@ export class BuilderComponent implements OnInit {
     });
   }
 
+  /** Changer de spec alors qu'une modification n'est pas encore partie la perdrait. */
+  private peutQuitter(): boolean {
+    const status = this.state.saveStatus();
+    if (!this.state.isDirty() && status !== 'pending' && status !== 'saving') return true;
+    return confirm("Des modifications de l'application ouverte ne sont pas encore enregistrées. Les abandonner ?");
+  }
+
   loadApp(app: AppSpec): void {
-    this.state.loadSpec(app);
-    this.showAppList.set(false);
+    if (!app.id || !this.peutQuitter()) return;
+    // Relue sur le serveur : la liste a pu être chargée avant les dernières modifications
+    // (enregistrement automatique, propositions appliquées) ; ouverte telle quelle, sa copie
+    // ancienne repartait au prochain enregistrement et les effaçait.
+    this.api.getApp(app.id).subscribe({
+      next: spec => { this.state.loadSpec(spec); this.showAppList.set(false); },
+      error: () => this.listError.set(`« ${app.name} » n'a pas pu être ouverte : réessayez.`),
+    });
   }
 
   deleteApp(app: AppSpec, event: Event): void {
@@ -62,16 +77,18 @@ export class BuilderComponent implements OnInit {
         if (this.state.spec().id === app.id) this.state.resetSpec();
         this.loadList();
       },
-      error: () => {},
+      error: () => this.listError.set(`« ${app.name} » n'a pas pu être supprimée : réessayez.`),
     });
   }
 
   newApp(): void {
+    if (!this.peutQuitter()) return;
     this.state.resetSpec();
     this.showAppList.set(false);
   }
 
   toggleAppList(): void {
     this.showAppList.update(v => !v);
+    if (this.showAppList()) this.loadList();
   }
 }

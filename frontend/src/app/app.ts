@@ -74,6 +74,17 @@ export class AppComponent {
     }, reduced ? 0 : MOBILE_CLOSE_ANIM_MS);
   }
 
+  // Une modification part 3 s après la dernière frappe, et une spec jamais enregistrée
+  // ne part pas seule : fermer l'onglet entre-temps la perdait sans prévenir.
+  @HostListener('window:beforeunload', ['$event'])
+  onBeforeUnload(event: BeforeUnloadEvent): void {
+    const status = this.state.saveStatus();
+    if (this.state.isDirty() || status === 'pending' || status === 'saving') {
+      event.preventDefault();
+      event.returnValue = '';
+    }
+  }
+
   @HostListener('document:keydown.escape')
   onEscape(): void {
     if (this.mobileOpen()) this.closeMobile();

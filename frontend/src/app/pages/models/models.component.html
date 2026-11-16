@@ -50,7 +50,7 @@
             <span class="stat">{{ model.fields.length }} champ(s)</span>
             <span class="stat">{{ model.relationships.length }} relation(s)</span>
           </div>
-          <button class="btn-remove" (click)="$event.stopPropagation(); state.removeDataModel(model.id!)">✕</button>
+          <button class="btn-remove" (click)="$event.stopPropagation(); removeModel(model)" [attr.aria-label]="'Supprimer le modèle ' + model.name" [title]="'Supprimer le modèle ' + model.name">✕</button>
           <span class="chevron">{{ isExpanded(model.id!) ? '▲' : '▼' }}</span>
         </div>
 
@@ -176,7 +176,7 @@
                       <code>{{ djField(field.type, field.max_length) }}</code>
                     </td>
                     <td>
-                      <button class="btn-remove-sm" (click)="state.removeField(model.id!, $index)">✕</button>
+                      <button class="btn-remove-sm" (click)="state.removeField(model.id!, $index)" aria-label="Retirer ce champ" title="Retirer ce champ">✕</button>
                     </td>
                   </tr>
                 }
@@ -244,7 +244,7 @@
                       <code>models.{{ relLabel(rel.rel_type) }}('{{ rel.to_model || '?' }}'{{ rel.rel_type !== 'M2M' ? ', on_delete=models.' + (rel.on_delete ?? 'CASCADE') : '' }})</code>
                     </td>
                     <td>
-                      <button class="btn-remove-sm" (click)="state.removeRelationship(model.id!, $index)">✕</button>
+                      <button class="btn-remove-sm" (click)="state.removeRelationship(model.id!, $index)" aria-label="Retirer cette relation" title="Retirer cette relation">✕</button>
                     </td>
                   </tr>
                 }
