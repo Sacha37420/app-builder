@@ -228,4 +228,10 @@ export class ModelsPageComponent {
   removeConstraint(m: DataModel, idx: number): void {
     this.state.updateDataModel(m.id!, { constraints: removeAt(m.constraints ?? [], idx) });
   }
+
+  // Suppression d'un élément entier : confirmée, car l'enregistrement automatique la rend définitive.
+  removeModel(m: DataModel): void {
+    if (!confirm(`Supprimer le modèle « ${m.name} », ses champs et ses relations ?`)) return;
+    this.state.removeDataModel(m.id!);
+  }
 }

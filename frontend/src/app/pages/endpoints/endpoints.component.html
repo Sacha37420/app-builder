@@ -53,7 +53,7 @@
         </div>
         <div class="group-actions">
           <button class="btn-add" (click)="state.addEndpoint(selectedGroup.id!)">+ Endpoint</button>
-          <button class="btn-danger" (click)="state.removeEndpointGroup(selectedGroup.id!)">Supprimer le groupe</button>
+          <button class="btn-danger" (click)="removeGroup(selectedGroup)">Supprimer le groupe</button>
         </div>
       </div>
 
@@ -84,7 +84,7 @@
             @if (authMode(ep) !== 'jwt') {
               <span class="public-badge">{{ authLabel(ep) }}</span>
             }
-            <button class="btn-remove" (click)="$event.stopPropagation(); state.removeEndpoint(selectedGroup.id!, ep.id!)">✕</button>
+            <button class="btn-remove" (click)="$event.stopPropagation(); removeEndpointOf(selectedGroup, ep)" [attr.aria-label]="'Supprimer l’endpoint ' + ep.method + ' ' + ep.path" [title]="'Supprimer l’endpoint ' + ep.method + ' ' + ep.path">✕</button>
             <span class="chevron">{{ isExpanded(ep.id!) ? '▲' : '▼' }}</span>
           </div>
 
@@ -184,7 +184,7 @@
                   @for (role of ep.required_roles; track role) {
                     <span class="role-tag">
                       {{ role }}
-                      <button (click)="removeRole(selectedGroup.id!, ep, role)">×</button>
+                      <button (click)="removeRole(selectedGroup.id!, ep, role)" aria-label="Retirer ce rôle" title="Retirer ce rôle">×</button>
                     </span>
                   }
                   @if (ep.required_roles.length === 0) {
@@ -220,7 +220,7 @@
                     </label>
                     <input [value]="qp.description" (input)="updateQueryParam(selectedGroup.id!, ep, $index, { description: val($event) })"
                            placeholder="description…" class="qp-desc" />
-                    <button class="btn-remove-sm" (click)="removeQueryParam(selectedGroup.id!, ep, $index)">✕</button>
+                    <button class="btn-remove-sm" (click)="removeQueryParam(selectedGroup.id!, ep, $index)" aria-label="Retirer ce paramètre" title="Retirer ce paramètre">✕</button>
                   </div>
                 }
               </div>
@@ -246,7 +246,7 @@
                            placeholder="Label de l'étape" class="step-label" />
                     <input [value]="step.description ?? ''" (input)="updateStep(selectedGroup.id!, ep, $index, { description: val($event) })"
                            placeholder="Description…" class="step-desc" />
-                    <button class="btn-remove-sm" (click)="removeStep(selectedGroup.id!, ep, $index)">✕</button>
+                    <button class="btn-remove-sm" (click)="removeStep(selectedGroup.id!, ep, $index)" aria-label="Retirer cette étape" title="Retirer cette étape">✕</button>
                   </div>
                 }
               </div>

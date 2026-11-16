@@ -382,9 +382,10 @@ class AppSpecPatchView(APIView):
             app = AppSpec.objects.get(pk=pk, owner_email=request.user.email)
         except AppSpec.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        mode = request.data.get('mode', 'merge')
+        donnees = request.data if isinstance(request.data, dict) else {}
+        mode = donnees.get('mode', 'merge')
         try:
-            application = patching.appliquer(app, request.data.get('patch'), mode)
+            application = patching.appliquer(app, donnees.get('patch'), mode)
         except patching.PatchRefuse as refus:
             return Response({'error': 'Patch refusé — la spécification n\'a pas été modifiée.',
                              'details': refus.erreurs}, status=status.HTTP_400_BAD_REQUEST)

@@ -17,3 +17,4 @@ from .metamodele import *  # noqa: F401,F403
 from .operations import *  # noqa: F401,F403
 from .lecture import *  # noqa: F401,F403
 from .albert import *  # noqa: F401,F403
+from .validite import *  # noqa: F401,F403

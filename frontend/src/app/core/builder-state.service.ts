@@ -162,11 +162,14 @@ export class BuilderStateService {
       switchMap(() => {
         this.saveStatus.set('saving');
         const sent = this.rev;
+        const session = this.specSessionId();
         return this.api.updateApp(this.savedId()!, this.spec()).pipe(
-          tap(saved => this.afterSave(saved, sent)),
+          tap(saved => this.afterSave(saved, sent, session)),
           catchError(err => {
-            this.saveStatus.set('error');
-            this.noteSaveError(err);
+            if (this.specSessionId() === session) {
+              this.saveStatus.set('error');
+              this.noteSaveError(err);
+            }
             // EMPTY et non une erreur : une erreur remontée ici terminait le flux,
             // et plus aucun autosave ne partait après un premier refus du serveur.
             return EMPTY;
@@ -194,11 +197,14 @@ export class BuilderStateService {
       ? this.api.updateApp(id, this.spec())
       : this.api.createApp(this.spec());
     const sent = this.rev;
+    const session = this.specSessionId();
     return obs.pipe(
-      tap(saved => this.afterSave(saved, sent)),
+      tap(saved => this.afterSave(saved, sent, session)),
       catchError(err => {
-        this.saveStatus.set('error');
-        this.noteSaveError(err);
+        if (this.specSessionId() === session) {
+          this.saveStatus.set('error');
+          this.noteSaveError(err);
+        }
         return throwError(() => err);
       }),
     );
@@ -209,7 +215,10 @@ export class BuilderStateService {
    * locale prend les identifiants du serveur (sans rien perdre : c'est ce qui vient
    * d'être envoyé) ; sinon elle reste « modifiée » et le prochain envoi suivra.
    */
-  private afterSave(saved: AppSpec, sentRev: number): void {
+  private afterSave(saved: AppSpec, sentRev: number, session: number): void {
+    // Réponse d'un envoi parti avant l'ouverture d'une autre spec : elle ne concerne plus
+    // la spec affichée. Adopter son identifiant faisait enregistrer celle-ci par-dessus l'ancienne.
+    if (this.specSessionId() !== session) return;
     this.savedId.set(saved.id!);
     this.saveErrorDetail.set('');
     if (typeof saved.version === 'string') this.version.set(saved.version);

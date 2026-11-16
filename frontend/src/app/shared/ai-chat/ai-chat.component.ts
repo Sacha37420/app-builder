@@ -9,6 +9,7 @@ import { Subscription, switchMap } from 'rxjs';
 import {
   AiProvider, ChatContext, ChatMessage, ChatUsage, PersistedChatMessage, ProposalState,
 } from '../../models/app-spec.model';
+import { messageHttp } from '../../core/http-error';
 
 type DisplayMessage = PersistedChatMessage;
 
@@ -270,7 +271,7 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
         } else if (this.state.saveStatus() === 'error') {
           this.error.set("La spécification n'a pas pu être enregistrée : corrigez-la avant d'interroger l'agent.");
         } else {
-          this.error.set(`Erreur : ${corps?.error ?? corps?.detail ?? err.message ?? 'Erreur inconnue'}`);
+          this.error.set(`Erreur : ${corps?.error ?? corps?.detail ?? messageHttp(err.status)}`);
         }
         this.loading.set(false);
         this.shouldScroll = true;
@@ -318,7 +319,7 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
       this.patchBusy.set(false);
       return;
     }
-    this.error.set(`${corps.error ?? corps.detail ?? err.message ?? 'Erreur inconnue'}`);
+    this.error.set(`${corps.error ?? corps.detail ?? messageHttp(err.status)}`);
     this.patchBusy.set(false);
     this.shouldScroll = true;
   }
@@ -345,7 +346,7 @@ export class AiChatComponent implements AfterViewChecked, OnInit {
     this.state.undoAgentPatch(id).subscribe({
       next: () => { this.markProposal(msgIndex, { proposal_state: 'undone' }); this.patchBusy.set(false); },
       error: (err: HttpErrorResponse) => {
-        this.error.set(`${err.error?.error ?? err.message ?? 'Erreur inconnue'}`);
+        this.error.set(`${err.error?.error ?? messageHttp(err.status)}`);
         this.patchBusy.set(false);
       },
     });

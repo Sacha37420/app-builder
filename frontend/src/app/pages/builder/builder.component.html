@@ -47,9 +47,11 @@
     <div class="app-list-panel">
       <div class="app-list-header">
         <span>Applications sauvegardées</span>
-        <button class="btn-close-panel" (click)="toggleAppList()">✕</button>
+        <button class="btn-close-panel" (click)="toggleAppList()" aria-label="Fermer la liste des applications" title="Fermer la liste des applications">✕</button>
       </div>
-      @if (savedApps().length === 0) {
+      @if (listError()) {
+        <div class="app-list-empty" role="alert">{{ listError() }}</div>
+      } @else if (savedApps().length === 0) {
         <div class="app-list-empty">Aucune application sauvegardée.</div>
       }
       @for (app of savedApps(); track app.id) {

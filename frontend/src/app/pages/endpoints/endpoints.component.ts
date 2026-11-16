@@ -222,4 +222,16 @@ export class EndpointsPageComponent {
   removeStep(gId: number, ep: Endpoint, idx: number): void {
     this.state.updateEndpoint(gId, ep.id!, { steps: (ep.steps ?? []).filter((_, i) => i !== idx) });
   }
+
+  // Suppression d'un élément entier : confirmée, car l'enregistrement automatique la rend définitive.
+  removeGroup(g: EndpointGroup): void {
+    const n = g.endpoints?.length ?? 0;
+    if (!confirm(`Supprimer le groupe « ${g.name} »` + (n ? ` et ses ${n} endpoint(s) ?` : ' ?'))) return;
+    this.state.removeEndpointGroup(g.id!);
+  }
+
+  removeEndpointOf(g: EndpointGroup, ep: Endpoint): void {
+    if (!confirm(`Supprimer l'endpoint ${ep.method} ${ep.path || '(sans chemin)'} ?`)) return;
+    this.state.removeEndpoint(g.id!, ep.id!);
+  }
 }

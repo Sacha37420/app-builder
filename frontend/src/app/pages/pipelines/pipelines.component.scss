@@ -229,6 +229,7 @@
 .btn-remove {
   border: none; background: transparent; color: color-mix(in srgb, var(--danger) 60%, transparent);
   cursor: pointer; font-size: 0.9rem; padding: 0 4px;
+  min-width: 44px; min-height: 44px;  // cible tactile Foyer
   &:hover { color: var(--danger); }
 }
 
