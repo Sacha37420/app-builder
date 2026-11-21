@@ -1205,7 +1205,9 @@ def _lire_operation(op):
 def _fragment(genre, cible, data, nouveau):
     """Une opération → un patch au format de `normaliser`."""
     t, nom = cible['type'], cible['nom']
-    data = {k: v for k, v in (data or {}).items() if k not in ('rename_from',)}
+    # `data` n'est contrôlé comme objet que pour `upsert` : ailleurs, une valeur
+    # quelconque (texte, nombre, liste) est ignorée au lieu de lever une 500.
+    data = {k: v for k, v in (data if isinstance(data, dict) else {}).items() if k not in ('rename_from',)}
     if t == 'meta':
         return {'set_meta': {k: data[k] for k in ('name', 'project_name', 'description', 'app_type', 'uses_email') if k in data}}
     if t == 'groupe_requis':

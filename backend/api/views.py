@@ -382,6 +382,9 @@ class AppSpecPatchView(APIView):
             app = AppSpec.objects.get(pk=pk, owner_email=request.user.email)
         except AppSpec.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
+        if not isinstance(request.data, dict):
+            return Response({'error': 'Corps attendu : {"patch": {…}, "mode": "merge"}.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         mode = request.data.get('mode', 'merge')
         try:
             application = patching.appliquer(app, request.data.get('patch'), mode)

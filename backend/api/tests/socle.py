@@ -446,6 +446,13 @@ class _PatchBase(Base):
 
 class PatchFusionTests(_PatchBase):
 
+    def test_corps_qui_n_est_pas_un_objet_refuse(self):
+        avant = self.relire()
+        for corps in ([1, 2], 'texte'):
+            with self.subTest(corps=corps):
+                self.assertEqual(self.alice.post(self.url, corps, format='json').status_code, 400)
+        self.assertEqual(self.relire()['data_models'], avant['data_models'])
+
     def test_ajouter_un_endpoint_a_un_groupe_garde_les_autres(self):
         spec = self.patcher({'endpoint_groups': [{'name': 'Produits', 'endpoints': [
             {'method': 'post', 'path': '/api/produits/', 'operation': 'create', 'linked_model_name': 'Produit',
