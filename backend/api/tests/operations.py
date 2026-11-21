@@ -119,6 +119,15 @@ class OperationsTests(_AvecSpec):
             with self.subTest(op=op):
                 self.assertTrue(controle(self.essai([op])))
 
+    def test_data_non_objet_sur_remove_ou_rename_ne_fait_pas_500(self):
+        for data in ('x', 1, [1], True):
+            for op in ({**rm('modele', 'Produit'), 'data': data},
+                       {**rn('modele', 'Produit', 'Article'), 'data': data}):
+                with self.subTest(op=op):
+                    resp = self.alice.post(f'/api/apps/{self.app.pk}/operations/essai/',
+                                           {'operations': [op]}, format='json')
+                    self.assertEqual(resp.status_code, 200, resp.content)
+
     def test_interaction_et_pipeline_renommes_puis_retires(self):
         base = [up('interaction', 'Cliquer', {'type': 'click'}, page='Vitrine'),
                 up('pipeline', 'Charger', {'trigger_interaction': 'Cliquer'}, page='Vitrine')]
